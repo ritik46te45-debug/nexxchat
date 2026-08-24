@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import useUIStore from '../../stores/uiStore';
 import useChatStore from '../../stores/chatStore';
 import useAuthStore from '../../stores/authStore';
@@ -21,15 +21,13 @@ export default function MainLayout() {
   const activeConversation = useChatStore((s) => s.activeConversation);
 
   const [showProfileModal, setShowProfileModal] = useState(false);
-  const [activeCall, setActiveCall] = useState(null); // { targetUserId, displayName, avatar, type, callId, isIncoming }
+  const [activeCall, setActiveCall] = useState(null);
 
-  // Socket listener for incoming calls
+  // Socket listener for incoming calls — use socket events instead of 1s polling
   useEffect(() => {
-    let cleanupFn = null;
-
     const setupCallListener = () => {
       const socket = getSocket();
-      if (!socket) return;
+      if (!socket) return null;
 
       const onIncoming = ({ callId, from, type, conversationId }) => {
         setActiveCall({
@@ -44,21 +42,28 @@ export default function MainLayout() {
       };
 
       socket.on('call:incoming', onIncoming);
-      cleanupFn = () => socket.off('call:incoming', onIncoming);
+      return () => socket.off('call:incoming', onIncoming);
     };
 
-    setupCallListener();
-    const timer = setInterval(() => {
-      if (!cleanupFn) setupCallListener();
-    }, 1000);
+    let cleanup = setupCallListener();
+
+    // Re-setup on socket reconnect instead of polling
+    const socket = getSocket();
+    const onReconnect = () => {
+      if (cleanup) cleanup();
+      cleanup = setupCallListener();
+    };
+    if (socket) {
+      socket.on('connect', onReconnect);
+    }
 
     return () => {
-      clearInterval(timer);
-      if (cleanupFn) cleanupFn();
+      if (cleanup) cleanup();
+      if (socket) socket.off('connect', onReconnect);
     };
   }, []);
 
-  const handleStartCall = (targetUser, type = 'voice') => {
+  const handleStartCall = useCallback((targetUser, type = 'voice') => {
     const socket = getSocket();
     if (!socket) {
       toast.error('Connecting to call server...');
@@ -71,25 +76,44 @@ export default function MainLayout() {
       return;
     }
 
-    const callId = `call_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+    // Emit call:initiate and let server assign callId
     socket.emit('call:initiate', {
       to: targetUserId,
       type,
       conversationId: activeConversation?._id,
     });
 
+    // Listen for server-assigned callId from call:ringing
+    const onRinging = ({ callId }) => {
+      setActiveCall({
+        callId, // Use server-generated callId
+        targetUserId,
+        displayName: targetUser?.displayName || targetUser?.username || 'User',
+        avatar: targetUser?.avatar,
+        type,
+        isIncoming: false,
+      });
+      socket.off('call:ringing', onRinging);
+    };
+    socket.on('call:ringing', onRinging);
+
+    // Set temporary call state while waiting for server response
     setActiveCall({
-      callId,
+      callId: `temp_${Date.now()}`,
       targetUserId,
       displayName: targetUser?.displayName || targetUser?.username || 'User',
       avatar: targetUser?.avatar,
       type,
       isIncoming: false,
     });
-  };
+  }, [activeConversation]);
+
+  // Determine if left panel should show on mobile
+  const showLeftPanel = isMobile ? !showChatOnMobile : true;
+  const showRightPanel = isMobile ? showChatOnMobile : true;
 
   return (
-    <div className="h-[100dvh] flex overflow-hidden bg-dark-bg relative">
+    <div className="h-[100dvh] flex flex-col md:flex-row overflow-hidden bg-dark-bg relative">
       {/* Offline banner */}
       {(!isOnline || isReconnecting) && (
         <div className="absolute top-0 left-0 right-0 z-50 bg-yellow-600/90 text-white text-center py-1.5 text-xs font-medium animate-slide-down">
@@ -97,15 +121,16 @@ export default function MainLayout() {
         </div>
       )}
 
-      {/* Sidebar Navigation */}
-      <Sidebar onOpenProfile={() => setShowProfileModal(true)} />
+      {/* Desktop Sidebar Navigation (hidden on mobile — mobile uses bottom bar) */}
+      {!isMobile && <Sidebar onOpenProfile={() => setShowProfileModal(true)} />}
 
       {/* Main Left Column (Chats, Calls, Status, Contacts, Settings) */}
       <div
         className={`
-        ${isMobile ? (showChatOnMobile ? 'hidden' : 'flex') : 'flex'}
+        ${showLeftPanel ? 'flex' : 'hidden'}
         flex-col w-full md:w-[340px] lg:w-[380px] xl:w-[400px]
         border-r border-dark-border bg-dark-bg flex-shrink-0 z-10
+        ${isMobile ? 'pb-[60px]' : ''}
       `}
       >
         {sidebarView === 'chats' && <ChatList />}
@@ -124,7 +149,7 @@ export default function MainLayout() {
       {/* Chat window / Right area */}
       <div
         className={`
-        ${isMobile ? (showChatOnMobile ? 'flex' : 'hidden') : 'flex'}
+        ${showRightPanel ? 'flex' : 'hidden'}
         flex-col flex-1 min-w-0
       `}
       >
@@ -134,6 +159,9 @@ export default function MainLayout() {
           !isMobile && <EmptyChat />
         )}
       </div>
+
+      {/* Mobile Bottom Tab Bar */}
+      {isMobile && <Sidebar onOpenProfile={() => setShowProfileModal(true)} />}
 
       {/* Profile Modal */}
       {showProfileModal && (
@@ -146,6 +174,9 @@ export default function MainLayout() {
           callData={activeCall}
           isIncoming={activeCall.isIncoming}
           onEndCall={() => setActiveCall(null)}
+          onCallIdUpdate={(newCallId) => {
+            setActiveCall(prev => prev ? { ...prev, callId: newCallId } : null);
+          }}
         />
       )}
 

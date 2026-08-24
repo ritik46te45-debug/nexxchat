@@ -62,19 +62,25 @@ export default function CallsTab({ onStartCall }) {
 
   const formatCallTime = (dateStr) => {
     if (!dateStr) return '';
-    const date = new Date(dateStr);
-    const now = new Date();
-    const isToday = date.toDateString() === now.toDateString();
-    
-    const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    if (isToday) {
-      return `Today, ${timeStr}`;
+    try {
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) return '';
+      const now = new Date();
+      const isToday = date.toDateString() === now.toDateString();
+      
+      const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      if (isToday) {
+        return `Today, ${timeStr}`;
+      }
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      if (yesterday.toDateString() === date.toDateString()) {
+        return `Yesterday, ${timeStr}`;
+      }
+      return `${date.toLocaleDateString([], { month: 'short', day: 'numeric' })}, ${timeStr}`;
+    } catch (e) {
+      return '';
     }
-    const isYesterday = new Date(now.setDate(now.getDate() - 1)).toDateString() === date.toDateString();
-    if (isYesterday) {
-      return `Yesterday, ${timeStr}`;
-    }
-    return `${date.toLocaleDateString([], { month: 'short', day: 'numeric' })}, ${timeStr}`;
   };
 
   const myId = (user?._id || user)?.toString();

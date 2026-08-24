@@ -6,7 +6,7 @@ const useUIStore = create((set) => ({
   sidebarView: 'chats', // 'chats', 'contacts', 'settings', 'profile'
 
   // Mobile
-  isMobile: window.innerWidth < 768,
+  isMobile: typeof window !== 'undefined' ? window.innerWidth < 768 : false,
   showChatOnMobile: false,
 
   // Panels
@@ -24,11 +24,11 @@ const useUIStore = create((set) => ({
   notification: null,
 
   // Network
-  isOnline: navigator.onLine,
+  isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
   isReconnecting: false,
 
   // Theme
-  theme: localStorage.getItem('nexchat_theme') || 'dark',
+  theme: typeof localStorage !== 'undefined' ? (localStorage.getItem('nexchat_theme') || 'dark') : 'dark',
 
   // Actions
   toggleSidebar: () => set((s) => ({ isSidebarOpen: !s.isSidebarOpen })),
@@ -58,10 +58,14 @@ const useUIStore = create((set) => ({
   },
 }));
 
-// Listen for window resize
+// Debounced resize listener to prevent excessive re-renders
 if (typeof window !== 'undefined') {
+  let resizeTimer = null;
   window.addEventListener('resize', () => {
-    useUIStore.getState().setMobile(window.innerWidth < 768);
+    if (resizeTimer) clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      useUIStore.getState().setMobile(window.innerWidth < 768);
+    }, 150);
   });
 
   window.addEventListener('online', () => useUIStore.getState().setOnline(true));

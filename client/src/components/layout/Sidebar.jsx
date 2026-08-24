@@ -5,7 +5,7 @@ import useChatStore from '../../stores/chatStore';
 import toast from 'react-hot-toast';
 
 export default function Sidebar({ onOpenProfile }) {
-  const { sidebarView, setSidebarView } = useUIStore();
+  const { sidebarView, setSidebarView, isMobile } = useUIStore();
   const { user, logout } = useAuthStore();
   const unreadTotal = useChatStore((s) => s.unreadTotal);
 
@@ -22,6 +22,38 @@ export default function Sidebar({ onOpenProfile }) {
     { id: 'settings', icon: Settings, label: 'Settings' },
   ];
 
+  // ─── Mobile: Fixed bottom tab bar ───
+  if (isMobile) {
+    return (
+      <div className="fixed bottom-0 left-0 right-0 z-50 bg-dark-card/95 backdrop-blur-xl border-t border-dark-border safe-bottom">
+        <nav className="flex items-center justify-around px-1 py-1.5">
+          {navItems.map(({ id, icon: Icon, label, badge }) => (
+            <button
+              key={id}
+              onClick={() => setSidebarView(id)}
+              className={`
+                relative flex flex-col items-center justify-center gap-0.5 py-1 px-3 rounded-xl transition-all duration-200
+                ${sidebarView === id
+                  ? 'text-primary-400'
+                  : 'text-surface-500 active:text-surface-300'
+                }
+              `}
+            >
+              <Icon className="w-5 h-5" />
+              <span className="text-[10px] font-medium leading-tight">{label}</span>
+              {badge > 0 && (
+                <span className="absolute -top-0.5 right-0.5 min-w-[16px] h-4 rounded-full bg-accent-red text-white text-[9px] font-bold flex items-center justify-center px-1">
+                  {badge > 99 ? '99+' : badge}
+                </span>
+              )}
+            </button>
+          ))}
+        </nav>
+      </div>
+    );
+  }
+
+  // ─── Desktop: Vertical sidebar ───
   return (
     <div className="w-[72px] h-full bg-dark-card border-r border-dark-border flex flex-col items-center py-4 flex-shrink-0 z-20">
       {/* User avatar */}

@@ -216,7 +216,7 @@ function ConversationItem({ conversation, userId, isActive, onClick, typingUsers
         <div className="flex items-center justify-between">
           <span className="font-semibold text-white text-sm truncate">{name}</span>
           <span className="text-[11px] text-surface-500 flex-shrink-0 ml-2">
-            {timeStr ? formatDistanceToNow(new Date(timeStr), { addSuffix: false }) : ''}
+            {(() => { try { if (!timeStr) return ''; const d = new Date(timeStr); return isNaN(d.getTime()) ? '' : formatDistanceToNow(d, { addSuffix: false }); } catch(e) { return ''; } })()}
           </span>
         </div>
         <div className="flex items-center justify-between mt-0.5">

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Send, Smile, Paperclip, Mic, X, Image, FileText, Camera, Reply, Loader2 } from 'lucide-react';
 import useChatStore from '../../stores/chatStore';
 import useAuthStore from '../../stores/authStore';
@@ -146,8 +146,33 @@ export default function MessageComposer() {
   };
 
   const removeFile = (index) => {
-    setFiles(prev => prev.filter((_, i) => i !== index));
+    setFiles(prev => {
+      // Revoke the object URL for removed file
+      const removed = prev[index];
+      if (removed && removed.type.startsWith('image/')) {
+        const url = filePreviews[index];
+        if (url) URL.revokeObjectURL(url);
+      }
+      return prev.filter((_, i) => i !== index);
+    });
   };
+
+  // Create stable blob URLs for file previews (avoids re-creation on every render)
+  const filePreviews = useMemo(() => {
+    return files.map(file => {
+      if (file.type.startsWith('image/')) {
+        return URL.createObjectURL(file);
+      }
+      return null;
+    });
+  }, [files]);
+
+  // Cleanup all blob URLs on unmount
+  useEffect(() => {
+    return () => {
+      filePreviews.forEach(url => { if (url) URL.revokeObjectURL(url); });
+    };
+  }, [filePreviews]);
 
   // Paste handler
   const handlePaste = (e) => {
@@ -278,12 +303,12 @@ export default function MessageComposer() {
             <div key={i} className="relative flex-shrink-0 group">
               {file.type.startsWith('image/') ? (
                 <img
-                  src={URL.createObjectURL(file)}
+                  src={filePreviews[i] || ''}
                   alt={file.name}
-                  className="w-16 h-16 rounded-lg object-cover border border-dark-border"
+                  className="w-14 h-14 sm:w-16 sm:h-16 rounded-lg object-cover border border-dark-border"
                 />
               ) : (
-                <div className="w-16 h-16 rounded-lg bg-dark-input border border-dark-border flex flex-col items-center justify-center gap-1">
+                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-lg bg-dark-input border border-dark-border flex flex-col items-center justify-center gap-1">
                   <FileText className="w-5 h-5 text-surface-400" />
                   <span className="text-[8px] text-surface-500 truncate w-14 text-center">{file.name}</span>
                 </div>

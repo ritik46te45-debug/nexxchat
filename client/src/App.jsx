@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import useAuthStore from './stores/authStore';
@@ -51,6 +51,10 @@ function App() {
   const { addMessage, setTypingUser, clearTypingUser, setRecordingUser, clearRecordingUser, setUserOnline, setUserOffline, updateMessageInList, fetchConversations } = useChatStore();
   const { setOnline, setReconnecting } = useUIStore();
 
+  // Use ref for user to avoid re-mounting socket listeners on profile changes
+  const userRef = useRef(user);
+  useEffect(() => { userRef.current = user; }, [user]);
+
   // Initialize auth on mount
   useEffect(() => {
     initialize();
@@ -81,7 +85,7 @@ function App() {
       socket.on('message:new', ({ message, conversationId }) => {
         addMessage(message, conversationId);
 
-        const currentUserId = (user?._id || user)?.toString();
+        const currentUserId = (useAuthStore.getState().user?._id || useAuthStore.getState().user)?.toString();
         const senderId = (message.sender?._id || message.sender)?.toString();
 
         if (senderId && currentUserId && senderId !== currentUserId) {
@@ -209,7 +213,7 @@ function App() {
       clearTimeout(timer);
       if (cleanupFn) cleanupFn();
     };
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated]);
 
   return (
     <BrowserRouter>

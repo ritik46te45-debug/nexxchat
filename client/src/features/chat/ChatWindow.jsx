@@ -15,9 +15,22 @@ export default function ChatWindow({ onStartCall }) {
 
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
+  const disappearingMenuRef = useRef(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [showScrollDown, setShowScrollDown] = useState(false);
   const [showDisappearingMenu, setShowDisappearingMenu] = useState(false);
+
+  // Click-outside handler for disappearing messages dropdown
+  useEffect(() => {
+    if (!showDisappearingMenu) return;
+    const handleClickOutside = (e) => {
+      if (disappearingMenuRef.current && !disappearingMenuRef.current.contains(e.target)) {
+        setShowDisappearingMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showDisappearingMenu]);
 
   // Get other user info
   const myId = (user?._id || user)?.toString();
@@ -147,7 +160,7 @@ export default function ChatWindow({ onStartCall }) {
               : isOnline
               ? <span className="text-accent-green">Online</span>
               : (canSeeLastSeen && otherUser?.lastSeen)
-              ? `Last seen ${new Date(otherUser.lastSeen).toLocaleString()}`
+              ? `Last seen ${(() => { try { const d = new Date(otherUser.lastSeen); return isNaN(d.getTime()) ? '' : formatDistanceToNow(d, { addSuffix: true }); } catch(e) { return ''; } })()}`
               : ''
             }
           </p>
@@ -156,7 +169,7 @@ export default function ChatWindow({ onStartCall }) {
         {/* Actions */}
         <div className="flex items-center gap-1">
           {/* Disappearing Timer Menu Toggle */}
-          <div className="relative">
+          <div className="relative" ref={disappearingMenuRef}>
             <button
               onClick={() => setShowDisappearingMenu(!showDisappearingMenu)}
               className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${

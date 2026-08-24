@@ -166,4 +166,34 @@
     -webkit-user-select: none;
     user-select: none;
   }
+
+  /* Mobile touch optimization */
+  .touch-scroll {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  /* Prevent iOS rubber-band bounce */
+  .no-bounce {
+    overscroll-behavior: none;
+  }
+}
+
+/* ====== MOBILE-SPECIFIC ====== */
+@media (max-width: 767px) {
+  /* Remove tap highlight on all touchable elements */
+  button, a, [role="button"] {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Prevent zoom on double-tap for input elements */
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+
+  /* Ensure full-height on mobile browsers with dynamic viewport */
+  html, body, #root {
+    height: 100dvh;
+    overflow: hidden;
+  }
 }
