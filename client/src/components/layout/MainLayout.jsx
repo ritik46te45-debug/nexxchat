@@ -23,7 +23,7 @@ export default function MainLayout() {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [activeCall, setActiveCall] = useState(null);
 
-  // Socket listener for incoming calls — use socket events instead of 1s polling
+  // Socket listener for incoming calls
   useEffect(() => {
     const setupCallListener = () => {
       const socket = getSocket();
@@ -47,7 +47,6 @@ export default function MainLayout() {
 
     let cleanup = setupCallListener();
 
-    // Re-setup on socket reconnect instead of polling
     const socket = getSocket();
     const onReconnect = () => {
       if (cleanup) cleanup();
@@ -76,17 +75,15 @@ export default function MainLayout() {
       return;
     }
 
-    // Emit call:initiate and let server assign callId
     socket.emit('call:initiate', {
       to: targetUserId,
       type,
       conversationId: activeConversation?._id,
     });
 
-    // Listen for server-assigned callId from call:ringing
     const onRinging = ({ callId }) => {
       setActiveCall({
-        callId, // Use server-generated callId
+        callId,
         targetUserId,
         displayName: targetUser?.displayName || targetUser?.username || 'User',
         avatar: targetUser?.avatar,
@@ -97,7 +94,6 @@ export default function MainLayout() {
     };
     socket.on('call:ringing', onRinging);
 
-    // Set temporary call state while waiting for server response
     setActiveCall({
       callId: `temp_${Date.now()}`,
       targetUserId,
@@ -108,12 +104,12 @@ export default function MainLayout() {
     });
   }, [activeConversation]);
 
-  // Determine if left panel should show on mobile
+  // View logic: On mobile, show either the left panel (tab views) or the right panel (chat window)
   const showLeftPanel = isMobile ? !showChatOnMobile : true;
   const showRightPanel = isMobile ? showChatOnMobile : true;
 
   return (
-    <div className="h-[100dvh] flex flex-col md:flex-row overflow-hidden bg-dark-bg relative">
+    <div className="h-[100dvh] w-full flex flex-col md:flex-row overflow-hidden bg-dark-bg relative">
       {/* Offline banner */}
       {(!isOnline || isReconnecting) && (
         <div className="absolute top-0 left-0 right-0 z-50 bg-yellow-600/90 text-white text-center py-1.5 text-xs font-medium animate-slide-down">
@@ -121,16 +117,16 @@ export default function MainLayout() {
         </div>
       )}
 
-      {/* Desktop Sidebar Navigation (hidden on mobile — mobile uses bottom bar) */}
+      {/* Desktop / Laptop Sidebar Navigation */}
       {!isMobile && <Sidebar onOpenProfile={() => setShowProfileModal(true)} />}
 
       {/* Main Left Column (Chats, Calls, Status, Contacts, Settings) */}
       <div
         className={`
         ${showLeftPanel ? 'flex' : 'hidden'}
-        flex-col w-full md:w-[340px] lg:w-[380px] xl:w-[400px]
-        border-r border-dark-border bg-dark-bg flex-shrink-0 z-10
-        ${isMobile ? 'pb-[60px]' : ''}
+        flex-col w-full md:w-[320px] lg:w-[360px] xl:w-[400px]
+        border-r border-dark-border bg-dark-bg flex-shrink-0 z-10 h-full overflow-hidden
+        ${isMobile && !showChatOnMobile ? 'pb-[56px]' : ''}
       `}
       >
         {sidebarView === 'chats' && <ChatList />}
@@ -150,7 +146,7 @@ export default function MainLayout() {
       <div
         className={`
         ${showRightPanel ? 'flex' : 'hidden'}
-        flex-col flex-1 min-w-0
+        flex-col flex-1 min-w-0 h-full overflow-hidden
       `}
       >
         {activeConversation ? (
@@ -160,8 +156,10 @@ export default function MainLayout() {
         )}
       </div>
 
-      {/* Mobile Bottom Tab Bar */}
-      {isMobile && <Sidebar onOpenProfile={() => setShowProfileModal(true)} />}
+      {/* Mobile Bottom Tab Bar (renders only when on tab lists, not inside an active chat) */}
+      {isMobile && !showChatOnMobile && (
+        <Sidebar onOpenProfile={() => setShowProfileModal(true)} />
+      )}
 
       {/* Profile Modal */}
       {showProfileModal && (

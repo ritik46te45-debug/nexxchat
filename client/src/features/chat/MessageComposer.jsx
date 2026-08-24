@@ -325,14 +325,14 @@ export default function MessageComposer() {
       )}
 
       {/* Input area */}
-      <div className="flex items-end gap-2 px-3 py-3">
+      <div className="flex items-end gap-1.5 sm:gap-2 px-2 sm:px-3 py-2 sm:py-2.5 w-full">
         {/* Attachment */}
         <button
           onClick={() => fileInputRef.current?.click()}
-          className="w-10 h-10 rounded-xl text-surface-400 hover:text-white hover:bg-dark-hover flex items-center justify-center transition-all flex-shrink-0"
+          className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl text-surface-400 hover:text-white hover:bg-dark-hover flex items-center justify-center transition-all flex-shrink-0"
           title="Attach file"
         >
-          <Paperclip className="w-5 h-5" />
+          <Paperclip className="w-4 h-4 sm:w-5 sm:h-5" />
         </button>
         <input
           ref={fileInputRef}
@@ -345,16 +345,16 @@ export default function MessageComposer() {
 
         {/* Text input */}
         {isRecording ? (
-          <div className="flex-1 flex items-center gap-3 px-4 py-2.5 bg-dark-input border border-red-500/30 rounded-xl">
-            <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
-            <span className="text-sm text-red-400">Recording...</span>
+          <div className="flex-1 min-w-0 flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 bg-dark-input border border-red-500/30 rounded-xl">
+            <div className="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse flex-shrink-0" />
+            <span className="text-xs sm:text-sm text-red-400 font-medium">Recording...</span>
             <div className="flex-1" />
-            <button onClick={cancelRecording} className="text-surface-400 hover:text-white text-sm">
+            <button onClick={cancelRecording} className="text-surface-400 hover:text-white text-xs sm:text-sm flex-shrink-0">
               Cancel
             </button>
           </div>
         ) : (
-          <div className="flex-1 relative">
+          <div className="flex-1 min-w-0 relative">
             <textarea
               ref={inputRef}
               value={text}
@@ -363,8 +363,8 @@ export default function MessageComposer() {
               onPaste={handlePaste}
               placeholder="Type a message..."
               rows={1}
-              className="w-full px-4 py-2.5 bg-dark-input border border-dark-border rounded-xl text-sm text-white placeholder-surface-500 input-focus resize-none transition-all max-h-32"
-              style={{ minHeight: '42px' }}
+              className="w-full px-3 sm:px-4 py-2 sm:py-2.5 bg-dark-input border border-dark-border rounded-xl text-xs sm:text-sm text-white placeholder-surface-500 input-focus resize-none transition-all max-h-32"
+              style={{ minHeight: '38px' }}
               onInput={(e) => {
                 e.target.style.height = 'auto';
                 e.target.style.height = Math.min(e.target.scrollHeight, 128) + 'px';
@@ -378,7 +378,7 @@ export default function MessageComposer() {
           <button
             type="button"
             onClick={() => setIsViewOnce(!isViewOnce)}
-            className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm transition-all flex-shrink-0 border ${
+            className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center font-bold text-xs sm:text-sm transition-all flex-shrink-0 border ${
               isViewOnce
                 ? 'bg-primary-500 text-white border-primary-400 shadow-lg shadow-primary-500/40 ring-2 ring-primary-500/30'
                 : 'bg-dark-input text-surface-400 border-dark-border hover:text-white hover:border-surface-400'
@@ -391,30 +391,30 @@ export default function MessageComposer() {
 
         {/* Send / Mic button */}
         {isUploading ? (
-          <div className="w-10 h-10 rounded-xl gradient-primary flex items-center justify-center flex-shrink-0">
-            <Loader2 className="w-5 h-5 text-white animate-spin" />
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl gradient-primary flex items-center justify-center flex-shrink-0">
+            <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 text-white animate-spin" />
           </div>
         ) : text.trim() || files.length > 0 ? (
           <button
             onClick={handleSend}
-            className="w-10 h-10 rounded-xl gradient-primary text-white flex items-center justify-center flex-shrink-0 hover:opacity-90 transition-all shadow-lg shadow-primary-500/25 active:scale-95"
+            className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl gradient-primary text-white flex items-center justify-center flex-shrink-0 hover:opacity-90 transition-all shadow-lg shadow-primary-500/25 active:scale-95"
           >
-            <Send className="w-5 h-5" />
+            <Send className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
         ) : isRecording ? (
           <button
             onClick={stopRecording}
-            className="w-10 h-10 rounded-xl bg-red-500 text-white flex items-center justify-center flex-shrink-0 hover:bg-red-600 transition-all active:scale-95"
+            className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-red-500 text-white flex items-center justify-center flex-shrink-0 hover:bg-red-600 transition-all active:scale-95"
           >
-            <Send className="w-5 h-5" />
+            <Send className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
         ) : (
           <button
             onMouseDown={startRecording}
-            className="w-10 h-10 rounded-xl text-surface-400 hover:text-white hover:bg-dark-hover flex items-center justify-center flex-shrink-0 transition-all active:scale-95"
+            className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl text-surface-400 hover:text-white hover:bg-dark-hover flex items-center justify-center flex-shrink-0 transition-all active:scale-95"
             title="Hold to record"
           >
-            <Mic className="w-5 h-5" />
+            <Mic className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
         )}
       </div>
