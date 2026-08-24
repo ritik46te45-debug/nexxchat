@@ -1,17 +1,17 @@
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 
-// Generate access token
+// Generate access token (long-lived 30 days for continuous login across tabs and restarts)
 export const generateAccessToken = (userId) => {
   return jwt.sign({ userId }, process.env.JWT_ACCESS_SECRET, {
-    expiresIn: process.env.JWT_ACCESS_EXPIRES || '15m',
+    expiresIn: process.env.JWT_ACCESS_EXPIRES || '30d',
   });
 };
 
-// Generate refresh token
+// Generate refresh token (90 days)
 export const generateRefreshToken = (userId) => {
   return jwt.sign({ userId }, process.env.JWT_REFRESH_SECRET, {
-    expiresIn: process.env.JWT_REFRESH_EXPIRES || '7d',
+    expiresIn: process.env.JWT_REFRESH_EXPIRES || '90d',
   });
 };
 

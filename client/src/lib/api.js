@@ -47,8 +47,11 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
+    const isAuthEndpoint = originalRequest?.url?.includes('/auth/login') || originalRequest?.url?.includes('/auth/register') || originalRequest?.url?.includes('/auth/refresh');
 
-    if (error.response?.status === 401 && error.response?.data?.code === 'TOKEN_EXPIRED' && !originalRequest._retry) {
+    const isTokenExpired = error.response?.status === 401 && !isAuthEndpoint && !originalRequest._retry;
+
+    if (isTokenExpired) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
@@ -62,9 +65,21 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const { data } = await axios.post('/api/auth/refresh', {}, { withCredentials: true });
+        const storedRefreshToken = localStorage.getItem('refreshToken');
+        const refreshUrl = `${getBaseURL()}/auth/refresh`;
+
+        const { data } = await axios.post(
+          refreshUrl,
+          { refreshToken: storedRefreshToken },
+          { withCredentials: true }
+        );
+
         const newToken = data.accessToken;
         localStorage.setItem('accessToken', newToken);
+        if (data.refreshToken) {
+          localStorage.setItem('refreshToken', data.refreshToken);
+        }
+
         api.defaults.headers.Authorization = `Bearer ${newToken}`;
         processQueue(null, newToken);
         originalRequest.headers.Authorization = `Bearer ${newToken}`;
@@ -72,6 +87,7 @@ api.interceptors.response.use(
       } catch (refreshError) {
         processQueue(refreshError, null);
         localStorage.removeItem('accessToken');
+        localStorage.removeItem('refreshToken');
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;

@@ -15,7 +15,7 @@ const createSession = async (user, req, res) => {
   const accessToken = generateAccessToken(user._id);
   const refreshToken = generateRefreshToken(user._id);
 
-  // Store refresh token in DB
+  // Store refresh token in DB (90 days)
   await Session.create({
     user: user._id,
     refreshToken,
@@ -23,22 +23,24 @@ const createSession = async (user, req, res) => {
     browser: browser.name || 'Unknown',
     os: os.name || 'Unknown',
     ip: req.ip || req.connection?.remoteAddress || '',
-    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
   });
+
+  const isProd = process.env.NODE_ENV === 'production';
 
   // Set HTTP-only cookies
   res.cookie('accessToken', accessToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 15 * 60 * 1000, // 15 min
+    secure: isProd,
+    sameSite: isProd ? 'none' : 'lax',
+    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
   });
 
   res.cookie('refreshToken', refreshToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    secure: isProd,
+    sameSite: isProd ? 'none' : 'lax',
+    maxAge: 90 * 24 * 60 * 60 * 1000, // 90 days
     path: '/api/auth/refresh',
   });
 
@@ -80,6 +82,7 @@ export const register = async (req, res) => {
       message: 'Registration successful. Please verify your email.',
       user: user.toSafeObject(),
       accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
     });
   } catch (error) {
     console.error('Register error:', error);
@@ -137,6 +140,7 @@ export const login = async (req, res) => {
       message: 'Login successful',
       user: user.toSafeObject(),
       accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
     });
   } catch (error) {
     console.error('Login error:', error);
@@ -243,6 +247,7 @@ export const googleAuth = async (req, res) => {
       message: 'Google login successful',
       user: user.toSafeObject(),
       accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
     });
   } catch (error) {
     console.error('Google auth error:', error);
@@ -289,22 +294,27 @@ export const refreshTokenHandler = async (req, res) => {
     session.lastActive = new Date();
     await session.save();
 
+    const isProd = process.env.NODE_ENV === 'production';
+
     res.cookie('accessToken', newAccessToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 15 * 60 * 1000,
+      secure: isProd,
+      sameSite: isProd ? 'none' : 'lax',
+      maxAge: 30 * 24 * 60 * 60 * 1000,
     });
 
     res.cookie('refreshToken', newRefreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
+      secure: isProd,
+      sameSite: isProd ? 'none' : 'lax',
+      maxAge: 90 * 24 * 60 * 60 * 1000,
       path: '/api/auth/refresh',
     });
 
-    res.json({ accessToken: newAccessToken });
+    res.json({
+      accessToken: newAccessToken,
+      refreshToken: newRefreshToken,
+    });
   } catch (error) {
     console.error('Refresh token error:', error);
     res.status(500).json({ error: 'Token refresh failed' });
