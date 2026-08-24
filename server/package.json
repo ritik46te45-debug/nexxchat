@@ -1,0 +1,41 @@
+{
+  "name": "nexchat-server",
+  "version": "1.0.0",
+  "description": "NexChat — Production-grade messaging platform backend",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "nodemon src/index.js",
+    "start": "node src/index.js",
+    "test": "jest"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "mongoose": "^8.8.0",
+    "socket.io": "^4.8.0",
+    "cors": "^2.8.5",
+    "helmet": "^8.0.0",
+    "dotenv": "^16.4.5",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "cookie-parser": "^1.4.7",
+    "express-rate-limit": "^7.4.1",
+    "express-validator": "^7.2.0",
+    "multer": "^1.4.5-lts.1",
+    "cloudinary": "^2.5.1",
+    "nodemailer": "^6.9.16",
+    "otpauth": "^9.3.5",
+    "qrcode": "^1.5.4",
+    "uuid": "^10.0.0",
+    "sanitize-html": "^2.13.1",
+    "compression": "^1.7.4",
+    "morgan": "^1.10.0",
+    "ua-parser-js": "^1.0.39",
+    "sharp": "^0.33.5",
+    "mime-types": "^2.1.35",
+    "link-preview-js": "^3.0.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.7"
+  }
+}
