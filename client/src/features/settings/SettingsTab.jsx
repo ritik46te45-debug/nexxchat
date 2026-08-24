@@ -14,6 +14,48 @@ export default function SettingsTab({ onOpenProfile }) {
   const [sessions, setSessions] = useState([]);
   const [activeSection, setActiveSection] = useState('main'); // 'main', 'privacy', 'notifications', 'sessions', 'appearance'
 
+  // App Lock Passcode state
+  const [isLockEnabled, setIsLockEnabled] = useState(localStorage.getItem('nexchat_lock_enabled') === 'true');
+  const [lockTimeout, setLockTimeout] = useState(localStorage.getItem('nexchat_lock_timeout') || '0');
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [newPin, setNewPin] = useState('');
+
+  const handleToggleAppLock = (enabled) => {
+    if (enabled) {
+      const existingPin = localStorage.getItem('nexchat_lock_pin');
+      if (!existingPin) {
+        setShowPinModal(true);
+        return;
+      }
+      localStorage.setItem('nexchat_lock_enabled', 'true');
+      setIsLockEnabled(true);
+      toast.success('App Lock enabled');
+    } else {
+      localStorage.setItem('nexchat_lock_enabled', 'false');
+      setIsLockEnabled(false);
+      toast.success('App Lock disabled');
+    }
+  };
+
+  const handleChangeLockTimeout = (val) => {
+    setLockTimeout(val);
+    localStorage.setItem('nexchat_lock_timeout', val);
+    toast.success('Lock timeout updated');
+  };
+
+  const handleSavePin = () => {
+    if (newPin.length !== 4) {
+      toast.error('PIN must be exactly 4 digits');
+      return;
+    }
+    localStorage.setItem('nexchat_lock_pin', newPin);
+    localStorage.setItem('nexchat_lock_enabled', 'true');
+    setIsLockEnabled(true);
+    setShowPinModal(false);
+    setNewPin('');
+    toast.success('Passcode PIN saved & App Lock enabled');
+  };
+
   useEffect(() => {
     if (activeSection === 'sessions') {
       loadSessions();
@@ -264,6 +306,94 @@ export default function SettingsTab({ onOpenProfile }) {
                   onChange={(e) => handleUpdatePrivacy('typingIndicator', e.target.checked)}
                   className="w-5 h-5 accent-primary-500 rounded"
                 />
+              </div>
+
+              {/* App Passcode Lock Section */}
+              <div className="pt-4 border-t border-dark-border/70 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-white flex items-center gap-1.5">
+                      <Lock className="w-4 h-4 text-primary-400" /> App Passcode Lock
+                    </p>
+                    <p className="text-xs text-surface-500">Require 4-digit PIN or fingerprint to open NexChat</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={isLockEnabled}
+                    onChange={(e) => handleToggleAppLock(e.target.checked)}
+                    className="w-5 h-5 accent-primary-500 rounded"
+                  />
+                </div>
+
+                {isLockEnabled && (
+                  <div className="space-y-3 pt-2 bg-dark-bg/60 p-3 rounded-xl border border-dark-border/50">
+                    <div>
+                      <label className="text-xs font-semibold text-surface-400 block mb-1">Auto-Lock Screen Timer</label>
+                      <select
+                        value={lockTimeout}
+                        onChange={(e) => handleChangeLockTimeout(e.target.value)}
+                        className="w-full bg-dark-input border border-dark-border text-white text-xs p-2 rounded-xl"
+                      >
+                        <option value="0">Immediately (when minimizing / switching tabs)</option>
+                        <option value="1">After 1 minute of inactivity</option>
+                        <option value="5">After 5 minutes of inactivity</option>
+                        <option value="15">After 15 minutes of inactivity</option>
+                      </select>
+                    </div>
+
+                    <button
+                      onClick={() => setShowPinModal(true)}
+                      className="w-full py-2 rounded-xl bg-primary-500/20 text-primary-400 hover:bg-primary-500/30 text-xs font-semibold border border-primary-500/30 transition-all"
+                    >
+                      Change 4-Digit Passcode PIN
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* PIN Setup Modal */}
+        {showPinModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4 animate-fade-in">
+            <div className="w-full max-w-sm bg-dark-surface border border-dark-border rounded-2xl p-5 shadow-2xl space-y-4">
+              <div className="text-center">
+                <div className="w-12 h-12 rounded-2xl gradient-primary flex items-center justify-center mx-auto mb-2 text-white shadow-lg shadow-primary-500/30">
+                  <Lock className="w-6 h-6" />
+                </div>
+                <h3 className="text-base font-bold text-white">Set 4-Digit Passcode</h3>
+                <p className="text-xs text-surface-400 mt-0.5">Enter a 4-digit PIN to secure your NexChat app</p>
+              </div>
+
+              <div>
+                <input
+                  type="password"
+                  maxLength={4}
+                  value={newPin}
+                  onChange={(e) => setNewPin(e.target.value.replace(/[^0-9]/g, ''))}
+                  placeholder="••••"
+                  className="w-full py-3 text-center text-2xl tracking-[1em] bg-dark-input border border-dark-border rounded-xl text-white font-mono"
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    setShowPinModal(false);
+                    setNewPin('');
+                  }}
+                  className="flex-1 py-2.5 rounded-xl bg-dark-input hover:bg-dark-hover text-surface-300 text-xs font-semibold transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSavePin}
+                  className="flex-1 py-2.5 rounded-xl gradient-primary text-white text-xs font-semibold shadow-lg shadow-primary-500/25 transition-all"
+                >
+                  Save Passcode
+                </button>
               </div>
             </div>
           </div>

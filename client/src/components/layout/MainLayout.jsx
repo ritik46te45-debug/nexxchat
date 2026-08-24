@@ -14,6 +14,7 @@ import CallsTab from '../../features/calls/CallsTab';
 import SettingsTab from '../../features/settings/SettingsTab';
 import ProfileModal from '../../features/profile/ProfileModal';
 import CallOverlay from '../../features/calls/CallOverlay';
+import AppLockOverlay from '../../features/auth/AppLockOverlay';
 
 export default function MainLayout() {
   const { isMobile, showChatOnMobile, sidebarView, isOnline, isReconnecting } = useUIStore();
@@ -147,6 +148,9 @@ export default function MainLayout() {
           onEndCall={() => setActiveCall(null)}
         />
       )}
+
+      {/* App Lock / PIN Screen Overlay */}
+      <AppLockOverlay />
     </div>
   );
 }

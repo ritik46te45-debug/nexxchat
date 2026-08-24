@@ -58,6 +58,7 @@ export const sendMessage = async (req, res) => {
       content: content || '',
       clientId,
       mentions: mentions || [],
+      isViewOnce: Boolean(req.body.isViewOnce),
     };
 
     if (attachments && Array.isArray(attachments)) messageData.attachments = attachments;
@@ -104,39 +105,43 @@ export const sendMessage = async (req, res) => {
         populate: { path: 'sender', select: 'username displayName' },
       });
 
-    // Emit via Socket.IO
+    // Emit socket event to conversation room
     const io = req.app.get('io');
-    conversation.participants.forEach(async (p) => {
-      if (p.user.toString() !== req.userId.toString()) {
-        const recipient = await User.findById(p.user);
-        if (recipient) {
-          (recipient.socketIds || []).forEach(socketId => {
-            io.to(socketId).emit('message:new', {
-              message: populatedMessage,
-              conversationId,
-            });
-          });
+    if (io) {
+      conversation.participants.forEach(p => {
+        io.to(p.user.toString()).emit('message:new', {
+          message: populatedMessage,
+          conversationId,
+        });
+      });
+    }
 
-          // Create notification if not muted
-          if (!p.isMuted) {
-            await Notification.create({
-              recipient: p.user,
-              sender: req.userId,
-              type: conversation.type === 'group' ? 'group_message' : 'message',
-              title: req.user.displayName,
-              body: type === 'text' ? content?.substring(0, 100) : `Sent ${type}`,
-              data: { conversationId, messageId: message._id },
-            });
+    // Send push notifications to offline participants
+    const offlineParticipants = conversation.participants.filter(
+      p => p.user.toString() !== req.userId.toString()
+    );
 
-            // Emit notification
-            (recipient.socketIds || []).forEach(socketId => {
-              io.to(socketId).emit('notification:new', {
+    offlineParticipants.forEach(async (p) => {
+      const user = await User.findById(p.user);
+      if (user && !user.isOnline && user.fcmTokens?.length > 0) {
+        if (user.notificationSettings?.messages !== false) {
+          const title = conversation.type === 'group'
+            ? `${conversation.groupName} (${req.user?.displayName})`
+            : req.user?.displayName || 'New Message';
+
+          const body = user.notificationSettings?.showPreview !== false
+            ? (content || `Sent a ${type}`)
+            : 'New message';
+
+          for (const token of user.fcmTokens) {
+            sendPushNotification(token, {
+              title,
+              body,
+              data: {
+                conversationId: conversationId.toString(),
                 type: 'message',
-                from: { displayName: req.user.displayName, avatar: req.user.avatar },
-                content: type === 'text' ? content?.substring(0, 100) : `Sent ${type}`,
-                conversationId,
-              });
-            });
+              },
+            }).catch(console.error);
           }
         }
       }
@@ -168,6 +173,10 @@ export const getMessages = async (req, res) => {
     const query = {
       conversation: conversationId,
       deletedFor: { $ne: req.userId },
+      $or: [
+        { expiresAt: null },
+        { expiresAt: { $gt: new Date() } }
+      ],
     };
 
     if (before) {
@@ -708,5 +717,46 @@ export const votePoll = async (req, res) => {
   } catch (error) {
     console.error('Vote poll error:', error);
     res.status(500).json({ error: 'Failed to vote' });
+  }
+};
+
+// MARK VIEW-ONCE MEDIA AS OPENED
+export const markViewOnceOpened = async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const message = await Message.findById(messageId);
+
+    if (!message) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+
+    if (!message.isViewOnce) {
+      return res.status(400).json({ error: 'Not a view-once message' });
+    }
+
+    const alreadyViewed = message.viewedBy.some(v => v.user.toString() === req.userId.toString());
+    if (!alreadyViewed) {
+      message.viewedBy.push({ user: req.userId, viewedAt: new Date() });
+      await message.save();
+
+      const io = req.app.get('io');
+      if (io) {
+        const conversation = await Conversation.findById(message.conversation);
+        if (conversation) {
+          conversation.participants.forEach(p => {
+            io.to(p.user.toString()).emit('message:viewOnceOpened', {
+              messageId: message._id,
+              conversationId: message.conversation,
+              viewedBy: message.viewedBy,
+            });
+          });
+        }
+      }
+    }
+
+    res.json({ message: 'Marked as viewed', viewedBy: message.viewedBy });
+  } catch (error) {
+    console.error('Mark view-once opened error:', error);
+    res.status(500).json({ error: 'Failed to update view-once status' });
   }
 };

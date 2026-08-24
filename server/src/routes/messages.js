@@ -5,6 +5,7 @@ import {
   reactToMessage, toggleStarMessage, getStarredMessages,
   forwardMessage, searchMessages, markAsRead,
   getMediaGallery, pinMessage, unpinMessage, votePoll,
+  markViewOnceOpened,
 } from '../controllers/messageController.js';
 
 const router = Router();
@@ -33,5 +34,6 @@ router.post('/:messageId/react', reactToMessage);
 router.post('/:messageId/star', toggleStarMessage);
 router.post('/:messageId/forward', forwardMessage);
 router.post('/:messageId/poll/vote', votePoll);
+router.post('/:messageId/view-once', markViewOnceOpened);
 
 export default router;

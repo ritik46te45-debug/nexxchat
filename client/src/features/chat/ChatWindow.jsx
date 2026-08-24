@@ -1,10 +1,12 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { ArrowLeft, Phone, Video, MoreVertical, Search, Loader2, ChevronDown, Info } from 'lucide-react';
+import { ArrowLeft, Phone, Video, MoreVertical, Search, Loader2, ChevronDown, Info, Clock, Timer, Check } from 'lucide-react';
 import useChatStore from '../../stores/chatStore';
 import useAuthStore from '../../stores/authStore';
 import useUIStore from '../../stores/uiStore';
 import MessageBubble from './MessageBubble';
 import MessageComposer from './MessageComposer';
+import api from '../../lib/api';
+import toast from 'react-hot-toast';
 
 export default function ChatWindow({ onStartCall }) {
   const { activeConversation, messages, isLoadingMessages, hasMoreMessages, fetchMessages, typingUsers, onlineUsers } = useChatStore();
@@ -15,6 +17,7 @@ export default function ChatWindow({ onStartCall }) {
   const messagesContainerRef = useRef(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [showScrollDown, setShowScrollDown] = useState(false);
+  const [showDisappearingMenu, setShowDisappearingMenu] = useState(false);
 
   // Get other user info
   const myId = (user?._id || user)?.toString();
@@ -82,11 +85,38 @@ export default function ChatWindow({ onStartCall }) {
     return <div className="flex-1 flex items-center justify-center text-surface-500">Select a conversation</div>;
   }
 
+  const disappearingDurations = [
+    { label: 'Off', seconds: 0 },
+    { label: '24 Hours', seconds: 86400 },
+    { label: '7 Days', seconds: 604800 },
+    { label: '30 Days', seconds: 2592000 },
+    { label: '90 Days', seconds: 7776000 },
+  ];
+
+  const currentDisappearingDuration = activeConversation?.disappearingMessages?.enabled
+    ? activeConversation.disappearingMessages.duration || 0
+    : 0;
+
+  const currentDurationLabel = disappearingDurations.find(d => d.seconds === currentDisappearingDuration)?.label || 'Off';
+
+  const handleSetDisappearingTimer = async (seconds) => {
+    try {
+      setShowDisappearingMenu(false);
+      const { data } = await api.put(`/conversations/${activeConversation._id}/disappearing`, { duration: seconds });
+      if (activeConversation) {
+        activeConversation.disappearingMessages = data.disappearingMessages;
+      }
+      toast.success(seconds > 0 ? `Disappearing messages set to ${disappearingDurations.find(d => d.seconds === seconds)?.label}` : 'Disappearing messages turned off');
+    } catch (err) {
+      toast.error('Failed to update timer');
+    }
+  };
+
   return (
     <div className="flex-1 flex flex-col h-full bg-dark-bg relative overflow-hidden">
-      {/* Chat header */}
+      {/* Header */}
       <div className="h-16 px-4 border-b border-dark-border flex items-center gap-3 bg-dark-card/50 backdrop-blur-md flex-shrink-0 z-10">
-        {/* Back button (mobile) */}
+        {/* Mobile back */}
         {isMobile && (
           <button
             onClick={() => setShowChatOnMobile(false)}
@@ -98,11 +128,11 @@ export default function ChatWindow({ onStartCall }) {
 
         {/* Avatar */}
         <div className="relative">
-          {avatar ? (
-            <img src={avatar} alt="" className="w-10 h-10 rounded-full object-cover" />
+          {avatarUrl && canSeeAvatar ? (
+            <img src={avatarUrl} alt="" className="w-10 h-10 rounded-full object-cover" />
           ) : (
             <div className="w-10 h-10 rounded-full gradient-primary flex items-center justify-center font-bold text-white text-sm">
-              {(name || '?').charAt(0).toUpperCase()}
+              {avatarLetter}
             </div>
           )}
           {isOnline && <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-accent-green rounded-full border-2 border-dark-card" />}
@@ -125,6 +155,44 @@ export default function ChatWindow({ onStartCall }) {
 
         {/* Actions */}
         <div className="flex items-center gap-1">
+          {/* Disappearing Timer Menu Toggle */}
+          <div className="relative">
+            <button
+              onClick={() => setShowDisappearingMenu(!showDisappearingMenu)}
+              className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${
+                currentDisappearingDuration > 0
+                  ? 'bg-primary-500/20 text-primary-400 border border-primary-500/30'
+                  : 'text-surface-400 hover:text-white hover:bg-dark-hover'
+              }`}
+              title={`Disappearing Messages: ${currentDurationLabel}`}
+            >
+              <Clock className="w-[18px] h-[18px]" />
+            </button>
+
+            {showDisappearingMenu && (
+              <div className="absolute right-0 top-11 w-52 py-2 bg-dark-surface/95 backdrop-blur-xl border border-dark-border rounded-2xl shadow-2xl z-50 animate-scale-in">
+                <div className="px-3 py-1.5 border-b border-dark-border/60 mb-1">
+                  <p className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <Timer className="w-3.5 h-3.5 text-primary-400" /> Disappearing Messages
+                  </p>
+                  <p className="text-[10px] text-surface-400 mt-0.5">New messages will expire automatically</p>
+                </div>
+                {disappearingDurations.map((d) => (
+                  <button
+                    key={d.seconds}
+                    onClick={() => handleSetDisappearingTimer(d.seconds)}
+                    className="w-full flex items-center justify-between px-3 py-2 text-xs text-surface-300 hover:text-white hover:bg-dark-hover transition-colors"
+                  >
+                    <span>{d.label}</span>
+                    {currentDisappearingDuration === d.seconds && (
+                      <Check className="w-4 h-4 text-primary-400 font-bold" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           {activeConversation?.type === 'private' && otherUser && onStartCall && (
             <>
               <button
@@ -148,6 +216,17 @@ export default function ChatWindow({ onStartCall }) {
           </button>
         </div>
       </div>
+
+      {/* Disappearing Messages Active Notification Banner */}
+      {currentDisappearingDuration > 0 && (
+        <div
+          onClick={() => setShowDisappearingMenu(true)}
+          className="flex items-center justify-center gap-2 py-1.5 px-3 bg-primary-500/10 border-b border-primary-500/20 text-xs text-primary-300 cursor-pointer hover:bg-primary-500/15 transition-all"
+        >
+          <Clock className="w-3.5 h-3.5" />
+          <span>Disappearing messages are on ({currentDurationLabel}). Tap to change.</span>
+        </div>
+      )}
 
       {/* Messages */}
       <div

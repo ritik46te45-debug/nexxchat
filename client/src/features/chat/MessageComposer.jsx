@@ -12,6 +12,7 @@ export default function MessageComposer() {
   const [text, setText] = useState('');
   const [files, setFiles] = useState([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [isViewOnce, setIsViewOnce] = useState(false);
   const [replyTo, setReplyTo] = useState(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -87,10 +88,12 @@ export default function MessageComposer() {
             content: text.trim() || '',
             attachments: [attachment],
             replyTo: replyTo?._id,
+            isViewOnce: isViewOnce && (msgType === 'image' || msgType === 'video'),
           });
         }
         toast.success('Sent successfully!', { id: toastId });
         setFiles([]);
+        setIsViewOnce(false);
         setText('');
       } catch (error) {
         const errMsg = error.response?.data?.error || error.message || 'Failed to upload file';
@@ -340,6 +343,22 @@ export default function MessageComposer() {
               }}
             />
           </div>
+        )}
+
+        {/* View Once Toggle Button for Photos & Videos */}
+        {files.some(f => f.type.startsWith('image/') || f.type.startsWith('video/')) && (
+          <button
+            type="button"
+            onClick={() => setIsViewOnce(!isViewOnce)}
+            className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm transition-all flex-shrink-0 border ${
+              isViewOnce
+                ? 'bg-primary-500 text-white border-primary-400 shadow-lg shadow-primary-500/40 ring-2 ring-primary-500/30'
+                : 'bg-dark-input text-surface-400 border-dark-border hover:text-white hover:border-surface-400'
+            }`}
+            title={isViewOnce ? 'View Once is ON (photo/video self-destructs after 1 view)' : 'Set as View Once (photo/video)'}
+          >
+            ①
+          </button>
         )}
 
         {/* Send / Mic button */}

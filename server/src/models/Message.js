@@ -139,6 +139,12 @@ const messageSchema = new mongoose.Schema({
   },
   // Disappearing
   expiresAt: { type: Date, default: null },
+  // View Once (Self-destructing media)
+  isViewOnce: { type: Boolean, default: false },
+  viewedBy: [{
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    viewedAt: { type: Date, default: Date.now },
+  }],
   // Client-side ID for deduplication
   clientId: { type: String, default: null },
 }, {

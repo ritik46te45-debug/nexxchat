@@ -4,6 +4,7 @@ import {
   getOrCreateConversation, getConversations, getConversation,
   updateConversation, clearConversation, deleteConversation,
   createGroup, updateGroupInfo, addGroupMembers, removeGroupMember, changeMemberRole,
+  updateDisappearingTimer,
 } from '../controllers/conversationController.js';
 
 const router = Router();
@@ -19,6 +20,7 @@ router.put('/group/:conversationId/members/:memberId/role', changeMemberRole);
 router.get('/:conversationId', getConversation);
 router.post('/private/:userId', getOrCreateConversation);
 router.put('/:conversationId', updateConversation);
+router.put('/:conversationId/disappearing', updateDisappearingTimer);
 router.post('/:conversationId/clear', clearConversation);
 router.delete('/:conversationId', deleteConversation);
 

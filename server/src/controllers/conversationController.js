@@ -462,3 +462,57 @@ export const changeMemberRole = async (req, res) => {
   }
 };
 
+// UPDATE DISAPPEARING MESSAGES TIMER
+export const updateDisappearingTimer = async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const { duration } = req.body; // 0 (off), 86400 (24h), 604800 (7d), 2592000 (30d), 7776000 (90d)
+
+    const conversation = await Conversation.findById(conversationId);
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
+    const isMember = conversation.participants.some(
+      p => p.user.toString() === req.userId.toString() && !p.isDeleted
+    );
+    if (!isMember) {
+      return res.status(403).json({ error: 'Not a member of this conversation' });
+    }
+
+    const durNum = parseInt(duration) || 0;
+    conversation.disappearingMessages = {
+      enabled: durNum > 0,
+      duration: durNum,
+    };
+    await conversation.save();
+
+    const populated = await Conversation.findById(conversationId)
+      .populate('participants.user', 'username displayName avatar isOnline lastSeen about userCode privacy friends')
+      .populate('lastMessage');
+
+    const io = req.app.get('io');
+    if (io) {
+      populated.participants.forEach(p => {
+        const uId = (p.user?._id || p.user)?.toString();
+        if (uId) {
+          io.to(uId).emit('conversation:disappearingTimer', {
+            conversationId,
+            disappearingMessages: conversation.disappearingMessages,
+            conversation: populated,
+          });
+        }
+      });
+    }
+
+    res.json({
+      message: 'Disappearing timer updated',
+      disappearingMessages: conversation.disappearingMessages,
+      conversation: populated,
+    });
+  } catch (error) {
+    console.error('Update disappearing timer error:', error);
+    res.status(500).json({ error: 'Failed to update disappearing timer' });
+  }
+};
+
