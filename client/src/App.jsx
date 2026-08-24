@@ -6,6 +6,7 @@ import useChatStore from './stores/chatStore';
 import useUIStore from './stores/uiStore';
 import { getSocket } from './lib/socket';
 import { playIncomingMessageSound, showSystemNotification, requestNotificationPermission } from './lib/notifications';
+import { registerPushNotifications } from './lib/pushNotifications';
 import LoginPage from './features/auth/LoginPage';
 import RegisterPage from './features/auth/RegisterPage';
 import ResetPasswordPage from './features/auth/ResetPasswordPage';
@@ -60,10 +61,11 @@ function App() {
     initialize();
   }, [initialize]);
 
-  // Request notification permissions when authenticated
+  // Request notification permissions and register Web Push service worker when authenticated
   useEffect(() => {
     if (isAuthenticated) {
       requestNotificationPermission().catch(() => {});
+      registerPushNotifications().catch(() => {});
     }
   }, [isAuthenticated]);
 

@@ -1,9 +1,14 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Send, Smile, Paperclip, Mic, X, Image, FileText, Camera, Reply, Loader2 } from 'lucide-react';
+import {
+  Send, Smile, Paperclip, Mic, X, Image, FileText, Camera,
+  Reply, Loader2, Video, MapPin, Bell, BellOff, Calendar, Clock
+} from 'lucide-react';
 import useChatStore from '../../stores/chatStore';
 import useAuthStore from '../../stores/authStore';
 import { getSocket } from '../../lib/socket';
 import { playSentMessageSound } from '../../lib/notifications';
+import CircularVideoRecorder from './CircularVideoRecorder';
+import LocationPickerModal from './LocationPickerModal';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
 
@@ -14,9 +19,14 @@ export default function MessageComposer() {
   const [files, setFiles] = useState([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isViewOnce, setIsViewOnce] = useState(false);
+  const [isSilent, setIsSilent] = useState(false);
+  const [scheduledDate, setScheduledDate] = useState('');
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [showVideoNoteRecorder, setShowVideoNoteRecorder] = useState(false);
+  const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [replyTo, setReplyTo] = useState(null);
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
   const typingTimeoutRef = useRef(null);
@@ -40,9 +50,7 @@ export default function MessageComposer() {
 
   // Handle typing indicator
   const handleTyping = useCallback(() => {
-    // Obey user privacy settings for typing indicator
     if (user?.privacy?.typingIndicator === false) return;
-
     const socket = getSocket();
     if (!socket || !conversationId) return;
 
@@ -61,7 +69,7 @@ export default function MessageComposer() {
     handleTyping();
   };
 
-  // Send text message
+  // Send message
   const handleSend = async () => {
     if (!text.trim() && files.length === 0) return;
     if (!conversationId) return;
@@ -90,9 +98,10 @@ export default function MessageComposer() {
             attachments: [attachment],
             replyTo: replyTo?._id,
             isViewOnce: isViewOnce && (msgType === 'image' || msgType === 'video'),
+            isSilent,
           });
         }
-        playSentMessageSound();
+        if (!isSilent) playSentMessageSound();
         toast.success('Sent successfully!', { id: toastId });
         setFiles([]);
         setIsViewOnce(false);
@@ -100,7 +109,6 @@ export default function MessageComposer() {
       } catch (error) {
         const errMsg = error.response?.data?.error || error.message || 'Failed to upload file';
         toast.error(errMsg, { id: toastId });
-        console.error('Upload error:', error);
       } finally {
         setIsUploading(false);
       }
@@ -113,8 +121,9 @@ export default function MessageComposer() {
           type: 'text',
           content: text.trim(),
           replyTo: replyTo?._id,
+          isSilent,
         });
-        playSentMessageSound();
+        if (!isSilent) playSentMessageSound();
       } catch (error) {
         toast.error('Failed to send message');
       }
@@ -126,7 +135,54 @@ export default function MessageComposer() {
     inputRef.current?.focus();
   };
 
-  // Handle Enter key
+  // Send Circular Video Note
+  const handleSendVideoNote = async (videoBlob, duration) => {
+    if (!conversationId) return;
+    setIsUploading(true);
+    const toastId = toast.loading('Sending video note...');
+
+    try {
+      const formData = new FormData();
+      formData.append('file', videoBlob, 'video_note.webm');
+      const { data } = await api.post('/upload/single', formData);
+
+      const attachment = {
+        ...data.file,
+        type: 'video',
+        duration,
+      };
+
+      await sendMessage(conversationId, {
+        type: 'video_note',
+        attachments: [attachment],
+        isSilent,
+      });
+
+      if (!isSilent) playSentMessageSound();
+      toast.success('Video note sent!', { id: toastId });
+    } catch (err) {
+      toast.error('Failed to send video note', { id: toastId });
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  // Send Location
+  const handleSendLocation = async (locationData) => {
+    if (!conversationId) return;
+    try {
+      await sendMessage(conversationId, {
+        type: 'location',
+        location: locationData,
+        isSilent,
+      });
+      if (!isSilent) playSentMessageSound();
+      toast.success('Location shared!');
+    } catch {
+      toast.error('Failed to share location');
+    }
+  };
+
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -134,20 +190,18 @@ export default function MessageComposer() {
     }
   };
 
-  // File selection
   const handleFileSelect = (e) => {
     const selected = Array.from(e.target.files);
     if (selected.length > 10) {
       toast.error('Maximum 10 files at once');
       return;
     }
-    setFiles(prev => [...prev, ...selected].slice(0, 10));
+    setFiles((prev) => [...prev, ...selected].slice(0, 10));
     e.target.value = '';
   };
 
   const removeFile = (index) => {
-    setFiles(prev => {
-      // Revoke the object URL for removed file
+    setFiles((prev) => {
       const removed = prev[index];
       if (removed && removed.type.startsWith('image/')) {
         const url = filePreviews[index];
@@ -157,9 +211,8 @@ export default function MessageComposer() {
     });
   };
 
-  // Create stable blob URLs for file previews (avoids re-creation on every render)
   const filePreviews = useMemo(() => {
-    return files.map(file => {
+    return files.map((file) => {
       if (file.type.startsWith('image/')) {
         return URL.createObjectURL(file);
       }
@@ -167,25 +220,13 @@ export default function MessageComposer() {
     });
   }, [files]);
 
-  // Cleanup all blob URLs on unmount
   useEffect(() => {
     return () => {
-      filePreviews.forEach(url => { if (url) URL.revokeObjectURL(url); });
+      filePreviews.forEach((url) => {
+        if (url) URL.revokeObjectURL(url);
+      });
     };
   }, [filePreviews]);
-
-  // Paste handler
-  const handlePaste = (e) => {
-    const items = e.clipboardData?.items;
-    if (!items) return;
-
-    for (const item of items) {
-      if (item.type.startsWith('image/')) {
-        const file = item.getAsFile();
-        if (file) setFiles(prev => [...prev, file]);
-      }
-    }
-  };
 
   // Voice recording
   const startRecording = async () => {
@@ -201,9 +242,8 @@ export default function MessageComposer() {
 
       mediaRecorder.onstop = async () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        stream.getTracks().forEach(t => t.stop());
+        stream.getTracks().forEach((t) => t.stop());
 
-        // Upload voice message
         setIsUploading(true);
         try {
           const formData = new FormData();
@@ -213,7 +253,9 @@ export default function MessageComposer() {
           await sendMessage(conversationId, {
             type: 'voice',
             attachments: [data.file],
+            isSilent,
           });
+          if (!isSilent) playSentMessageSound();
         } catch (error) {
           toast.error('Failed to send voice message');
         } finally {
@@ -225,7 +267,6 @@ export default function MessageComposer() {
       mediaRecorder.start();
       setIsRecording(true);
 
-      // Emit recording indicator
       const socket = getSocket();
       if (socket) socket.emit('recording:start', { conversationId });
     } catch (error) {
@@ -251,37 +292,8 @@ export default function MessageComposer() {
     if (socket) socket.emit('recording:stop', { conversationId });
   };
 
-  // Drag and drop
-  const [isDragOver, setIsDragOver] = useState(false);
-
-  const handleDragOver = (e) => {
-    e.preventDefault();
-    setIsDragOver(true);
-  };
-
-  const handleDragLeave = () => setIsDragOver(false);
-
-  const handleDrop = (e) => {
-    e.preventDefault();
-    setIsDragOver(false);
-    const droppedFiles = Array.from(e.dataTransfer.files);
-    setFiles(prev => [...prev, ...droppedFiles].slice(0, 10));
-  };
-
   return (
-    <div
-      className="border-t border-dark-border bg-dark-card/50 backdrop-blur-md safe-bottom"
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
-    >
-      {/* Drag overlay */}
-      {isDragOver && (
-        <div className="absolute inset-0 bg-primary-500/10 border-2 border-dashed border-primary-500/50 rounded-2xl z-50 flex items-center justify-center animate-fade-in">
-          <p className="text-primary-400 font-medium">Drop files here</p>
-        </div>
-      )}
-
+    <div className="border-t border-dark-border bg-dark-card/90 backdrop-blur-md safe-bottom w-full flex-shrink-0 z-20">
       {/* Reply preview */}
       {replyTo && (
         <div className="flex items-center gap-2 px-4 py-2 border-b border-dark-border animate-slide-up">
@@ -324,9 +336,21 @@ export default function MessageComposer() {
         </div>
       )}
 
+      {/* Silent Delivery & Features indicator bar */}
+      {isSilent && (
+        <div className="px-3 py-1 bg-primary-500/10 border-b border-primary-500/20 flex items-center justify-between text-[11px] text-primary-300">
+          <span className="flex items-center gap-1.5">
+            <BellOff className="w-3 h-3 text-primary-400" /> Silent Message mode enabled (recipient won&apos;t hear sound)
+          </span>
+          <button onClick={() => setIsSilent(false)} className="text-surface-400 hover:text-white underline text-[10px]">
+            Disable
+          </button>
+        </div>
+      )}
+
       {/* Input area */}
       <div className="flex items-end gap-1.5 sm:gap-2 px-2 sm:px-3 py-2 sm:py-2.5 w-full">
-        {/* Attachment */}
+        {/* Attachment menu */}
         <button
           onClick={() => fileInputRef.current?.click()}
           className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl text-surface-400 hover:text-white hover:bg-dark-hover flex items-center justify-center transition-all flex-shrink-0"
@@ -342,6 +366,41 @@ export default function MessageComposer() {
           onChange={handleFileSelect}
           accept="*/*"
         />
+
+        {/* Location Picker Button */}
+        <button
+          onClick={() => setShowLocationPicker(true)}
+          className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl text-surface-400 hover:text-accent-red hover:bg-dark-hover flex items-center justify-center transition-all flex-shrink-0 hidden sm:flex"
+          title="Share GPS Location"
+        >
+          <MapPin className="w-4 h-4 sm:w-5 sm:h-5" />
+        </button>
+
+        {/* Circular Video Note Recorder Button */}
+        <button
+          onClick={() => setShowVideoNoteRecorder(true)}
+          className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl text-surface-400 hover:text-primary-400 hover:bg-dark-hover flex items-center justify-center transition-all flex-shrink-0"
+          title="Record Circular Video Note"
+        >
+          <Video className="w-4 h-4 sm:w-5 sm:h-5" />
+        </button>
+
+        {/* Silent Delivery Toggle */}
+        <button
+          onClick={() => {
+            const next = !isSilent;
+            setIsSilent(next);
+            toast(next ? '🔕 Silent delivery enabled' : '🔔 Normal sound delivery enabled');
+          }}
+          className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center transition-all flex-shrink-0 border ${
+            isSilent
+              ? 'bg-primary-500/20 text-primary-400 border-primary-500/30'
+              : 'text-surface-400 hover:text-white hover:bg-dark-hover border-transparent'
+          }`}
+          title={isSilent ? 'Silent delivery ON' : 'Send silently (no chime)'}
+        >
+          {isSilent ? <BellOff className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
+        </button>
 
         {/* Text input */}
         {isRecording ? (
@@ -360,8 +419,7 @@ export default function MessageComposer() {
               value={text}
               onChange={handleTextChange}
               onKeyDown={handleKeyDown}
-              onPaste={handlePaste}
-              placeholder="Type a message..."
+              placeholder={isSilent ? 'Type a silent message...' : 'Type a message...'}
               rows={1}
               className="w-full px-3 sm:px-4 py-2 sm:py-2.5 bg-dark-input border border-dark-border rounded-xl text-xs sm:text-sm text-white placeholder-surface-500 input-focus resize-none transition-all max-h-32"
               style={{ minHeight: '38px' }}
@@ -373,8 +431,8 @@ export default function MessageComposer() {
           </div>
         )}
 
-        {/* View Once Toggle Button for Photos & Videos */}
-        {files.some(f => f.type.startsWith('image/') || f.type.startsWith('video/')) && (
+        {/* View Once Toggle Button */}
+        {files.some((f) => f.type.startsWith('image/') || f.type.startsWith('video/')) && (
           <button
             type="button"
             onClick={() => setIsViewOnce(!isViewOnce)}
@@ -412,12 +470,28 @@ export default function MessageComposer() {
           <button
             onMouseDown={startRecording}
             className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl text-surface-400 hover:text-white hover:bg-dark-hover flex items-center justify-center flex-shrink-0 transition-all active:scale-95"
-            title="Hold to record"
+            title="Hold to record voice message"
           >
             <Mic className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
         )}
       </div>
+
+      {/* Video Note Recorder Modal */}
+      {showVideoNoteRecorder && (
+        <CircularVideoRecorder
+          onSendVideoNote={handleSendVideoNote}
+          onClose={() => setShowVideoNoteRecorder(false)}
+        />
+      )}
+
+      {/* Location Picker Modal */}
+      {showLocationPicker && (
+        <LocationPickerModal
+          onSendLocation={handleSendLocation}
+          onClose={() => setShowLocationPicker(false)}
+        />
+      )}
     </div>
   );
 }

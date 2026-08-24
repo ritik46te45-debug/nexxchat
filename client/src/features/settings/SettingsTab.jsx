@@ -1,9 +1,14 @@
 import { useState, useEffect } from 'react';
-import { Shield, Bell, Lock, Smartphone, Moon, Sun, Trash2, LogOut, Check, ChevronRight, Volume2, Music, Play } from 'lucide-react';
+import {
+  Shield, Bell, Lock, Smartphone, Moon, Sun, Trash2, LogOut,
+  Check, ChevronRight, Volume2, Music, Play, QrCode, Key,
+  Radio, Send, AlertTriangle, Fingerprint, Sparkles
+} from 'lucide-react';
 import api from '../../lib/api';
 import useAuthStore from '../../stores/authStore';
 import useUIStore from '../../stores/uiStore';
 import { playIncomingMessageSound, playSentMessageSound } from '../../lib/notifications';
+import { registerPushNotifications } from '../../lib/pushNotifications';
 import toast from 'react-hot-toast';
 
 export default function SettingsTab({ onOpenProfile }) {
@@ -13,7 +18,7 @@ export default function SettingsTab({ onOpenProfile }) {
   const [privacy, setPrivacy] = useState(user?.privacy || {});
   const [notifications, setNotifications] = useState(user?.notificationSettings || {});
   const [sessions, setSessions] = useState([]);
-  const [activeSection, setActiveSection] = useState('main'); // 'main', 'privacy', 'notifications', 'sessions', 'appearance'
+  const [activeSection, setActiveSection] = useState('main'); // 'main', 'privacy', 'sounds', 'notifications', 'sessions', '2fa'
 
   // Sound preferences state
   const [soundEnabled, setSoundEnabled] = useState(localStorage.getItem('nexchat_sound_enabled') !== 'false');
@@ -26,6 +31,16 @@ export default function SettingsTab({ onOpenProfile }) {
   const [lockTimeout, setLockTimeout] = useState(localStorage.getItem('nexchat_lock_timeout') || '0');
   const [showPinModal, setShowPinModal] = useState(false);
   const [newPin, setNewPin] = useState('');
+
+  // 2FA state
+  const [is2FAEnabled, setIs2FAEnabled] = useState(user?.twoFactor?.enabled || false);
+  const [show2FAModal, setShow2FAModal] = useState(false);
+  const [qrCodeData, setQrCodeData] = useState(null);
+  const [totpToken, setTotpToken] = useState('');
+  const [isVerifying2FA, setIsVerifying2FA] = useState(false);
+
+  // Web Push status
+  const [isPushRegistering, setIsPushRegistering] = useState(false);
 
   const handleToggleSound = (enabled) => {
     setSoundEnabled(enabled);
@@ -90,6 +105,67 @@ export default function SettingsTab({ onOpenProfile }) {
     toast.success('Passcode PIN saved & App Lock enabled');
   };
 
+  // 2FA Handlers
+  const handleStart2FASetup = async () => {
+    try {
+      const { data } = await api.post('/auth/2fa/setup');
+      setQrCodeData(data);
+      setShow2FAModal(true);
+    } catch {
+      toast.error('Failed to initiate 2FA setup');
+    }
+  };
+
+  const handleVerifyAndEnable2FA = async () => {
+    if (!totpToken.trim() || totpToken.length !== 6) {
+      toast.error('Enter a valid 6-digit code from your authenticator app');
+      return;
+    }
+
+    setIsVerifying2FA(true);
+    try {
+      await api.post('/auth/2fa/enable', { token: totpToken.trim() });
+      setIs2FAEnabled(true);
+      updateUser({ twoFactor: { enabled: true } });
+      setShow2FAModal(false);
+      setTotpToken('');
+      toast.success('Two-Factor Authentication enabled!');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Invalid 2FA code');
+    } finally {
+      setIsVerifying2FA(false);
+    }
+  };
+
+  const handleDisable2FA = async () => {
+    if (!window.confirm('Are you sure you want to disable Two-Factor Authentication?')) return;
+    try {
+      await api.post('/auth/2fa/disable');
+      setIs2FAEnabled(false);
+      updateUser({ twoFactor: { enabled: false } });
+      toast.success('2FA disabled');
+    } catch {
+      toast.error('Failed to disable 2FA');
+    }
+  };
+
+  // Web Push Handlers
+  const handleEnableWebPush = async () => {
+    setIsPushRegistering(true);
+    try {
+      const success = await registerPushNotifications();
+      if (success) {
+        toast.success('Background Web Push enabled!');
+      } else {
+        toast('Please allow notification permissions in your browser', { icon: '🔔' });
+      }
+    } catch {
+      toast.error('Failed to register push notifications');
+    } finally {
+      setIsPushRegistering(false);
+    }
+  };
+
   useEffect(() => {
     if (activeSection === 'sessions') {
       loadSessions();
@@ -112,29 +188,28 @@ export default function SettingsTab({ onOpenProfile }) {
       await api.put('/users/privacy', { [field]: value });
       updateUser({ privacy: newPrivacy });
       toast.success('Privacy updated');
-    } catch (err) {
+    } catch {
       toast.error('Failed to update privacy');
     }
   };
 
   const handleUpdateNotification = async (field, value) => {
     try {
-      const newNotifs = { ...notifications, [field]: value };
-      setNotifications(newNotifs);
+      const newNotifications = { ...notifications, [field]: value };
+      setNotifications(newNotifications);
       await api.put('/users/notifications', { [field]: value });
-      updateUser({ notificationSettings: newNotifs });
-      toast.success('Notification settings saved');
-    } catch (err) {
-      toast.error('Failed to update settings');
+      updateUser({ notificationSettings: newNotifications });
+    } catch {
+      toast.error('Failed to update notification');
     }
   };
 
   const handleRevokeSession = async (sessionId) => {
     try {
       await api.delete(`/auth/sessions/${sessionId}`);
-      toast.success('Session revoked');
       setSessions((prev) => prev.filter((s) => s.id !== sessionId));
-    } catch (err) {
+      toast.success('Device session revoked');
+    } catch {
       toast.error('Failed to revoke session');
     }
   };
@@ -142,59 +217,67 @@ export default function SettingsTab({ onOpenProfile }) {
   const handleRevokeAllSessions = async () => {
     try {
       await api.delete('/auth/sessions');
-      toast.success('All other devices logged out');
-      loadSessions();
-    } catch (err) {
+      setSessions((prev) => prev.filter((s) => s.isCurrent));
+      toast.success('All other sessions revoked');
+    } catch {
       toast.error('Failed to revoke sessions');
     }
   };
 
   return (
-    <div className="flex flex-col h-full bg-dark-bg">
+    <div className="flex flex-col h-full bg-dark-bg select-none">
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-4 border-b border-dark-border">
         {activeSection !== 'main' && (
           <button
             onClick={() => setActiveSection('main')}
-            className="text-surface-400 hover:text-white p-1"
+            className="p-1 rounded-lg text-surface-400 hover:text-white hover:bg-dark-hover"
           >
             ←
           </button>
         )}
-        <h1 className="text-xl font-bold text-white capitalize">
-          {activeSection === 'main' ? 'Settings' : activeSection}
+        <h1 className="text-xl font-bold text-white">
+          {activeSection === 'main' && 'Settings'}
+          {activeSection === 'privacy' && 'Privacy & Security'}
+          {activeSection === 'sounds' && 'Chat Sounds & Chimes'}
+          {activeSection === 'notifications' && 'Notifications & Alerts'}
+          {activeSection === 'sessions' && 'Active Devices & Sessions'}
+          {activeSection === '2fa' && 'Two-Factor Authentication'}
         </h1>
       </div>
 
+      {/* Content */}
       <div className="flex-1 overflow-y-auto hide-scrollbar p-4 space-y-4">
         {activeSection === 'main' && (
           <>
-            {/* User Profile Card */}
+            {/* User card */}
             <div
               onClick={onOpenProfile}
-              className="flex items-center gap-3.5 p-3.5 rounded-2xl bg-dark-card border border-dark-border hover:bg-dark-hover transition-all cursor-pointer"
+              className="flex items-center gap-3.5 p-3.5 rounded-2xl bg-dark-card border border-dark-border hover:bg-dark-hover transition-all cursor-pointer group"
             >
-              <div className="w-14 h-14 rounded-full gradient-primary flex items-center justify-center font-bold text-white text-lg overflow-hidden flex-shrink-0">
-                {user?.avatar?.url ? (
-                  <img src={user.avatar.url} alt="" className="w-full h-full object-cover" />
-                ) : (
-                  user?.displayName?.charAt(0) || '?'
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-base font-bold text-white truncate">{user?.displayName}</p>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className="text-xs text-surface-400 truncate">@{user?.username}</span>
-                  <span className="text-[10px] font-mono px-1.5 py-0.2 bg-primary-500/20 text-primary-400 rounded-md border border-primary-500/30">
-                    #{user?.userCode || '0000'}
-                  </span>
+              {user?.avatar?.url ? (
+                <img
+                  src={user.avatar.url}
+                  alt={user.displayName}
+                  className="w-13 h-13 rounded-full object-cover ring-2 ring-primary-500/30"
+                />
+              ) : (
+                <div className="w-13 h-13 rounded-full gradient-primary flex items-center justify-center font-bold text-white text-lg">
+                  {user?.displayName?.charAt(0) || '?'}
                 </div>
-                <p className="text-xs text-primary-400 mt-1 font-medium">Edit Profile →</p>
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-white group-hover:text-primary-400 transition-colors">
+                  {user?.displayName}
+                </p>
+                <p className="text-xs text-surface-500">@{user?.username}</p>
+                <p className="text-xs text-surface-400 truncate mt-0.5">{user?.about}</p>
               </div>
+              <ChevronRight className="w-4 h-4 text-surface-500 group-hover:text-white transition-colors" />
             </div>
 
-            {/* Settings Options */}
-            <div className="space-y-1.5 pt-2">
+            {/* Settings links */}
+            <div className="space-y-2">
               <button
                 onClick={() => setActiveSection('privacy')}
                 className="w-full flex items-center justify-between p-3.5 rounded-xl bg-dark-card hover:bg-dark-hover border border-dark-border transition-all"
@@ -204,8 +287,24 @@ export default function SettingsTab({ onOpenProfile }) {
                     <Lock className="w-4 h-4" />
                   </div>
                   <div className="text-left">
-                    <p className="text-sm font-semibold text-white">Privacy & Security</p>
-                    <p className="text-xs text-surface-500">Last seen, online status, read receipts</p>
+                    <p className="text-sm font-semibold text-white">Privacy & App Lock</p>
+                    <p className="text-xs text-surface-500">Passcode PIN, biometrics, last seen</p>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-surface-500" />
+              </button>
+
+              <button
+                onClick={() => setActiveSection('2fa')}
+                className="w-full flex items-center justify-between p-3.5 rounded-xl bg-dark-card hover:bg-dark-hover border border-dark-border transition-all"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-accent-green/20 text-accent-green flex items-center justify-center">
+                    <Shield className="w-4 h-4" />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-sm font-semibold text-white">Two-Factor Authentication (2FA)</p>
+                    <p className="text-xs text-surface-500">{is2FAEnabled ? 'Enabled • Authenticator App' : 'Disabled • Add extra security'}</p>
                   </div>
                 </div>
                 <ChevronRight className="w-4 h-4 text-surface-500" />
@@ -236,8 +335,8 @@ export default function SettingsTab({ onOpenProfile }) {
                     <Bell className="w-4 h-4" />
                   </div>
                   <div className="text-left">
-                    <p className="text-sm font-semibold text-white">Notifications</p>
-                    <p className="text-xs text-surface-500">Message popups, call alerts, preview</p>
+                    <p className="text-sm font-semibold text-white">Notifications & Web Push</p>
+                    <p className="text-xs text-surface-500">Background alerts when browser is closed</p>
                   </div>
                 </div>
                 <ChevronRight className="w-4 h-4 text-surface-500" />
@@ -264,7 +363,7 @@ export default function SettingsTab({ onOpenProfile }) {
                 className="w-full flex items-center justify-between p-3.5 rounded-xl bg-dark-card hover:bg-dark-hover border border-dark-border transition-all"
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-accent-yellow/20 text-yellow-400 flex items-center justify-center">
+                  <div className="w-9 h-9 rounded-lg bg-yellow-500/20 text-yellow-400 flex items-center justify-center">
                     {theme === 'dark' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
                   </div>
                   <div className="text-left">
@@ -289,7 +388,96 @@ export default function SettingsTab({ onOpenProfile }) {
           </>
         )}
 
-        {/* Privacy Section */}
+        {/* 2FA Section */}
+        {activeSection === '2fa' && (
+          <div className="space-y-4">
+            <div className="p-4 rounded-2xl bg-dark-card border border-dark-border space-y-4">
+              <div className="flex items-center gap-2 border-b border-dark-border/60 pb-2">
+                <Shield className="w-4 h-4 text-accent-green" />
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider">Two-Factor Authentication</h3>
+              </div>
+
+              <div className="flex items-center justify-between py-1">
+                <div>
+                  <p className="text-sm font-semibold text-white">Authenticator App (TOTP)</p>
+                  <p className="text-xs text-surface-500">Google Authenticator, Authy, or 1Password</p>
+                </div>
+                <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${is2FAEnabled ? 'bg-accent-green/20 text-accent-green' : 'bg-surface-800 text-surface-400'}`}>
+                  {is2FAEnabled ? 'Enabled' : 'Disabled'}
+                </span>
+              </div>
+
+              {is2FAEnabled ? (
+                <button
+                  onClick={handleDisable2FA}
+                  className="w-full py-2.5 rounded-xl bg-accent-red/20 hover:bg-accent-red/30 text-accent-red text-xs font-semibold border border-accent-red/30 transition-all"
+                >
+                  Disable Two-Factor Authentication
+                </button>
+              ) : (
+                <button
+                  onClick={handleStart2FASetup}
+                  className="w-full py-2.5 rounded-xl gradient-primary text-white text-xs font-bold shadow-lg shadow-primary-500/25 hover:opacity-95 transition-all"
+                >
+                  Set Up Two-Factor Authentication
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 2FA Setup Modal */}
+        {show2FAModal && qrCodeData && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-4 animate-fade-in">
+            <div className="w-full max-w-sm bg-dark-card border border-dark-border rounded-3xl p-5 shadow-2xl space-y-4 animate-scale-in">
+              <div className="text-center">
+                <div className="w-10 h-10 rounded-2xl bg-accent-green/20 text-accent-green flex items-center justify-center mx-auto mb-2">
+                  <QrCode className="w-5 h-5" />
+                </div>
+                <h3 className="text-base font-bold text-white">Scan QR Code</h3>
+                <p className="text-xs text-surface-400 mt-0.5">Scan this with your authenticator app</p>
+              </div>
+
+              <div className="flex justify-center p-3 bg-white rounded-2xl">
+                <img src={qrCodeData.qrCode} alt="2FA QR Code" className="w-44 h-44" />
+              </div>
+
+              <div className="p-2.5 bg-dark-input rounded-xl text-center border border-dark-border">
+                <p className="text-[10px] text-surface-400">Manual secret key:</p>
+                <p className="text-xs font-mono font-bold text-primary-400 select-all">{qrCodeData.secret}</p>
+              </div>
+
+              <div>
+                <input
+                  type="text"
+                  maxLength={6}
+                  value={totpToken}
+                  onChange={(e) => setTotpToken(e.target.value.replace(/[^0-9]/g, ''))}
+                  placeholder="Enter 6-digit code"
+                  className="w-full py-2.5 text-center text-lg tracking-[0.5em] bg-dark-input border border-dark-border rounded-xl text-white font-mono"
+                />
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShow2FAModal(false)}
+                  className="flex-1 py-2.5 rounded-xl bg-dark-input hover:bg-dark-hover text-surface-300 text-xs font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleVerifyAndEnable2FA}
+                  disabled={isVerifying2FA}
+                  className="flex-1 py-2.5 rounded-xl gradient-primary text-white text-xs font-bold shadow-md shadow-primary-500/25"
+                >
+                  {isVerifying2FA ? 'Verifying...' : 'Verify & Enable'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Privacy & App Lock Section */}
         {activeSection === 'privacy' && (
           <div className="space-y-4">
             <div className="p-4 rounded-2xl bg-dark-card border border-dark-border space-y-4">
@@ -335,7 +523,7 @@ export default function SettingsTab({ onOpenProfile }) {
               <div className="flex items-center justify-between pt-2">
                 <div>
                   <p className="text-sm font-semibold text-white">Read Receipts</p>
-                  <p className="text-xs text-surface-500">If turned off, you won&apos;t send or receive read receipts</p>
+                  <p className="text-xs text-surface-500">Show blue checkmarks when messages are read</p>
                 </div>
                 <input
                   type="checkbox"
@@ -345,27 +533,14 @@ export default function SettingsTab({ onOpenProfile }) {
                 />
               </div>
 
-              <div className="flex items-center justify-between pt-2">
-                <div>
-                  <p className="text-sm font-semibold text-white">Typing Indicator</p>
-                  <p className="text-xs text-surface-500">Show when you are composing a message</p>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={privacy.typingIndicator !== false}
-                  onChange={(e) => handleUpdatePrivacy('typingIndicator', e.target.checked)}
-                  className="w-5 h-5 accent-primary-500 rounded"
-                />
-              </div>
-
               {/* App Passcode Lock Section */}
               <div className="pt-4 border-t border-dark-border/70 space-y-3">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-semibold text-white flex items-center gap-1.5">
-                      <Lock className="w-4 h-4 text-primary-400" /> App Passcode Lock
+                      <Lock className="w-4 h-4 text-primary-400" /> App Passcode & Biometric Lock
                     </p>
-                    <p className="text-xs text-surface-500">Require 4-digit PIN or fingerprint to open NexChat</p>
+                    <p className="text-xs text-surface-500">Lock NexChat behind 4-digit PIN or fingerprint</p>
                   </div>
                   <input
                     type="checkbox"
@@ -407,7 +582,7 @@ export default function SettingsTab({ onOpenProfile }) {
         {/* PIN Setup Modal */}
         {showPinModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4 animate-fade-in">
-            <div className="w-full max-w-sm bg-dark-surface border border-dark-border rounded-2xl p-5 shadow-2xl space-y-4">
+            <div className="w-full max-w-sm bg-dark-card border border-dark-border rounded-3xl p-5 shadow-2xl space-y-4">
               <div className="text-center">
                 <div className="w-12 h-12 rounded-2xl gradient-primary flex items-center justify-center mx-auto mb-2 text-white shadow-lg shadow-primary-500/30">
                   <Lock className="w-6 h-6" />
@@ -452,14 +627,12 @@ export default function SettingsTab({ onOpenProfile }) {
         {/* Sounds Section */}
         {activeSection === 'sounds' && (
           <div className="space-y-4">
-            {/* Incoming Chimes Card */}
             <div className="p-4 rounded-2xl bg-dark-card border border-dark-border space-y-4">
               <div className="flex items-center gap-2 border-b border-dark-border/60 pb-2">
                 <Volume2 className="w-4 h-4 text-purple-400" />
                 <h3 className="text-xs font-bold text-white uppercase tracking-wider">Incoming Message Sounds</h3>
               </div>
 
-              {/* Master Sound Switch */}
               <div className="flex items-center justify-between py-1">
                 <div>
                   <p className="text-sm font-semibold text-white">Incoming Message Chime</p>
@@ -473,7 +646,6 @@ export default function SettingsTab({ onOpenProfile }) {
                 />
               </div>
 
-              {/* Incoming Tone Picker */}
               {soundEnabled && (
                 <div className="bg-dark-bg/60 p-3 rounded-xl border border-dark-border/50 space-y-2">
                   <div className="flex items-center justify-between">
@@ -500,7 +672,6 @@ export default function SettingsTab({ onOpenProfile }) {
               )}
             </div>
 
-            {/* Outgoing Sound Card */}
             <div className="p-4 rounded-2xl bg-dark-card border border-dark-border space-y-4">
               <div className="flex items-center gap-2 border-b border-dark-border/60 pb-2">
                 <Music className="w-4 h-4 text-primary-400" />
@@ -550,10 +721,32 @@ export default function SettingsTab({ onOpenProfile }) {
         {/* Notifications Section */}
         {activeSection === 'notifications' && (
           <div className="space-y-4">
+            {/* Background Web Push Card */}
+            <div className="p-4 rounded-2xl bg-dark-card border border-dark-border space-y-3">
+              <div className="flex items-center gap-2 border-b border-dark-border/60 pb-2">
+                <Radio className="w-4 h-4 text-accent-green" />
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider">Background Web Push</h3>
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-white">Receive Alerts When Browser Is Closed</p>
+                <p className="text-xs text-surface-400 mt-0.5">
+                  Enables OS push notifications on Windows, Mac, Android, and iOS through Service Workers.
+                </p>
+              </div>
+              <button
+                onClick={handleEnableWebPush}
+                disabled={isPushRegistering}
+                className="w-full py-2.5 rounded-xl gradient-primary text-white text-xs font-bold flex items-center justify-center gap-2 shadow-md shadow-primary-500/20 hover:opacity-95 transition-all"
+              >
+                <Bell className="w-4 h-4" />
+                {isPushRegistering ? 'Connecting...' : 'Enable & Verify Background Web Push'}
+              </button>
+            </div>
+
             {/* Notification Alerts Card */}
             <div className="p-4 rounded-2xl bg-dark-card border border-dark-border space-y-4">
               <div className="flex items-center gap-2 border-b border-dark-border/60 pb-2">
-                <Bell className="w-4 h-4 text-accent-green" />
+                <Bell className="w-4 h-4 text-primary-400" />
                 <h3 className="text-xs font-bold text-white uppercase tracking-wider">System Alerts & Popups</h3>
               </div>
 

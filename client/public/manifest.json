@@ -1,0 +1,37 @@
+{
+  "short_name": "NexChat",
+  "name": "NexChat — Premium Messaging & Calls",
+  "description": "Real-time encrypted messaging, video & voice calls, file sharing, and self-destructing media.",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0a0a1a",
+  "theme_color": "#7c3aed",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "categories": ["social", "communication", "productivity"],
+  "shortcuts": [
+    {
+      "name": "Chats",
+      "url": "/?view=chats",
+      "description": "Open your conversations"
+    },
+    {
+      "name": "Calls",
+      "url": "/?view=calls",
+      "description": "View call logs"
+    }
+  ]
+}

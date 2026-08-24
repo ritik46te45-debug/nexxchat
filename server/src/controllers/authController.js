@@ -1,6 +1,8 @@
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import UAParser from 'ua-parser-js';
+import QRCode from 'qrcode';
+import * as OTPAuth from 'otpauth';
 import User from '../models/User.js';
 import Session from '../models/Session.js';
 import { generateAccessToken, generateRefreshToken } from '../middleware/auth.js';
@@ -521,3 +523,160 @@ export const revokeAllSessions = async (req, res) => {
     res.status(500).json({ error: 'Failed to revoke sessions' });
   }
 };
+
+// 2FA: SETUP (GENERATE QR CODE & SECRET)
+export const setup2FA = async (req, res) => {
+  try {
+    const user = await User.findById(req.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const secret = new OTPAuth.Secret({ size: 20 });
+    const totp = new OTPAuth.TOTP({
+      issuer: 'NexChat',
+      label: user.email,
+      algorithm: 'SHA1',
+      digits: 6,
+      period: 30,
+      secret,
+    });
+
+    const uri = totp.toString();
+    const qrCodeDataUrl = await QRCode.toDataURL(uri);
+
+    // Generate 6 backup codes
+    const backupCodes = Array.from({ length: 6 }, () => ({
+      code: crypto.randomBytes(4).toString('hex').toUpperCase(),
+      used: false,
+    }));
+
+    user.twoFactor = {
+      enabled: false,
+      secret: secret.base32,
+      backupCodes,
+    };
+    await user.save();
+
+    res.json({
+      secret: secret.base32,
+      qrCode: qrCodeDataUrl,
+      backupCodes: backupCodes.map((b) => b.code),
+    });
+  } catch (error) {
+    console.error('Setup 2FA error:', error);
+    res.status(500).json({ error: 'Failed to setup 2FA' });
+  }
+};
+
+// 2FA: VERIFY & ENABLE
+export const verifyAndEnable2FA = async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ error: '6-digit code is required' });
+
+    const user = await User.findById(req.userId);
+    if (!user || !user.twoFactor?.secret) {
+      return res.status(400).json({ error: '2FA has not been initiated' });
+    }
+
+    const totp = new OTPAuth.TOTP({
+      issuer: 'NexChat',
+      label: user.email,
+      algorithm: 'SHA1',
+      digits: 6,
+      period: 30,
+      secret: OTPAuth.Secret.fromBase32(user.twoFactor.secret),
+    });
+
+    const delta = totp.validate({ token: token.trim(), window: 1 });
+    if (delta === null) {
+      return res.status(400).json({ error: 'Invalid 2FA verification code' });
+    }
+
+    user.twoFactor.enabled = true;
+    await user.save();
+
+    res.json({ message: '2FA enabled successfully', enabled: true });
+  } catch (error) {
+    console.error('Verify 2FA error:', error);
+    res.status(500).json({ error: 'Failed to verify 2FA' });
+  }
+};
+
+// 2FA: DISABLE
+export const disable2FA = async (req, res) => {
+  try {
+    const user = await User.findById(req.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    user.twoFactor = { enabled: false, secret: null, backupCodes: [] };
+    await user.save();
+
+    res.json({ message: '2FA disabled', enabled: false });
+  } catch (error) {
+    console.error('Disable 2FA error:', error);
+    res.status(500).json({ error: 'Failed to disable 2FA' });
+  }
+};
+
+// 2FA: VERIFY ON LOGIN
+export const verify2FALogin = async (req, res) => {
+  try {
+    const { tempToken, token, backupCode } = req.body;
+
+    if (!tempToken) return res.status(400).json({ error: 'Temporary 2FA token required' });
+
+    let decoded;
+    try {
+      decoded = jwt.verify(tempToken, process.env.JWT_ACCESS_SECRET);
+    } catch {
+      return res.status(401).json({ error: '2FA session expired, please login again' });
+    }
+
+    const user = await User.findById(decoded.userId);
+    if (!user || !user.twoFactor?.enabled) {
+      return res.status(400).json({ error: 'Invalid 2FA request' });
+    }
+
+    let isValid = false;
+
+    if (token) {
+      const totp = new OTPAuth.TOTP({
+        issuer: 'NexChat',
+        label: user.email,
+        algorithm: 'SHA1',
+        digits: 6,
+        period: 30,
+        secret: OTPAuth.Secret.fromBase32(user.twoFactor.secret),
+      });
+      const delta = totp.validate({ token: token.trim(), window: 1 });
+      isValid = delta !== null;
+    } else if (backupCode) {
+      const foundCode = user.twoFactor.backupCodes?.find(
+        (b) => b.code.toUpperCase() === backupCode.trim().toUpperCase() && !b.used
+      );
+      if (foundCode) {
+        foundCode.used = true;
+        await user.save();
+        isValid = true;
+      }
+    }
+
+    if (!isValid) {
+      return res.status(401).json({ error: 'Invalid 2FA code or backup code' });
+    }
+
+    await user.resetLoginAttempts();
+    const tokens = await createSession(user, req, res);
+
+    res.json({
+      message: '2FA verification successful',
+      user: user.toSafeObject(),
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+    });
+  } catch (error) {
+    console.error('Verify 2FA login error:', error);
+    res.status(500).json({ error: 'Failed to verify 2FA' });
+  }
+};
+

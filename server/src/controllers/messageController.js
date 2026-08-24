@@ -3,6 +3,7 @@ import Conversation from '../models/Conversation.js';
 import User from '../models/User.js';
 import Notification from '../models/Notification.js';
 import cloudinary from '../config/cloudinary.js';
+import { sendPushNotification } from '../config/webPush.js';
 
 // SEND MESSAGE
 export const sendMessage = async (req, res) => {
@@ -116,36 +117,51 @@ export const sendMessage = async (req, res) => {
       });
     }
 
-    // Send push notifications to offline participants
-    const offlineParticipants = conversation.participants.filter(
+    // Send Web Push notifications to all subscribed devices of other participants
+    const otherParticipants = conversation.participants.filter(
       p => p.user.toString() !== req.userId.toString()
     );
 
-    offlineParticipants.forEach(async (p) => {
-      const user = await User.findById(p.user);
-      if (user && !user.isOnline && user.fcmTokens?.length > 0) {
-        if (user.notificationSettings?.messages !== false) {
-          const title = conversation.type === 'group'
-            ? `${conversation.groupName} (${req.user?.displayName})`
-            : req.user?.displayName || 'New Message';
+    if (!req.body.isSilent) {
+      otherParticipants.forEach(async (p) => {
+        try {
+          const user = await User.findById(p.user);
+          if (user && user.notificationSettings?.messages !== false && Array.isArray(user.pushSubscriptions) && user.pushSubscriptions.length > 0) {
+            const title = conversation.type === 'group'
+              ? `${conversation.groupName || 'Group'} (${populatedMessage.sender?.displayName || 'User'})`
+              : populatedMessage.sender?.displayName || 'New Message';
 
-          const body = user.notificationSettings?.showPreview !== false
-            ? (content || `Sent a ${type}`)
-            : 'New message';
+            const body = user.notificationSettings?.showPreview !== false
+              ? (content || (type === 'video_note' ? 'Sent a video note 🎥' : type === 'voice' ? 'Sent a voice message 🎤' : `Sent a ${type}`))
+              : 'New message';
 
-          for (const token of user.fcmTokens) {
-            sendPushNotification(token, {
+            const payload = {
               title,
               body,
+              icon: populatedMessage.sender?.avatar?.url || '/favicon.ico',
+              badge: '/favicon.ico',
               data: {
                 conversationId: conversationId.toString(),
-                type: 'message',
+                messageId: message._id.toString(),
+                url: `/?conversation=${conversationId}`,
               },
-            }).catch(console.error);
+            };
+
+            for (const sub of user.pushSubscriptions) {
+              const res = await sendPushNotification(sub, payload);
+              if (res?.expired) {
+                // Auto-cleanup expired browser subscription
+                await User.findByIdAndUpdate(user._id, {
+                  $pull: { pushSubscriptions: { endpoint: res.endpoint } },
+                });
+              }
+            }
           }
+        } catch (err) {
+          console.warn('Push delivery error:', err.message);
         }
-      }
-    });
+      });
+    }
 
     res.status(201).json({ message: populatedMessage });
   } catch (error) {

@@ -5,6 +5,7 @@ import {
   register, login, googleAuth, refreshTokenHandler,
   logout, verifyEmail, forgotPassword, resetPassword,
   getMe, getSessions, revokeSession, revokeAllSessions,
+  setup2FA, verifyAndEnable2FA, disable2FA, verify2FALogin,
 } from '../controllers/authController.js';
 
 const router = Router();
@@ -17,6 +18,7 @@ router.get('/config', (req, res) => {
 });
 router.post('/register', validateRegister, register);
 router.post('/login', validateLogin, login);
+router.post('/2fa/verify-login', verify2FALogin);
 router.post('/google', googleAuth);
 router.post('/refresh', refreshTokenHandler);
 router.get('/verify-email/:token', verifyEmail);
@@ -29,5 +31,10 @@ router.post('/logout', authenticate, logout);
 router.get('/sessions', authenticate, getSessions);
 router.delete('/sessions/:sessionId', authenticate, revokeSession);
 router.delete('/sessions', authenticate, revokeAllSessions);
+
+// 2FA Protected endpoints
+router.post('/2fa/setup', authenticate, setup2FA);
+router.post('/2fa/enable', authenticate, verifyAndEnable2FA);
+router.post('/2fa/disable', authenticate, disable2FA);
 
 export default router;

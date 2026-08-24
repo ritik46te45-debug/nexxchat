@@ -22,6 +22,7 @@ import messageRoutes from './routes/messages.js';
 import uploadRoutes from './routes/upload.js';
 import statusRoutes from './routes/status.js';
 import callRoutes from './routes/calls.js';
+import notificationRoutes from './routes/notifications.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -96,6 +97,7 @@ app.use('/api/messages', messageRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/status', statusRoutes);
 app.use('/api/calls', callRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Health check & Root
 app.get('/', (req, res) => {

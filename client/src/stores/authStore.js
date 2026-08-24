@@ -106,6 +106,25 @@ const useAuthStore = create((set, get) => ({
     }
   },
 
+  // Verify 2FA on login
+  verify2FALogin: async (tempToken, token, backupCode) => {
+    set({ error: null });
+    try {
+      const { data } = await api.post('/auth/2fa/verify-login', { tempToken, token, backupCode });
+      localStorage.setItem('accessToken', data.accessToken);
+      if (data.refreshToken) {
+        localStorage.setItem('refreshToken', data.refreshToken);
+      }
+      set({ user: data.user, isAuthenticated: true, isLoading: false });
+      connectSocket(data.accessToken);
+      return data;
+    } catch (error) {
+      const msg = error.response?.data?.error || '2FA verification failed';
+      set({ error: msg, isLoading: false });
+      throw new Error(msg);
+    }
+  },
+
   // Google login
   googleLogin: async (authPayload) => {
     set({ error: null });
