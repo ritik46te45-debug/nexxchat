@@ -3,6 +3,7 @@ import { Send, Smile, Paperclip, Mic, X, Image, FileText, Camera, Reply, Loader2
 import useChatStore from '../../stores/chatStore';
 import useAuthStore from '../../stores/authStore';
 import { getSocket } from '../../lib/socket';
+import { playSentMessageSound } from '../../lib/notifications';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
 
@@ -91,6 +92,7 @@ export default function MessageComposer() {
             isViewOnce: isViewOnce && (msgType === 'image' || msgType === 'video'),
           });
         }
+        playSentMessageSound();
         toast.success('Sent successfully!', { id: toastId });
         setFiles([]);
         setIsViewOnce(false);
@@ -112,6 +114,7 @@ export default function MessageComposer() {
           content: text.trim(),
           replyTo: replyTo?._id,
         });
+        playSentMessageSound();
       } catch (error) {
         toast.error('Failed to send message');
       }

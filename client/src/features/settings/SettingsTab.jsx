@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Shield, Bell, Lock, Smartphone, Moon, Sun, Trash2, LogOut, Check, ChevronRight } from 'lucide-react';
+import { Shield, Bell, Lock, Smartphone, Moon, Sun, Trash2, LogOut, Check, ChevronRight, Volume2, Music, Play } from 'lucide-react';
 import api from '../../lib/api';
 import useAuthStore from '../../stores/authStore';
 import useUIStore from '../../stores/uiStore';
+import { playIncomingMessageSound, playSentMessageSound } from '../../lib/notifications';
 import toast from 'react-hot-toast';
 
 export default function SettingsTab({ onOpenProfile }) {
@@ -14,11 +15,44 @@ export default function SettingsTab({ onOpenProfile }) {
   const [sessions, setSessions] = useState([]);
   const [activeSection, setActiveSection] = useState('main'); // 'main', 'privacy', 'notifications', 'sessions', 'appearance'
 
+  // Sound preferences state
+  const [soundEnabled, setSoundEnabled] = useState(localStorage.getItem('nexchat_sound_enabled') !== 'false');
+  const [sentSoundEnabled, setSentSoundEnabled] = useState(localStorage.getItem('nexchat_sent_sound_enabled') !== 'false');
+  const [receiveTone, setReceiveTone] = useState(localStorage.getItem('nexchat_receive_tone') || 'classic');
+  const [sentTone, setSentTone] = useState(localStorage.getItem('nexchat_sent_tone') || 'swoosh');
+
   // App Lock Passcode state
   const [isLockEnabled, setIsLockEnabled] = useState(localStorage.getItem('nexchat_lock_enabled') === 'true');
   const [lockTimeout, setLockTimeout] = useState(localStorage.getItem('nexchat_lock_timeout') || '0');
   const [showPinModal, setShowPinModal] = useState(false);
   const [newPin, setNewPin] = useState('');
+
+  const handleToggleSound = (enabled) => {
+    setSoundEnabled(enabled);
+    localStorage.setItem('nexchat_sound_enabled', enabled ? 'true' : 'false');
+    handleUpdateNotification('sound', enabled);
+    if (enabled) playIncomingMessageSound(receiveTone);
+  };
+
+  const handleToggleSentSound = (enabled) => {
+    setSentSoundEnabled(enabled);
+    localStorage.setItem('nexchat_sent_sound_enabled', enabled ? 'true' : 'false');
+    if (enabled) playSentMessageSound(sentTone);
+  };
+
+  const handleChangeReceiveTone = (tone) => {
+    setReceiveTone(tone);
+    localStorage.setItem('nexchat_receive_tone', tone);
+    playIncomingMessageSound(tone);
+    toast.success('Incoming tone updated');
+  };
+
+  const handleChangeSentTone = (tone) => {
+    setSentTone(tone);
+    localStorage.setItem('nexchat_sent_tone', tone);
+    playSentMessageSound(tone);
+    toast.success('Sent tone updated');
+  };
 
   const handleToggleAppLock = (enabled) => {
     if (enabled) {
@@ -401,27 +435,119 @@ export default function SettingsTab({ onOpenProfile }) {
 
         {/* Notifications Section */}
         {activeSection === 'notifications' && (
-          <div className="p-4 rounded-2xl bg-dark-card border border-dark-border space-y-4">
-            {[
-              { key: 'messages', label: 'Message Notifications', desc: 'Show notifications for new direct messages' },
-              { key: 'calls', label: 'Call Notifications', desc: 'Ringtone and call alerts' },
-              { key: 'groups', label: 'Group Alerts', desc: 'Notifications for group messages' },
-              { key: 'sound', label: 'Sound', desc: 'Play sounds for incoming messages' },
-              { key: 'showPreview', label: 'Show Preview', desc: 'Show message text in notification popup' },
-            ].map(({ key, label, desc }) => (
-              <div key={key} className="flex items-center justify-between py-1">
+          <div className="space-y-4">
+            {/* Sound & Chimes Card */}
+            <div className="p-4 rounded-2xl bg-dark-card border border-dark-border space-y-4">
+              <div className="flex items-center gap-2 border-b border-dark-border/60 pb-2">
+                <Volume2 className="w-4 h-4 text-primary-400" />
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider">Message Sounds & Chimes</h3>
+              </div>
+
+              {/* Master Sound Switch */}
+              <div className="flex items-center justify-between py-1">
                 <div>
-                  <p className="text-sm font-semibold text-white">{label}</p>
-                  <p className="text-xs text-surface-500">{desc}</p>
+                  <p className="text-sm font-semibold text-white">Incoming Message Sound</p>
+                  <p className="text-xs text-surface-500">Play chime when new messages arrive</p>
                 </div>
                 <input
                   type="checkbox"
-                  checked={notifications[key] !== false}
-                  onChange={(e) => handleUpdateNotification(key, e.target.checked)}
+                  checked={soundEnabled}
+                  onChange={(e) => handleToggleSound(e.target.checked)}
                   className="w-5 h-5 accent-primary-500 rounded"
                 />
               </div>
-            ))}
+
+              {/* Incoming Tone Picker */}
+              {soundEnabled && (
+                <div className="bg-dark-bg/60 p-3 rounded-xl border border-dark-border/50 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-surface-400">Incoming Message Tone</label>
+                    <button
+                      onClick={() => playIncomingMessageSound(receiveTone)}
+                      className="px-2 py-1 rounded-lg bg-primary-500/20 text-primary-400 hover:bg-primary-500/30 text-xs font-medium flex items-center gap-1 transition-all"
+                    >
+                      <Play className="w-3 h-3 fill-current" /> Preview
+                    </button>
+                  </div>
+                  <select
+                    value={receiveTone}
+                    onChange={(e) => handleChangeReceiveTone(e.target.value)}
+                    className="w-full bg-dark-input border border-dark-border text-white text-xs p-2 rounded-xl"
+                  >
+                    <option value="classic">🎵 Classic Double Chime</option>
+                    <option value="pluck">🔔 Pop & Pluck (Marimba Chord)</option>
+                    <option value="crystal">✨ Crystal Sparkle (High Bell)</option>
+                    <option value="ping">💬 Subtle Glass Ping</option>
+                  </select>
+                </div>
+              )}
+
+              {/* Outgoing Message Sound */}
+              <div className="flex items-center justify-between py-1 pt-2 border-t border-dark-border/40">
+                <div>
+                  <p className="text-sm font-semibold text-white">Outgoing Message Sound</p>
+                  <p className="text-xs text-surface-500">Play subtle pop/swoosh when sending a message</p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={sentSoundEnabled}
+                  onChange={(e) => handleToggleSentSound(e.target.checked)}
+                  className="w-5 h-5 accent-primary-500 rounded"
+                />
+              </div>
+
+              {/* Outgoing Tone Picker */}
+              {sentSoundEnabled && (
+                <div className="bg-dark-bg/60 p-3 rounded-xl border border-dark-border/50 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-surface-400">Outgoing Message Tone</label>
+                    <button
+                      onClick={() => playSentMessageSound(sentTone)}
+                      className="px-2 py-1 rounded-lg bg-primary-500/20 text-primary-400 hover:bg-primary-500/30 text-xs font-medium flex items-center gap-1 transition-all"
+                    >
+                      <Play className="w-3 h-3 fill-current" /> Preview
+                    </button>
+                  </div>
+                  <select
+                    value={sentTone}
+                    onChange={(e) => handleChangeSentTone(e.target.value)}
+                    className="w-full bg-dark-input border border-dark-border text-white text-xs p-2 rounded-xl"
+                  >
+                    <option value="swoosh">🚀 Smooth Swoosh (Default)</option>
+                    <option value="pop">🫧 Bubble Pop</option>
+                    <option value="click">⚡ Soft Click</option>
+                  </select>
+                </div>
+              )}
+            </div>
+
+            {/* Notification Alerts Card */}
+            <div className="p-4 rounded-2xl bg-dark-card border border-dark-border space-y-4">
+              <div className="flex items-center gap-2 border-b border-dark-border/60 pb-2">
+                <Bell className="w-4 h-4 text-primary-400" />
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider">System Alerts</h3>
+              </div>
+
+              {[
+                { key: 'messages', label: 'Message Popups', desc: 'Show desktop/phone system notifications for DMs' },
+                { key: 'calls', label: 'Call Notifications', desc: 'Ringtone and incoming call alerts' },
+                { key: 'groups', label: 'Group Alerts', desc: 'Notifications for group messages' },
+                { key: 'showPreview', label: 'Show Message Preview', desc: 'Show message text inside popup notifications' },
+              ].map(({ key, label, desc }) => (
+                <div key={key} className="flex items-center justify-between py-1">
+                  <div>
+                    <p className="text-sm font-semibold text-white">{label}</p>
+                    <p className="text-xs text-surface-500">{desc}</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={notifications[key] !== false}
+                    onChange={(e) => handleUpdateNotification(key, e.target.checked)}
+                    className="w-5 h-5 accent-primary-500 rounded"
+                  />
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
