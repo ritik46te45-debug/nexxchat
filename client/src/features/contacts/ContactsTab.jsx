@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Users, UserPlus, Clock, Ban, MessageCircle, Phone, Video, Check, X, Search, Loader2 } from 'lucide-react';
 import api from '../../lib/api';
+import useAuthStore from '../../stores/authStore';
 import useChatStore from '../../stores/chatStore';
 import useUIStore from '../../stores/uiStore';
 import toast from 'react-hot-toast';
 
 export default function ContactsTab({ onStartCall }) {
+  const { user } = useAuthStore();
   const [activeTab, setActiveTab] = useState('friends'); // 'friends', 'requests', 'blocked'
   const [friends, setFriends] = useState([]);
   const [pendingRequests, setPendingRequests] = useState([]);
