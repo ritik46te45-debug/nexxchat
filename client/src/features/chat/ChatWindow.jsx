@@ -128,11 +128,11 @@ export default function ChatWindow({ onStartCall }) {
 
         {/* Avatar */}
         <div className="relative">
-          {avatarUrl && canSeeAvatar ? (
-            <img src={avatarUrl} alt="" className="w-10 h-10 rounded-full object-cover" />
+          {avatar ? (
+            <img src={avatar} alt="" className="w-10 h-10 rounded-full object-cover" />
           ) : (
             <div className="w-10 h-10 rounded-full gradient-primary flex items-center justify-center font-bold text-white text-sm">
-              {avatarLetter}
+              {(name || '?').charAt(0).toUpperCase()}
             </div>
           )}
           {isOnline && <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-accent-green rounded-full border-2 border-dark-card" />}
