@@ -255,17 +255,19 @@ export default function SettingsTab({ onOpenProfile }) {
               onClick={onOpenProfile}
               className="flex items-center gap-3.5 p-3.5 rounded-2xl bg-dark-card border border-dark-border hover:bg-dark-hover transition-all cursor-pointer group"
             >
-              {user?.avatar?.url ? (
-                <img
-                  src={user.avatar.url}
-                  alt={user.displayName}
-                  className="w-13 h-13 rounded-full object-cover ring-2 ring-primary-500/30"
-                />
-              ) : (
-                <div className="w-13 h-13 rounded-full gradient-primary flex items-center justify-center font-bold text-white text-lg">
-                  {user?.displayName?.charAt(0) || '?'}
-                </div>
-              )}
+              <div className="w-12 h-12 rounded-full overflow-hidden flex-shrink-0 ring-2 ring-primary-500/30 bg-dark-input flex items-center justify-center">
+                {user?.avatar?.url ? (
+                  <img
+                    src={user.avatar.url}
+                    alt={user.displayName}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full gradient-primary flex items-center justify-center font-bold text-white text-lg">
+                    {user?.displayName?.charAt(0) || '?'}
+                  </div>
+                )}
+              </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-white group-hover:text-primary-400 transition-colors">
                   {user?.displayName}
@@ -273,7 +275,7 @@ export default function SettingsTab({ onOpenProfile }) {
                 <p className="text-xs text-surface-500">@{user?.username}</p>
                 <p className="text-xs text-surface-400 truncate mt-0.5">{user?.about}</p>
               </div>
-              <ChevronRight className="w-4 h-4 text-surface-500 group-hover:text-white transition-colors" />
+              <ChevronRight className="w-4 h-4 text-surface-500 group-hover:text-white transition-colors flex-shrink-0" />
             </div>
 
             {/* Settings links */}

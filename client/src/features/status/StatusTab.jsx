@@ -62,18 +62,18 @@ export default function StatusTab() {
             }}
             className="flex items-center gap-3.5 p-3 rounded-2xl bg-dark-card border border-dark-border hover:bg-dark-hover transition-all cursor-pointer group"
           >
-            <div className="relative">
+            <div className="relative flex-shrink-0">
               <div
-                className={`w-13 h-13 rounded-full p-0.5 ${
+                className={`w-12 h-12 rounded-full overflow-hidden p-0.5 ${
                   myFeed && myFeed.statuses.length > 0
                     ? 'ring-2 ring-primary-500 ring-offset-2 ring-offset-dark-card'
                     : ''
                 }`}
               >
                 {user?.avatar?.url ? (
-                  <img src={user.avatar.url} alt="" className="w-12 h-12 rounded-full object-cover" />
+                  <img src={user.avatar.url} alt="" className="w-full h-full rounded-full object-cover" />
                 ) : (
-                  <div className="w-12 h-12 rounded-full gradient-primary flex items-center justify-center font-bold text-white">
+                  <div className="w-full h-full rounded-full gradient-primary flex items-center justify-center font-bold text-white">
                     {user?.displayName?.charAt(0) || '?'}
                   </div>
                 )}
@@ -83,7 +83,7 @@ export default function StatusTab() {
                   e.stopPropagation();
                   setShowCreateModal(true);
                 }}
-                className="absolute bottom-0 right-0 w-5 h-5 rounded-full gradient-primary border-2 border-dark-card flex items-center justify-center text-white"
+                className="absolute bottom-0 right-0 w-5 h-5 rounded-full gradient-primary border-2 border-dark-card flex items-center justify-center text-white shadow-sm"
               >
                 <Plus className="w-3.5 h-3.5" />
               </button>
