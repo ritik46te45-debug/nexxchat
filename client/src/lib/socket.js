@@ -2,10 +2,21 @@ import { io } from 'socket.io-client';
 
 let socket = null;
 
+const getSocketURL = () => {
+  const envUrl = import.meta.env.VITE_API_URL;
+  if (envUrl) {
+    return envUrl.replace(/\/api\/?$/, '').replace(/\/+$/, '');
+  }
+  if (typeof window !== 'undefined' && window.location.hostname.includes('vercel.app')) {
+    return 'https://nexxchat-5d29.onrender.com';
+  }
+  return window.location.origin;
+};
+
 export const connectSocket = (token) => {
   if (socket?.connected) return socket;
 
-  socket = io(window.location.origin, {
+  socket = io(getSocketURL(), {
     auth: { token },
     reconnection: true,
     reconnectionAttempts: Infinity,

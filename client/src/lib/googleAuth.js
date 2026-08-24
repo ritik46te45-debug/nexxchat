@@ -1,15 +1,15 @@
 import api from './api';
 
-let cachedClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+let cachedClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '981601345477-vohruribb3i07iegvas4dtsbqo5k9n7q.apps.googleusercontent.com';
 
 export const getGoogleClientId = async () => {
   if (cachedClientId) return cachedClientId;
   try {
     const { data } = await api.get('/auth/config');
-    cachedClientId = data.googleClientId || '';
+    cachedClientId = data.googleClientId || '981601345477-vohruribb3i07iegvas4dtsbqo5k9n7q.apps.googleusercontent.com';
     return cachedClientId;
   } catch (e) {
-    return '';
+    return '981601345477-vohruribb3i07iegvas4dtsbqo5k9n7q.apps.googleusercontent.com';
   }
 };
 
