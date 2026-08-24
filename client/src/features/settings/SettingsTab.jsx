@@ -212,6 +212,22 @@ export default function SettingsTab({ onOpenProfile }) {
               </button>
 
               <button
+                onClick={() => setActiveSection('sounds')}
+                className="w-full flex items-center justify-between p-3.5 rounded-xl bg-dark-card hover:bg-dark-hover border border-dark-border transition-all"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-purple-500/20 text-purple-400 flex items-center justify-center">
+                    <Volume2 className="w-4 h-4" />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-sm font-semibold text-white">Chat Sounds & Chimes</p>
+                    <p className="text-xs text-surface-500">Sent & incoming message tones, sound previews</p>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-surface-500" />
+              </button>
+
+              <button
                 onClick={() => setActiveSection('notifications')}
                 className="w-full flex items-center justify-between p-3.5 rounded-xl bg-dark-card hover:bg-dark-hover border border-dark-border transition-all"
               >
@@ -221,7 +237,7 @@ export default function SettingsTab({ onOpenProfile }) {
                   </div>
                   <div className="text-left">
                     <p className="text-sm font-semibold text-white">Notifications</p>
-                    <p className="text-xs text-surface-500">Message tones, call alerts, preview</p>
+                    <p className="text-xs text-surface-500">Message popups, call alerts, preview</p>
                   </div>
                 </div>
                 <ChevronRight className="w-4 h-4 text-surface-500" />
@@ -433,21 +449,21 @@ export default function SettingsTab({ onOpenProfile }) {
           </div>
         )}
 
-        {/* Notifications Section */}
-        {activeSection === 'notifications' && (
+        {/* Sounds Section */}
+        {activeSection === 'sounds' && (
           <div className="space-y-4">
-            {/* Sound & Chimes Card */}
+            {/* Incoming Chimes Card */}
             <div className="p-4 rounded-2xl bg-dark-card border border-dark-border space-y-4">
               <div className="flex items-center gap-2 border-b border-dark-border/60 pb-2">
-                <Volume2 className="w-4 h-4 text-primary-400" />
-                <h3 className="text-xs font-bold text-white uppercase tracking-wider">Message Sounds & Chimes</h3>
+                <Volume2 className="w-4 h-4 text-purple-400" />
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider">Incoming Message Sounds</h3>
               </div>
 
               {/* Master Sound Switch */}
               <div className="flex items-center justify-between py-1">
                 <div>
-                  <p className="text-sm font-semibold text-white">Incoming Message Sound</p>
-                  <p className="text-xs text-surface-500">Play chime when new messages arrive</p>
+                  <p className="text-sm font-semibold text-white">Incoming Message Chime</p>
+                  <p className="text-xs text-surface-500">Play alert sound when you receive messages</p>
                 </div>
                 <input
                   type="checkbox"
@@ -461,32 +477,40 @@ export default function SettingsTab({ onOpenProfile }) {
               {soundEnabled && (
                 <div className="bg-dark-bg/60 p-3 rounded-xl border border-dark-border/50 space-y-2">
                   <div className="flex items-center justify-between">
-                    <label className="text-xs font-semibold text-surface-400">Incoming Message Tone</label>
+                    <label className="text-xs font-semibold text-surface-400">Choose Incoming Tone</label>
                     <button
+                      type="button"
                       onClick={() => playIncomingMessageSound(receiveTone)}
-                      className="px-2 py-1 rounded-lg bg-primary-500/20 text-primary-400 hover:bg-primary-500/30 text-xs font-medium flex items-center gap-1 transition-all"
+                      className="px-2.5 py-1 rounded-lg bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 text-xs font-medium flex items-center gap-1.5 transition-all shadow-sm active:scale-95"
                     >
-                      <Play className="w-3 h-3 fill-current" /> Preview
+                      <Play className="w-3 h-3 fill-current" /> Test Sound
                     </button>
                   </div>
                   <select
                     value={receiveTone}
                     onChange={(e) => handleChangeReceiveTone(e.target.value)}
-                    className="w-full bg-dark-input border border-dark-border text-white text-xs p-2 rounded-xl"
+                    className="w-full bg-dark-input border border-dark-border text-white text-xs p-2.5 rounded-xl"
                   >
-                    <option value="classic">🎵 Classic Double Chime</option>
+                    <option value="classic">🎵 Classic Double Chime (Default)</option>
                     <option value="pluck">🔔 Pop & Pluck (Marimba Chord)</option>
                     <option value="crystal">✨ Crystal Sparkle (High Bell)</option>
                     <option value="ping">💬 Subtle Glass Ping</option>
                   </select>
                 </div>
               )}
+            </div>
 
-              {/* Outgoing Message Sound */}
-              <div className="flex items-center justify-between py-1 pt-2 border-t border-dark-border/40">
+            {/* Outgoing Sound Card */}
+            <div className="p-4 rounded-2xl bg-dark-card border border-dark-border space-y-4">
+              <div className="flex items-center gap-2 border-b border-dark-border/60 pb-2">
+                <Music className="w-4 h-4 text-primary-400" />
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider">Outgoing Message Sounds</h3>
+              </div>
+
+              <div className="flex items-center justify-between py-1">
                 <div>
-                  <p className="text-sm font-semibold text-white">Outgoing Message Sound</p>
-                  <p className="text-xs text-surface-500">Play subtle pop/swoosh when sending a message</p>
+                  <p className="text-sm font-semibold text-white">Sent Message Sound</p>
+                  <p className="text-xs text-surface-500">Play subtle sound when sending your messages</p>
                 </div>
                 <input
                   type="checkbox"
@@ -496,22 +520,22 @@ export default function SettingsTab({ onOpenProfile }) {
                 />
               </div>
 
-              {/* Outgoing Tone Picker */}
               {sentSoundEnabled && (
                 <div className="bg-dark-bg/60 p-3 rounded-xl border border-dark-border/50 space-y-2">
                   <div className="flex items-center justify-between">
-                    <label className="text-xs font-semibold text-surface-400">Outgoing Message Tone</label>
+                    <label className="text-xs font-semibold text-surface-400">Choose Sent Tone</label>
                     <button
+                      type="button"
                       onClick={() => playSentMessageSound(sentTone)}
-                      className="px-2 py-1 rounded-lg bg-primary-500/20 text-primary-400 hover:bg-primary-500/30 text-xs font-medium flex items-center gap-1 transition-all"
+                      className="px-2.5 py-1 rounded-lg bg-primary-500/20 text-primary-400 hover:bg-primary-500/30 text-xs font-medium flex items-center gap-1.5 transition-all shadow-sm active:scale-95"
                     >
-                      <Play className="w-3 h-3 fill-current" /> Preview
+                      <Play className="w-3 h-3 fill-current" /> Test Sound
                     </button>
                   </div>
                   <select
                     value={sentTone}
                     onChange={(e) => handleChangeSentTone(e.target.value)}
-                    className="w-full bg-dark-input border border-dark-border text-white text-xs p-2 rounded-xl"
+                    className="w-full bg-dark-input border border-dark-border text-white text-xs p-2.5 rounded-xl"
                   >
                     <option value="swoosh">🚀 Smooth Swoosh (Default)</option>
                     <option value="pop">🫧 Bubble Pop</option>
@@ -520,12 +544,17 @@ export default function SettingsTab({ onOpenProfile }) {
                 </div>
               )}
             </div>
+          </div>
+        )}
 
+        {/* Notifications Section */}
+        {activeSection === 'notifications' && (
+          <div className="space-y-4">
             {/* Notification Alerts Card */}
             <div className="p-4 rounded-2xl bg-dark-card border border-dark-border space-y-4">
               <div className="flex items-center gap-2 border-b border-dark-border/60 pb-2">
-                <Bell className="w-4 h-4 text-primary-400" />
-                <h3 className="text-xs font-bold text-white uppercase tracking-wider">System Alerts</h3>
+                <Bell className="w-4 h-4 text-accent-green" />
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider">System Alerts & Popups</h3>
               </div>
 
               {[
