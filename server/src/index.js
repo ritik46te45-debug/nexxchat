@@ -96,7 +96,17 @@ app.use('/api/upload', uploadRoutes);
 app.use('/api/status', statusRoutes);
 app.use('/api/calls', callRoutes);
 
-// Health check
+// Health check & Root
+app.get('/', (req, res) => {
+  res.json({
+    status: 'ok',
+    app: 'NexChat API Server',
+    message: 'Backend server is running live and healthy!',
+    timestamp: new Date().toISOString(),
+    uptime: Math.floor(process.uptime()),
+  });
+});
+
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
