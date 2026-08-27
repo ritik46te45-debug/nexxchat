@@ -4,6 +4,34 @@ import User from '../models/User.js';
 import Notification from '../models/Notification.js';
 import cloudinary from '../config/cloudinary.js';
 import { sendPushNotification } from '../config/webPush.js';
+import { onlineUsers } from '../socket/index.js';
+
+// Helper: Broadcast event to a conversation and all its participants reliably
+export const emitToConversationParticipants = (io, conversation, event, data) => {
+  if (!io || !conversation) return;
+  const convId = conversation._id?.toString() || conversation.toString();
+  const convRoom = `conv:${convId}`;
+
+  // 1. Emit to conversation rooms
+  io.to(convRoom).to(convId).emit(event, data);
+
+  // 2. Emit to each participant via user rooms AND direct socket IDs
+  (conversation.participants || []).forEach(p => {
+    const pUserId = (p.user?._id || p.user || p)?.toString();
+    if (pUserId) {
+      const userRoom = `user:${pUserId}`;
+      io.to(userRoom).to(pUserId).emit(event, data);
+
+      // Direct emit to active sockets in onlineUsers Map
+      const sockets = onlineUsers.get(pUserId);
+      if (sockets && sockets.size > 0) {
+        sockets.forEach(sid => {
+          io.to(sid).emit(event, data);
+        });
+      }
+    }
+  });
+};
 
 // SEND MESSAGE
 export const sendMessage = async (req, res) => {
@@ -107,32 +135,11 @@ export const sendMessage = async (req, res) => {
       });
 
     // Emit socket event to conversation room & participant rooms
-    // Emit socket event to conversation room & participant rooms
     const io = req.app.get('io');
     if (io) {
-      const convRoom = `conv:${conversationId.toString()}`;
-      const convSockets = io.sockets.adapter.rooms.get(convRoom)?.size || 0;
-      console.log(`[REALTIME] EMIT message:new -> Message ID: ${message._id} | Conv: ${convRoom} (active sockets: ${convSockets})`);
-
-      // 1. Emit to conversation room
-      io.to(conversationId.toString()).to(convRoom).emit('message:new', {
+      emitToConversationParticipants(io, conversation, 'message:new', {
         message: populatedMessage,
         conversationId,
-      });
-
-      // 2. Emit to participant user rooms
-      conversation.participants.forEach(p => {
-        const pUserId = (p.user?._id || p.user)?.toString();
-        if (pUserId) {
-          const userRoom = `user:${pUserId}`;
-          const userSockets = io.sockets.adapter.rooms.get(userRoom)?.size || 0;
-          console.log(`[REALTIME] Target ${userRoom} -> Active sockets: ${userSockets}`);
-
-          io.to(pUserId).to(userRoom).emit('message:new', {
-            message: populatedMessage,
-            conversationId,
-          });
-        }
       });
     }
 
@@ -300,20 +307,11 @@ export const editMessage = async (req, res) => {
 
     // Notify via Socket.IO directly to room and participants
     const io = req.app.get('io');
-    if (io) {
-      io.to(message.conversation.toString()).to(`conv:${message.conversation.toString()}`).emit('message:edited', {
+    const conversation = await Conversation.findById(message.conversation);
+    if (io && conversation) {
+      emitToConversationParticipants(io, conversation, 'message:edited', {
         message: populatedMessage,
         conversationId: message.conversation,
-      });
-
-      conversation.participants.forEach((p) => {
-        const pUserId = (p.user?._id || p.user)?.toString();
-        if (pUserId) {
-          io.to(pUserId).to(`user:${pUserId}`).emit('message:edited', {
-            message: populatedMessage,
-            conversationId: message.conversation,
-          });
-        }
       });
     }
 
@@ -349,22 +347,12 @@ export const deleteMessage = async (req, res) => {
 
       // Notify via Socket.IO directly to room and participants
       const io = req.app.get('io');
-      if (io) {
-        io.to(message.conversation.toString()).to(`conv:${message.conversation.toString()}`).emit('message:deleted', {
+      const conversation = await Conversation.findById(message.conversation);
+      if (io && conversation) {
+        emitToConversationParticipants(io, conversation, 'message:deleted', {
           messageId,
           conversationId: message.conversation,
           forEveryone: true,
-        });
-
-        conversation.participants.forEach((p) => {
-          const pUserId = (p.user?._id || p.user)?.toString();
-          if (pUserId) {
-            io.to(pUserId).to(`user:${pUserId}`).emit('message:deleted', {
-              messageId,
-              conversationId: message.conversation,
-              forEveryone: true,
-            });
-          }
         });
       }
     } else {
@@ -408,26 +396,14 @@ export const reactToMessage = async (req, res) => {
 
     // Notify via Socket.IO directly to room and participants
     const io = req.app.get('io');
-    if (io) {
-      io.to(message.conversation.toString()).to(`conv:${message.conversation.toString()}`).emit('message:reaction', {
+    const conversation = await Conversation.findById(message.conversation);
+    if (io && conversation) {
+      emitToConversationParticipants(io, conversation, 'message:reaction', {
         messageId,
         conversationId: message.conversation,
         reactions: populatedMessage.reactions,
         user: { _id: req.userId, displayName: req.user.displayName },
         emoji,
-      });
-
-      conversation.participants.forEach((p) => {
-        const pUserId = (p.user?._id || p.user)?.toString();
-        if (pUserId) {
-          io.to(pUserId).to(`user:${pUserId}`).emit('message:reaction', {
-            messageId,
-            conversationId: message.conversation,
-            reactions: populatedMessage.reactions,
-            user: { _id: req.userId, displayName: req.user.displayName },
-            emoji,
-          });
-        }
       });
     }
 
@@ -530,19 +506,9 @@ export const forwardMessage = async (req, res) => {
       // Emit to conversation and user rooms
       const io = req.app.get('io');
       if (io) {
-        io.to(convId.toString()).to(`conv:${convId.toString()}`).emit('message:new', {
+        emitToConversationParticipants(io, conversation, 'message:new', {
           message: populated,
           conversationId: convId,
-        });
-
-        conversation.participants.forEach((p) => {
-          const pUserId = (p.user?._id || p.user)?.toString();
-          if (pUserId) {
-            io.to(pUserId).to(`user:${pUserId}`).emit('message:new', {
-              message: populated,
-              conversationId: convId,
-            });
-          }
         });
       }
     }
@@ -634,19 +600,10 @@ export const markAsRead = async (req, res) => {
     // Notify senders that messages were read directly via room emissions
     const io = req.app.get('io');
     if (io) {
-      io.to(conversationId.toString()).to(`conv:${conversationId.toString()}`).emit('message:read', {
+      emitToConversationParticipants(io, conversation, 'message:read', {
         conversationId,
         readBy: req.userId,
         readAt: new Date(),
-      });
-
-      const senderIds = [...new Set(unreadMessages.map(m => m.sender.toString()))];
-      senderIds.forEach((sId) => {
-        io.to(sId).to(`user:${sId}`).emit('message:read', {
-          conversationId,
-          readBy: req.userId,
-          readAt: new Date(),
-        });
       });
     }
 
