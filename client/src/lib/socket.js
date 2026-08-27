@@ -50,6 +50,10 @@ export const connectSocket = (token) => {
     console.log(`[REALTIME] SOCKET CONNECTED | ID: ${socket.id} | Transport: ${transport} | URL: ${getSocketURL()}`);
   });
 
+  socket.onAny((event, ...args) => {
+    console.log(`[SOCKET EVENT RECEIVED: ${event}]`, args);
+  });
+
   socket.on('disconnect', (reason) => {
     console.log('[REALTIME] SOCKET DISCONNECTED:', reason);
   });
