@@ -73,8 +73,11 @@ export default function GlobalSearchModal({ onClose, onStartCall }) {
     return { people, groups, messages: matchedMessages, media, files };
   }, [conversations, messages, myId, query]);
 
+  const { setSidebarView } = useUIStore();
+
   const handleOpenConversation = (conv) => {
     setActiveConversation(conv);
+    setSidebarView('chats');
     if (isMobile) setShowChatOnMobile(true);
     onClose();
   };

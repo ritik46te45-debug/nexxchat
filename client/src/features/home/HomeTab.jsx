@@ -62,6 +62,7 @@ export default function HomeTab({ onStartCall, onOpenNewChat, onOpenNewGroup }) 
 
   const handleSelectConversation = (conv) => {
     setActiveConversation(conv);
+    setSidebarView('chats');
     if (isMobile) {
       setShowChatOnMobile(true);
     }

@@ -24,7 +24,7 @@ import api from '../../lib/api';
 import toast from 'react-hot-toast';
 
 const WALLPAPER_MAP = {
-  default: 'bg-[#0a0a1a]',
+  default: 'bg-dark-bg',
   amoled: 'bg-[#000000]',
   carbon: 'bg-[#121218]',
   midnight: 'bg-gradient-to-b from-[#130d24] to-[#0a0614]',

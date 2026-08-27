@@ -170,7 +170,11 @@ export default function MainLayout() {
       {!isMobile && <Sidebar onOpenProfile={() => setShowProfileModal(true)} />}
 
       {/* Main Content Area */}
-      {sidebarView === 'home' ? (
+      {isMobile && showChatOnMobile && activeConversation ? (
+        <div className="flex-1 h-full overflow-hidden">
+          <ChatWindow onStartCall={(targetUser, type) => handleStartCall(targetUser, type)} />
+        </div>
+      ) : sidebarView === 'home' ? (
         <div className={`flex-1 h-full overflow-hidden ${isMobile && !showChatOnMobile ? 'pb-[56px]' : ''}`}>
           <HomeTab
             onStartCall={(friend, type) => handleStartCall(friend, type)}

@@ -419,6 +419,7 @@ export default function SettingsTab({ onOpenProfile }) {
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
                     {[
                       { id: 'dark', name: 'NexChat Dark', color: 'from-[#0a0a1a] to-[#111128]', border: 'border-primary-500' },
+                      { id: 'light', name: 'Light Mode', color: 'from-[#e2e8f0] to-[#f8fafc]', border: 'border-blue-400' },
                       { id: 'midnight', name: 'Midnight Violet', color: 'from-[#0d061e] to-[#160c33]', border: 'border-purple-500' },
                       { id: 'amoled', name: 'AMOLED Black', color: 'from-[#000000] to-[#0a0a0a]', border: 'border-neutral-700' },
                       { id: 'cyber', name: 'Cyberpunk Neon', color: 'from-[#080314] to-[#13072b]', border: 'border-cyan-500' },
