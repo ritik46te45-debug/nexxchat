@@ -73,7 +73,8 @@ const useUIStore = create((set) => ({
 
   setTheme: (theme) => {
     localStorage.setItem('nexchat_theme', theme);
-    document.documentElement.classList.toggle('dark', theme === 'dark' || theme === 'midnight' || theme === 'amoled' || theme === 'cyber');
+    document.documentElement.setAttribute('data-theme', theme);
+    document.documentElement.classList.add('dark');
     set({ theme });
   },
 
@@ -106,6 +107,13 @@ if (typeof window !== 'undefined') {
 
   window.addEventListener('online', () => useUIStore.getState().setOnline(true));
   window.addEventListener('offline', () => useUIStore.getState().setOnline(false));
+}
+
+// Initial theme setup on script load
+if (typeof document !== 'undefined') {
+  const initialTheme = localStorage.getItem('nexchat_theme') || 'dark';
+  document.documentElement.setAttribute('data-theme', initialTheme);
+  document.documentElement.classList.add('dark');
 }
 
 export default useUIStore;

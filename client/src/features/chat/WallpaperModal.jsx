@@ -62,20 +62,34 @@ export default function WallpaperModal({ onClose, conversationId }) {
     ? WALLPAPERS
     : WALLPAPERS.filter((w) => w.category === activeCategory);
 
+  const notifyChange = (wpId, bright, blr) => {
+    window.dispatchEvent(new CustomEvent('nexchat_wallpaper_changed', {
+      detail: {
+        conversationId,
+        wallpaperId: wpId || selectedWp,
+        brightness: bright !== undefined ? bright : brightness,
+        blur: blr !== undefined ? blr : blur,
+      }
+    }));
+  };
+
   const handleSelectWp = (wpId) => {
     setSelectedWp(wpId);
     localStorage.setItem(storageKey, wpId);
+    notifyChange(wpId, brightness, blur);
     toast.success('Chat wallpaper applied!');
   };
 
   const handleBrightnessChange = (val) => {
     setBrightness(val);
     localStorage.setItem(brightnessKey, String(val));
+    notifyChange(selectedWp, val, blur);
   };
 
   const handleBlurChange = (val) => {
     setBlur(val);
     localStorage.setItem(blurKey, String(val));
+    notifyChange(selectedWp, brightness, val);
   };
 
   const handleCustomUpload = (e) => {
@@ -85,10 +99,10 @@ export default function WallpaperModal({ onClose, conversationId }) {
     const reader = new FileReader();
     reader.onload = () => {
       const dataUrl = reader.result;
-      const customId = `custom_${Date.now()}`;
       localStorage.setItem(`nexchat_custom_wp_data`, dataUrl);
       localStorage.setItem(storageKey, 'custom');
       setSelectedWp('custom');
+      notifyChange('custom', brightness, blur);
       toast.success('Custom wallpaper uploaded & applied!');
     };
     reader.readAsDataURL(file);

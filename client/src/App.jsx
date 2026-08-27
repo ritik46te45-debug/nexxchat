@@ -172,11 +172,30 @@ function App() {
       socket.on('user:online', ({ userId }) => setUserOnline(userId));
       socket.on('user:offline', ({ userId }) => setUserOffline(userId));
 
+      // In-App Notifications
+      socket.on('notification:new', (notif) => {
+        if (!notif) return;
+        const currentUserId = (useAuthStore.getState().user?._id || useAuthStore.getState().user)?.toString();
+        const recipientId = (notif.recipient?._id || notif.recipient)?.toString();
+        if (recipientId && currentUserId && recipientId === currentUserId) {
+          toast((t) => (
+            <div className="flex items-center gap-2.5 text-xs">
+              <span className="text-base">🔔</span>
+              <div>
+                <p className="font-bold text-white">{notif.title || 'Notification'}</p>
+                <p className="text-surface-300 text-[11px] line-clamp-1">{notif.body}</p>
+              </div>
+            </div>
+          ), { duration: 4000 });
+        }
+      });
+
       // Friend requests
       socket.on('friend:request', () => {
-        // Refresh conversations / contacts
+        toast('New friend request received! 👥', { icon: '👋' });
       });
       socket.on('friend:accepted', () => {
+        toast.success('Friend request accepted! 🎉');
         fetchConversations();
       });
 

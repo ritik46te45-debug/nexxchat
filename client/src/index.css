@@ -2,6 +2,53 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ====== 5 THEMES DEFINITIONS ====== */
+:root, [data-theme="dark"] {
+  --theme-bg: #0a0a1a;
+  --theme-card: #111128;
+  --theme-hover: #1a1a3e;
+  --theme-border: #1e1e4a;
+  --theme-input: #151530;
+}
+
+[data-theme="midnight"] {
+  --theme-bg: #0d061e;
+  --theme-card: #160c33;
+  --theme-hover: #22144d;
+  --theme-border: #2c1a63;
+  --theme-input: #1a0f3d;
+}
+
+[data-theme="amoled"] {
+  --theme-bg: #000000;
+  --theme-card: #0a0a0a;
+  --theme-hover: #171717;
+  --theme-border: #262626;
+  --theme-input: #121212;
+}
+
+[data-theme="cyber"] {
+  --theme-bg: #080314;
+  --theme-card: #13072b;
+  --theme-hover: #210c4a;
+  --theme-border: #351375;
+  --theme-input: #180938;
+}
+
+[data-theme="emerald"] {
+  --theme-bg: #03120e;
+  --theme-card: #08211b;
+  --theme-hover: #0e332a;
+  --theme-border: #15473b;
+  --theme-input: #0a2921;
+}
+
+.bg-dark-bg { background-color: var(--theme-bg) !important; }
+.bg-dark-card { background-color: var(--theme-card) !important; }
+.hover\:bg-dark-hover:hover { background-color: var(--theme-hover) !important; }
+.border-dark-border { border-color: var(--theme-border) !important; }
+.bg-dark-input { background-color: var(--theme-input) !important; }
+
 /* ====== BASE STYLES ====== */
 @layer base {
   * {
@@ -17,7 +64,7 @@
 
   body {
     min-height: 100dvh;
-    background: #0a0a1a;
+    background: var(--theme-bg);
     overflow-x: hidden;
   }
 

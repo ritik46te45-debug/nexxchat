@@ -117,23 +117,46 @@ export const sendMessage = async (req, res) => {
       });
     }
 
-    // Send Web Push notifications to all subscribed devices of other participants
+    // Create in-app Notification records for other participants
     const otherParticipants = conversation.participants.filter(
       p => p.user.toString() !== req.userId.toString()
     );
+
+    const notifTitle = conversation.type === 'group'
+      ? `${conversation.groupName || 'Group'} (${populatedMessage.sender?.displayName || 'User'})`
+      : populatedMessage.sender?.displayName || 'New Message';
+
+    const notifBody = content || (type === 'video_note' ? 'Sent a video note 🎥' : type === 'voice' ? 'Sent a voice message 🎤' : `Sent a ${type}`);
+
+    otherParticipants.forEach(async (p) => {
+      try {
+        const notif = await Notification.create({
+          recipient: p.user,
+          sender: req.userId,
+          type: conversation.type === 'group' ? 'group_message' : 'message',
+          title: notifTitle,
+          body: notifBody,
+          data: {
+            conversationId: conversation._id,
+            messageId: message._id,
+          },
+        });
+
+        if (io) {
+          io.to(p.user.toString()).emit('notification:new', notif);
+        }
+      } catch (e) {
+        console.warn('In-app notification note:', e.message);
+      }
+    });
 
     if (!req.body.isSilent) {
       otherParticipants.forEach(async (p) => {
         try {
           const user = await User.findById(p.user);
           if (user && user.notificationSettings?.messages !== false && Array.isArray(user.pushSubscriptions) && user.pushSubscriptions.length > 0) {
-            const title = conversation.type === 'group'
-              ? `${conversation.groupName || 'Group'} (${populatedMessage.sender?.displayName || 'User'})`
-              : populatedMessage.sender?.displayName || 'New Message';
-
-            const body = user.notificationSettings?.showPreview !== false
-              ? (content || (type === 'video_note' ? 'Sent a video note 🎥' : type === 'voice' ? 'Sent a voice message 🎤' : `Sent a ${type}`))
-              : 'New message';
+            const title = notifTitle;
+            const body = user.notificationSettings?.showPreview !== false ? notifBody : 'New message';
 
             const payload = {
               title,
