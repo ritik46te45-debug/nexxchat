@@ -31,6 +31,25 @@ export const setupSocket = (io) => {
       $addToSet: { socketIds: socket.id },
     });
 
+    // Join personal user rooms for direct event emissions
+    socket.join(userId.toString());
+    socket.join(`user:${userId.toString()}`);
+
+    // Join/Leave active conversation rooms
+    socket.on('conversation:join', ({ conversationId }) => {
+      if (conversationId) {
+        socket.join(conversationId.toString());
+        socket.join(`conv:${conversationId.toString()}`);
+      }
+    });
+
+    socket.on('conversation:leave', ({ conversationId }) => {
+      if (conversationId) {
+        socket.leave(conversationId.toString());
+        socket.leave(`conv:${conversationId.toString()}`);
+      }
+    });
+
     // Broadcast online status to friends
     const user = await User.findById(userId);
     if (user?.friends) {

@@ -297,44 +297,59 @@ const useChatStore = create((set, get) => ({
   // ====== REAL-TIME HANDLERS ======
   addMessage: (message, conversationId) => {
     const state = get();
-    if (state.activeConversation?._id === conversationId) {
+    const activeConvId = state.activeConversation?._id?.toString();
+    const msgConvId = (conversationId || message?.conversation?._id || message?.conversation)?.toString();
+
+    if (activeConvId && msgConvId && activeConvId === msgConvId) {
       // Check for duplicates
       const exists = state.messages.some(m =>
-        m._id === message._id || (m.clientId && m.clientId === message.clientId)
+        (m._id && message._id && m._id.toString() === message._id.toString()) ||
+        (m.clientId && message.clientId && m.clientId === message.clientId)
       );
       if (!exists) {
         set({ messages: [...state.messages, message] });
       }
       // Auto mark as read
-      state.markAsRead(conversationId);
+      state.markAsRead(msgConvId);
     }
-    state.updateConversationInList(conversationId, message);
+    state.updateConversationInList(msgConvId, message);
   },
 
   updateMessageInList: (messageId, updates) => {
     set((state) => ({
       messages: state.messages.map(m =>
-        m._id === messageId ? { ...m, ...updates } : m
+        m._id?.toString() === messageId?.toString() ? { ...m, ...updates } : m
       ),
     }));
   },
 
   updateConversationInList: (conversationId, lastMessage) => {
-    set((state) => {
-      const convs = [...state.conversations];
-      const idx = convs.findIndex(c => c._id === conversationId);
-      if (idx !== -1) {
-        convs[idx] = {
-          ...convs[idx],
-          lastMessage,
-          lastMessageAt: new Date().toISOString(),
-        };
-        // Move to top
-        const [conv] = convs.splice(idx, 1);
-        convs.unshift(conv);
-      }
-      return { conversations: convs };
-    });
+    const state = get();
+    const targetId = (conversationId || lastMessage?.conversation?._id || lastMessage?.conversation)?.toString();
+    if (!targetId) return;
+
+    const convs = [...state.conversations];
+    const idx = convs.findIndex(c => c._id?.toString() === targetId);
+
+    if (idx !== -1) {
+      const isCurrentActive = state.activeConversation?._id?.toString() === targetId;
+      convs[idx] = {
+        ...convs[idx],
+        lastMessage,
+        lastMessageAt: new Date().toISOString(),
+        _participant: {
+          ...convs[idx]._participant,
+          unreadCount: isCurrentActive ? 0 : ((convs[idx]._participant?.unreadCount || 0) + 1),
+        },
+      };
+      // Move to top
+      const [conv] = convs.splice(idx, 1);
+      convs.unshift(conv);
+      set({ conversations: convs });
+    } else {
+      // If conversation is new or not in the current list, fetch fresh conversations
+      get().fetchConversations();
+    }
   },
 
   setTypingUser: (conversationId, userId, displayName) => {

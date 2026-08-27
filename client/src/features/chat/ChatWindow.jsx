@@ -20,6 +20,7 @@ import ChatDetailsPanel from './ChatDetailsPanel';
 import ImageViewerModal from './ImageViewerModal';
 import MessageReminderModal from './MessageReminderModal';
 import MultiSelectToolbar from './MultiSelectToolbar';
+import { getSocket } from '../../lib/socket';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
 
@@ -51,6 +52,23 @@ export default function ChatWindow({ onStartCall }) {
   const [pinnedList, setPinnedList] = useState(activeConversation?.pinnedMessages || []);
 
   const myId = (user?._id || user)?.toString();
+
+  // Join active conversation room on socket for instant real-time message delivery
+  useEffect(() => {
+    const convId = activeConversation?._id?.toString();
+    if (!convId) return;
+
+    const socket = getSocket();
+    if (socket) {
+      socket.emit('conversation:join', { conversationId: convId });
+    }
+
+    return () => {
+      if (socket) {
+        socket.emit('conversation:leave', { conversationId: convId });
+      }
+    };
+  }, [activeConversation?._id]);
 
   useEffect(() => {
     setPinnedList(activeConversation?.pinnedMessages || []);

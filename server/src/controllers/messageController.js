@@ -106,14 +106,24 @@ export const sendMessage = async (req, res) => {
         populate: { path: 'sender', select: 'username displayName' },
       });
 
-    // Emit socket event to conversation room
+    // Emit socket event to conversation room & participant rooms
     const io = req.app.get('io');
     if (io) {
+      // 1. Emit to conversation room
+      io.to(conversationId.toString()).to(`conv:${conversationId.toString()}`).emit('message:new', {
+        message: populatedMessage,
+        conversationId,
+      });
+
+      // 2. Emit to participant user rooms
       conversation.participants.forEach(p => {
-        io.to(p.user.toString()).emit('message:new', {
-          message: populatedMessage,
-          conversationId,
-        });
+        const pUserId = (p.user?._id || p.user)?.toString();
+        if (pUserId) {
+          io.to(pUserId).to(`user:${pUserId}`).emit('message:new', {
+            message: populatedMessage,
+            conversationId,
+          });
+        }
       });
     }
 
