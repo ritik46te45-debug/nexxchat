@@ -73,9 +73,47 @@ export const unsubscribePush = async (req, res) => {
       $pull: { pushSubscriptions: { endpoint } },
     });
 
-    res.json({ message: 'Push subscription removed successfully' });
+// GET IN-APP NOTIFICATIONS
+export const getNotifications = async (req, res) => {
+  try {
+    const notifications = await Notification.find({ recipient: req.userId })
+      .populate('sender', 'displayName username avatar userCode')
+      .sort({ createdAt: -1 })
+      .limit(50);
+
+    const unreadCount = await Notification.countDocuments({
+      recipient: req.userId,
+      isRead: false,
+    });
+
+    res.json({ notifications, unreadCount });
   } catch (error) {
-    console.error('Unsubscribe push error:', error);
-    res.status(500).json({ error: 'Failed to remove push subscription' });
+    console.error('Get notifications error:', error);
+    res.status(500).json({ error: 'Failed to get notifications' });
+  }
+};
+
+// MARK ALL NOTIFICATIONS AS READ
+export const markAllNotificationsAsRead = async (req, res) => {
+  try {
+    await Notification.updateMany(
+      { recipient: req.userId, isRead: false },
+      { isRead: true, readAt: new Date() }
+    );
+    res.json({ message: 'All notifications marked as read' });
+  } catch (error) {
+    console.error('Mark read error:', error);
+    res.status(500).json({ error: 'Failed to mark notifications as read' });
+  }
+};
+
+// CLEAR ALL NOTIFICATIONS
+export const clearNotifications = async (req, res) => {
+  try {
+    await Notification.deleteMany({ recipient: req.userId });
+    res.json({ message: 'Notifications cleared' });
+  } catch (error) {
+    console.error('Clear notifications error:', error);
+    res.status(500).json({ error: 'Failed to clear notifications' });
   }
 };

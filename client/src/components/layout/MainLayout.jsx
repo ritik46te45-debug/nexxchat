@@ -5,23 +5,50 @@ import useAuthStore from '../../stores/authStore';
 import { getSocket } from '../../lib/socket';
 import toast from 'react-hot-toast';
 import Sidebar from './Sidebar';
+import HomeTab from '../../features/home/HomeTab';
 import ChatList from '../../features/chat/ChatList';
 import ChatWindow from '../../features/chat/ChatWindow';
 import EmptyChat from '../../features/chat/EmptyChat';
 import ContactsTab from '../../features/contacts/ContactsTab';
 import StatusTab from '../../features/status/StatusTab';
 import CallsTab from '../../features/calls/CallsTab';
+import NotificationsTab from '../../features/notifications/NotificationsTab';
 import SettingsTab from '../../features/settings/SettingsTab';
 import ProfileModal from '../../features/profile/ProfileModal';
 import CallOverlay from '../../features/calls/CallOverlay';
 import AppLockOverlay from '../../features/auth/AppLockOverlay';
+import GlobalSearchModal from '../../features/search/GlobalSearchModal';
+import CommandPalette from '../../features/command/CommandPalette';
+import WallpaperModal from '../../features/chat/WallpaperModal';
+import NewChatModal from '../../features/chat/NewChatModal';
+import NewGroupModal from '../../features/groups/NewGroupModal';
 
 export default function MainLayout() {
-  const { isMobile, showChatOnMobile, sidebarView, isOnline, isReconnecting } = useUIStore();
+  const {
+    isMobile, showChatOnMobile, sidebarView, setSidebarView,
+    isOnline, isReconnecting,
+    showGlobalSearch, setShowGlobalSearch,
+    showCommandPalette, setShowCommandPalette,
+    showWallpaperModal, setShowWallpaperModal
+  } = useUIStore();
   const activeConversation = useChatStore((s) => s.activeConversation);
 
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showNewChat, setShowNewChat] = useState(false);
+  const [showNewGroup, setShowNewGroup] = useState(false);
   const [activeCall, setActiveCall] = useState(null);
+
+  // Global Keyboard Shortcuts (Ctrl+K / Cmd+K)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setShowCommandPalette(true);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [setShowCommandPalette]);
 
   // Socket listener for incoming calls
   useEffect(() => {
@@ -142,7 +169,7 @@ export default function MainLayout() {
       {/* Desktop / Laptop Sidebar Navigation */}
       {!isMobile && <Sidebar onOpenProfile={() => setShowProfileModal(true)} />}
 
-      {/* Main Left Column (Chats, Calls, Status, Contacts, Settings) */}
+      {/* Main Left Column (Home, Chats, Calls, Status, Contacts, Notifications, Settings) */}
       <div
         className={`
         ${showLeftPanel ? 'flex' : 'hidden'}
@@ -151,6 +178,13 @@ export default function MainLayout() {
         ${isMobile && !showChatOnMobile ? 'pb-[56px]' : ''}
       `}
       >
+        {sidebarView === 'home' && (
+          <HomeTab
+            onStartCall={(friend, type) => handleStartCall(friend, type)}
+            onOpenNewChat={() => setShowNewChat(true)}
+            onOpenNewGroup={() => setShowNewGroup(true)}
+          />
+        )}
         {sidebarView === 'chats' && <ChatList onOpenProfile={() => setShowProfileModal(true)} />}
         {sidebarView === 'calls' && (
           <CallsTab onStartCall={(friend, type) => handleStartCall(friend, type)} />
@@ -159,6 +193,7 @@ export default function MainLayout() {
         {sidebarView === 'contacts' && (
           <ContactsTab onStartCall={(friend, type) => handleStartCall(friend, type)} />
         )}
+        {sidebarView === 'notifications' && <NotificationsTab />}
         {sidebarView === 'settings' && (
           <SettingsTab onOpenProfile={() => setShowProfileModal(true)} />
         )}
@@ -186,6 +221,42 @@ export default function MainLayout() {
       {/* Profile Modal */}
       {showProfileModal && (
         <ProfileModal onClose={() => setShowProfileModal(false)} />
+      )}
+
+      {/* Universal Global Search Modal */}
+      {showGlobalSearch && (
+        <GlobalSearchModal
+          onClose={() => setShowGlobalSearch(false)}
+          onStartCall={(friend, type) => handleStartCall(friend, type)}
+        />
+      )}
+
+      {/* Desktop Command Palette (Ctrl+K) */}
+      {showCommandPalette && (
+        <CommandPalette
+          onClose={() => setShowCommandPalette(false)}
+          onOpenNewChat={() => setShowNewChat(true)}
+          onOpenNewGroup={() => setShowNewGroup(true)}
+          onOpenProfile={() => setShowProfileModal(true)}
+        />
+      )}
+
+      {/* Wallpaper & Chat Style Customizer Modal */}
+      {showWallpaperModal && (
+        <WallpaperModal
+          onClose={() => setShowWallpaperModal(false)}
+          conversationId={activeConversation?._id}
+        />
+      )}
+
+      {/* New DM Modal */}
+      {showNewChat && (
+        <NewChatModal onClose={() => setShowNewChat(false)} />
+      )}
+
+      {/* New Group Modal */}
+      {showNewGroup && (
+        <NewGroupModal onClose={() => setShowNewGroup(false)} />
       )}
 
       {/* WebRTC Video / Voice Call Overlay */}

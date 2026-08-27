@@ -1,9 +1,10 @@
 import { create } from 'zustand';
 
 const useUIStore = create((set) => ({
-  // Sidebar
+  // Sidebar & Navigation
   isSidebarOpen: true,
-  sidebarView: 'chats', // 'chats', 'contacts', 'settings', 'profile'
+  isSidebarExpanded: typeof localStorage !== 'undefined' ? localStorage.getItem('nexchat_sidebar_expanded') === 'true' : false,
+  sidebarView: 'chats', // 'home', 'chats', 'calls', 'status', 'contacts', 'notifications', 'settings'
 
   // Mobile
   isMobile: typeof window !== 'undefined' ? window.innerWidth < 768 : false,
@@ -11,14 +12,17 @@ const useUIStore = create((set) => ({
 
   // Panels
   isRightPanelOpen: false,
-  rightPanelView: null, // 'profile', 'media', 'search', 'members'
+  rightPanelView: null,
 
-  // Modals
-  activeModal: null, // 'forward', 'newChat', 'newGroup', 'imageViewer', 'videoPlayer', etc.
+  // Global Modals & Overlays
+  showGlobalSearch: false,
+  showCommandPalette: false,
+  showWallpaperModal: false,
+  activeModal: null,
   modalData: null,
 
   // Context menu
-  contextMenu: null, // { x, y, message, type }
+  contextMenu: null,
 
   // Notification
   notification: null,
@@ -27,14 +31,30 @@ const useUIStore = create((set) => ({
   isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
   isReconnecting: false,
 
-  // Theme
+  // Theme & Appearance
   theme: typeof localStorage !== 'undefined' ? (localStorage.getItem('nexchat_theme') || 'dark') : 'dark',
+  chatFontSize: typeof localStorage !== 'undefined' ? (localStorage.getItem('nexchat_font_size') || 'normal') : 'normal',
+  bubbleStyle: typeof localStorage !== 'undefined' ? (localStorage.getItem('nexchat_bubble_style') || 'rounded') : 'rounded',
+
+  // Home Dashboard Section Configuration
+  homeSections: typeof localStorage !== 'undefined'
+    ? JSON.parse(localStorage.getItem('nexchat_home_sections') || '{"quickActions":true,"onlineFriends":true,"recentChats":true,"pinnedChats":true,"statusStories":true,"recentCalls":true,"recentFiles":true}')
+    : { quickActions: true, onlineFriends: true, recentChats: true, pinnedChats: true, statusStories: true, recentCalls: true, recentFiles: true },
 
   // Actions
   toggleSidebar: () => set((s) => ({ isSidebarOpen: !s.isSidebarOpen })),
+  toggleSidebarExpanded: () => set((s) => {
+    const next = !s.isSidebarExpanded;
+    localStorage.setItem('nexchat_sidebar_expanded', String(next));
+    return { isSidebarExpanded: next };
+  }),
   setSidebarView: (view) => set({ sidebarView: view }),
   setMobile: (isMobile) => set({ isMobile }),
   setShowChatOnMobile: (show) => set({ showChatOnMobile: show }),
+
+  setShowGlobalSearch: (show) => set({ showGlobalSearch: show }),
+  setShowCommandPalette: (show) => set({ showCommandPalette: show }),
+  setShowWallpaperModal: (show) => set({ showWallpaperModal: show }),
 
   toggleRightPanel: (view) => set((s) => ({
     isRightPanelOpen: view ? true : !s.isRightPanelOpen,
@@ -53,12 +73,28 @@ const useUIStore = create((set) => ({
 
   setTheme: (theme) => {
     localStorage.setItem('nexchat_theme', theme);
-    document.documentElement.classList.toggle('dark', theme === 'dark');
+    document.documentElement.classList.toggle('dark', theme === 'dark' || theme === 'midnight' || theme === 'amoled' || theme === 'cyber');
     set({ theme });
   },
+
+  setChatFontSize: (fontSize) => {
+    localStorage.setItem('nexchat_font_size', fontSize);
+    set({ chatFontSize: fontSize });
+  },
+
+  setBubbleStyle: (style) => {
+    localStorage.setItem('nexchat_bubble_style', style);
+    set({ bubbleStyle: style });
+  },
+
+  toggleHomeSection: (sectionKey) => set((s) => {
+    const next = { ...s.homeSections, [sectionKey]: !s.homeSections[sectionKey] };
+    localStorage.setItem('nexchat_home_sections', JSON.stringify(next));
+    return { homeSections: next };
+  }),
 }));
 
-// Debounced resize listener to prevent excessive re-renders
+// Debounced resize listener
 if (typeof window !== 'undefined') {
   let resizeTimer = null;
   window.addEventListener('resize', () => {

@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import {
   Shield, Bell, Lock, Smartphone, Moon, Sun, Trash2, LogOut,
   Check, ChevronRight, Volume2, Music, Play, QrCode, Key,
-  Radio, Send, AlertTriangle, Fingerprint, Sparkles
+  Radio, Send, AlertTriangle, Fingerprint, Sparkles, Palette,
+  Search
 } from 'lucide-react';
 import api from '../../lib/api';
 import useAuthStore from '../../stores/authStore';
@@ -13,7 +14,8 @@ import toast from 'react-hot-toast';
 
 export default function SettingsTab({ onOpenProfile }) {
   const { user, updateUser, logout } = useAuthStore();
-  const { theme, setTheme } = useUIStore();
+  const { theme, setTheme, setShowWallpaperModal } = useUIStore();
+  const [searchQuery, setSearchQuery] = useState('');
 
   const [privacy, setPrivacy] = useState(user?.privacy || {});
   const [notifications, setNotifications] = useState(user?.notificationSettings || {});
@@ -278,103 +280,145 @@ export default function SettingsTab({ onOpenProfile }) {
               <ChevronRight className="w-4 h-4 text-surface-500 group-hover:text-white transition-colors flex-shrink-0" />
             </div>
 
+            {/* Settings Search Bar */}
+            <div className="relative">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-500" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search settings..."
+                className="w-full pl-10 pr-4 py-2.5 bg-dark-input text-white text-xs sm:text-sm rounded-xl border border-dark-border focus:border-primary-500 focus:outline-none placeholder:text-surface-500"
+              />
+            </div>
+
             {/* Settings links */}
             <div className="space-y-2">
-              <button
-                onClick={() => setActiveSection('privacy')}
-                className="w-full flex items-center justify-between p-3.5 rounded-xl bg-dark-card hover:bg-dark-hover border border-dark-border transition-all"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-primary-500/20 text-primary-400 flex items-center justify-center">
-                    <Lock className="w-4 h-4" />
+              {(!searchQuery || 'chat wallpaper appearance theme background'.includes(searchQuery.toLowerCase())) && (
+                <button
+                  onClick={() => setShowWallpaperModal(true)}
+                  className="w-full flex items-center justify-between p-3.5 rounded-xl bg-dark-card hover:bg-dark-hover border border-dark-border transition-all cursor-pointer"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-pink-500/20 text-pink-400 flex items-center justify-center">
+                      <Palette className="w-4 h-4" />
+                    </div>
+                    <div className="text-left">
+                      <p className="text-sm font-semibold text-white">Chat Wallpaper & Appearance</p>
+                      <p className="text-xs text-surface-500">AMOLED, nature backgrounds, bubble styles & font</p>
+                    </div>
                   </div>
-                  <div className="text-left">
-                    <p className="text-sm font-semibold text-white">Privacy & App Lock</p>
-                    <p className="text-xs text-surface-500">Passcode PIN, biometrics, last seen</p>
-                  </div>
-                </div>
-                <ChevronRight className="w-4 h-4 text-surface-500" />
-              </button>
+                  <ChevronRight className="w-4 h-4 text-surface-500" />
+                </button>
+              )}
 
-              <button
-                onClick={() => setActiveSection('2fa')}
-                className="w-full flex items-center justify-between p-3.5 rounded-xl bg-dark-card hover:bg-dark-hover border border-dark-border transition-all"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-accent-green/20 text-accent-green flex items-center justify-center">
-                    <Shield className="w-4 h-4" />
+              {(!searchQuery || 'privacy lock passcode pin biometrics'.includes(searchQuery.toLowerCase())) && (
+                <button
+                  onClick={() => setActiveSection('privacy')}
+                  className="w-full flex items-center justify-between p-3.5 rounded-xl bg-dark-card hover:bg-dark-hover border border-dark-border transition-all"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-primary-500/20 text-primary-400 flex items-center justify-center">
+                      <Lock className="w-4 h-4" />
+                    </div>
+                    <div className="text-left">
+                      <p className="text-sm font-semibold text-white">Privacy & App Lock</p>
+                      <p className="text-xs text-surface-500">Passcode PIN, biometrics, last seen</p>
+                    </div>
                   </div>
-                  <div className="text-left">
-                    <p className="text-sm font-semibold text-white">Two-Factor Authentication (2FA)</p>
-                    <p className="text-xs text-surface-500">{is2FAEnabled ? 'Enabled • Authenticator App' : 'Disabled • Add extra security'}</p>
-                  </div>
-                </div>
-                <ChevronRight className="w-4 h-4 text-surface-500" />
-              </button>
+                  <ChevronRight className="w-4 h-4 text-surface-500" />
+                </button>
+              )}
 
-              <button
-                onClick={() => setActiveSection('sounds')}
-                className="w-full flex items-center justify-between p-3.5 rounded-xl bg-dark-card hover:bg-dark-hover border border-dark-border transition-all"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-purple-500/20 text-purple-400 flex items-center justify-center">
-                    <Volume2 className="w-4 h-4" />
+              {(!searchQuery || '2fa two factor authentication security'.includes(searchQuery.toLowerCase())) && (
+                <button
+                  onClick={() => setActiveSection('2fa')}
+                  className="w-full flex items-center justify-between p-3.5 rounded-xl bg-dark-card hover:bg-dark-hover border border-dark-border transition-all"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-accent-green/20 text-accent-green flex items-center justify-center">
+                      <Shield className="w-4 h-4" />
+                    </div>
+                    <div className="text-left">
+                      <p className="text-sm font-semibold text-white">Two-Factor Authentication (2FA)</p>
+                      <p className="text-xs text-surface-500">{is2FAEnabled ? 'Enabled • Authenticator App' : 'Disabled • Add extra security'}</p>
+                    </div>
                   </div>
-                  <div className="text-left">
-                    <p className="text-sm font-semibold text-white">Chat Sounds & Chimes</p>
-                    <p className="text-xs text-surface-500">Sent & incoming message tones, sound previews</p>
-                  </div>
-                </div>
-                <ChevronRight className="w-4 h-4 text-surface-500" />
-              </button>
+                  <ChevronRight className="w-4 h-4 text-surface-500" />
+                </button>
+              )}
 
-              <button
-                onClick={() => setActiveSection('notifications')}
-                className="w-full flex items-center justify-between p-3.5 rounded-xl bg-dark-card hover:bg-dark-hover border border-dark-border transition-all"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-accent-green/20 text-accent-green flex items-center justify-center">
-                    <Bell className="w-4 h-4" />
+              {(!searchQuery || 'sounds chimes tones ringtone audio'.includes(searchQuery.toLowerCase())) && (
+                <button
+                  onClick={() => setActiveSection('sounds')}
+                  className="w-full flex items-center justify-between p-3.5 rounded-xl bg-dark-card hover:bg-dark-hover border border-dark-border transition-all"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-purple-500/20 text-purple-400 flex items-center justify-center">
+                      <Volume2 className="w-4 h-4" />
+                    </div>
+                    <div className="text-left">
+                      <p className="text-sm font-semibold text-white">Chat Sounds & Chimes</p>
+                      <p className="text-xs text-surface-500">Sent & incoming message tones, sound previews</p>
+                    </div>
                   </div>
-                  <div className="text-left">
-                    <p className="text-sm font-semibold text-white">Notifications & Web Push</p>
-                    <p className="text-xs text-surface-500">Background alerts when browser is closed</p>
-                  </div>
-                </div>
-                <ChevronRight className="w-4 h-4 text-surface-500" />
-              </button>
+                  <ChevronRight className="w-4 h-4 text-surface-500" />
+                </button>
+              )}
 
-              <button
-                onClick={() => setActiveSection('sessions')}
-                className="w-full flex items-center justify-between p-3.5 rounded-xl bg-dark-card hover:bg-dark-hover border border-dark-border transition-all"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center">
-                    <Smartphone className="w-4 h-4" />
+              {(!searchQuery || 'notifications push web alerts background'.includes(searchQuery.toLowerCase())) && (
+                <button
+                  onClick={() => setActiveSection('notifications')}
+                  className="w-full flex items-center justify-between p-3.5 rounded-xl bg-dark-card hover:bg-dark-hover border border-dark-border transition-all"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-accent-green/20 text-accent-green flex items-center justify-center">
+                      <Bell className="w-4 h-4" />
+                    </div>
+                    <div className="text-left">
+                      <p className="text-sm font-semibold text-white">Notifications & Web Push</p>
+                      <p className="text-xs text-surface-500">Background alerts when browser is closed</p>
+                    </div>
                   </div>
-                  <div className="text-left">
-                    <p className="text-sm font-semibold text-white">Active Sessions & Devices</p>
-                    <p className="text-xs text-surface-500">Manage logged-in devices</p>
-                  </div>
-                </div>
-                <ChevronRight className="w-4 h-4 text-surface-500" />
-              </button>
+                  <ChevronRight className="w-4 h-4 text-surface-500" />
+                </button>
+              )}
 
-              <button
-                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-                className="w-full flex items-center justify-between p-3.5 rounded-xl bg-dark-card hover:bg-dark-hover border border-dark-border transition-all"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-yellow-500/20 text-yellow-400 flex items-center justify-center">
-                    {theme === 'dark' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+              {(!searchQuery || 'sessions devices logged in active'.includes(searchQuery.toLowerCase())) && (
+                <button
+                  onClick={() => setActiveSection('sessions')}
+                  className="w-full flex items-center justify-between p-3.5 rounded-xl bg-dark-card hover:bg-dark-hover border border-dark-border transition-all"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center">
+                      <Smartphone className="w-4 h-4" />
+                    </div>
+                    <div className="text-left">
+                      <p className="text-sm font-semibold text-white">Active Sessions & Devices</p>
+                      <p className="text-xs text-surface-500">Manage logged-in devices</p>
+                    </div>
                   </div>
-                  <div className="text-left">
-                    <p className="text-sm font-semibold text-white">Theme</p>
-                    <p className="text-xs text-surface-500">{theme === 'dark' ? 'Dark Mode' : 'Light Mode'}</p>
+                  <ChevronRight className="w-4 h-4 text-surface-500" />
+                </button>
+              )}
+
+              {(!searchQuery || 'theme dark light mode'.includes(searchQuery.toLowerCase())) && (
+                <button
+                  onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                  className="w-full flex items-center justify-between p-3.5 rounded-xl bg-dark-card hover:bg-dark-hover border border-dark-border transition-all"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-yellow-500/20 text-yellow-400 flex items-center justify-center">
+                      {theme === 'dark' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+                    </div>
+                    <div className="text-left">
+                      <p className="text-sm font-semibold text-white">Theme Mode</p>
+                      <p className="text-xs text-surface-500">{theme === 'dark' ? 'Dark Mode' : 'Light Mode'}</p>
+                    </div>
                   </div>
-                </div>
-                <span className="text-xs font-semibold text-primary-400">Toggle</span>
-              </button>
+                  <span className="text-xs font-semibold text-primary-400">Toggle</span>
+                </button>
+              )}
             </div>
 
             {/* Logout button */}
