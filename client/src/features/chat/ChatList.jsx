@@ -7,7 +7,7 @@ import useUIStore from '../../stores/uiStore';
 import NewChatModal from './NewChatModal';
 import NewGroupModal from '../groups/NewGroupModal';
 
-export default function ChatList() {
+export default function ChatList({ onOpenProfile }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [showNewChat, setShowNewChat] = useState(false);
   const [showNewGroup, setShowNewGroup] = useState(false);
@@ -47,8 +47,31 @@ export default function ChatList() {
     <>
       <div className="flex flex-col h-full">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-4 border-b border-dark-border">
-          <h1 className="text-xl font-bold text-white">Chats</h1>
+        <div className="flex items-center justify-between px-4 py-3.5 border-b border-dark-border">
+          <div className="flex items-center gap-3">
+            {/* User DP Avatar Button */}
+            <button
+              onClick={onOpenProfile}
+              className="relative group cursor-pointer"
+              title="Edit Your Profile & DP"
+            >
+              {user?.avatar?.url ? (
+                <img
+                  src={user.avatar.url}
+                  alt={user.displayName}
+                  className="w-9 h-9 rounded-full object-cover ring-2 ring-primary-500/60 shadow-md group-hover:scale-105 transition-transform"
+                />
+              ) : (
+                <div className="w-9 h-9 rounded-full gradient-primary flex items-center justify-center font-bold text-white text-sm ring-2 ring-primary-500/60 shadow-md group-hover:scale-105 transition-transform">
+                  {(user?.displayName || 'U').charAt(0).toUpperCase()}
+                </div>
+              )}
+              <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-accent-green border-2 border-dark-card" />
+            </button>
+
+            <h1 className="text-xl font-bold text-white leading-none">Chats</h1>
+          </div>
+
           <div className="flex items-center gap-1.5">
             <button
               onClick={() => setShowNewGroup(true)}
@@ -59,10 +82,10 @@ export default function ChatList() {
             </button>
             <button
               onClick={() => setShowNewChat(true)}
-              className="w-9 h-9 rounded-xl bg-primary-500/20 text-primary-400 flex items-center justify-center hover:bg-primary-500/30 transition-all"
-              title="New Chat"
+              className="w-9 h-9 rounded-xl gradient-primary text-white flex items-center justify-center transition-all shadow-md shadow-primary-500/20"
+              title="New Direct Message"
             >
-              <Edit3 className="w-4 h-4" />
+              <Plus className="w-4 h-4" />
             </button>
           </div>
         </div>

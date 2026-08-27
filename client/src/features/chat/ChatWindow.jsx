@@ -351,7 +351,7 @@ export default function ChatWindow({ onStartCall }) {
 
             {/* Voice Call */}
             <button
-              onClick={() => onStartCall && onStartCall('voice')}
+              onClick={() => onStartCall && (otherUser || activeConversation) && onStartCall(otherUser || activeConversation, 'voice')}
               className="p-2 rounded-2xl hover:bg-dark-hover text-surface-400 hover:text-accent-green transition-colors"
               title="Voice Call"
             >
@@ -360,7 +360,7 @@ export default function ChatWindow({ onStartCall }) {
 
             {/* Video Call */}
             <button
-              onClick={() => onStartCall && onStartCall('video')}
+              onClick={() => onStartCall && (otherUser || activeConversation) && onStartCall(otherUser || activeConversation, 'video')}
               className="p-2 rounded-2xl hover:bg-dark-hover text-surface-400 hover:text-primary-400 transition-colors"
               title="Video Call"
             >

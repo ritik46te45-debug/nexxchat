@@ -34,7 +34,7 @@ export default function Sidebar({ onOpenProfile }) {
               key={id}
               onClick={() => setSidebarView(id)}
               className={`
-                relative flex flex-col items-center justify-center gap-0.5 py-1 px-3 rounded-xl transition-all duration-200
+                relative flex flex-col items-center justify-center gap-0.5 py-1 px-2.5 rounded-xl transition-all duration-200
                 ${sidebarView === id
                   ? 'text-primary-400 font-semibold'
                   : 'text-surface-500 hover:text-surface-300 active:text-surface-200'
@@ -50,6 +50,22 @@ export default function Sidebar({ onOpenProfile }) {
               )}
             </button>
           ))}
+
+          {/* Direct Profile Tab Button for Mobile */}
+          <button
+            onClick={onOpenProfile}
+            className="relative flex flex-col items-center justify-center gap-0.5 py-1 px-2.5 rounded-xl transition-all duration-200 text-surface-500 hover:text-surface-300 active:text-surface-200"
+            title="Edit Profile & DP"
+          >
+            {user?.avatar?.url ? (
+              <img src={user.avatar.url} alt="" className="w-5 h-5 rounded-full object-cover ring-1 ring-primary-500" />
+            ) : (
+              <div className="w-5 h-5 rounded-full gradient-primary text-[10px] font-bold text-white flex items-center justify-center">
+                {(user?.displayName || 'U').charAt(0).toUpperCase()}
+              </div>
+            )}
+            <span className="text-[10px] font-medium leading-tight">Profile</span>
+          </button>
         </nav>
       </div>
     );

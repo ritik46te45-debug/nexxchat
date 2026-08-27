@@ -69,15 +69,37 @@ export default function MainLayout() {
       return;
     }
 
-    const targetUserId = (targetUser?._id || targetUser)?.toString();
-    if (!targetUserId) {
-      toast.error('Cannot reach target user');
+    let userObj = targetUser;
+    let callType = type;
+
+    // Handle if called as handleStartCall('voice' | 'video')
+    if (targetUser === 'voice' || targetUser === 'video') {
+      callType = targetUser;
+      const myId = (useAuthStore.getState().user?._id || useAuthStore.getState().user)?.toString();
+      const otherParticipant = activeConversation?.participants?.find(
+        (p) => (p.user?._id || p.user)?.toString() !== myId
+      );
+      userObj = typeof otherParticipant?.user === 'object' ? otherParticipant.user : { _id: otherParticipant?.user };
+    }
+
+    // Handle if targetUser is conversation object
+    if (userObj?.participants && !userObj._id?.match(/^[0-9a-fA-F]{24}$/)) {
+      const myId = (useAuthStore.getState().user?._id || useAuthStore.getState().user)?.toString();
+      const otherParticipant = userObj.participants.find(
+        (p) => (p.user?._id || p.user)?.toString() !== myId
+      );
+      userObj = typeof otherParticipant?.user === 'object' ? otherParticipant.user : { _id: otherParticipant?.user };
+    }
+
+    const targetUserId = (userObj?._id || userObj)?.toString();
+    if (!targetUserId || targetUserId === 'voice' || targetUserId === 'video') {
+      toast.error('Cannot reach target user for call');
       return;
     }
 
     socket.emit('call:initiate', {
       to: targetUserId,
-      type,
+      type: callType,
       conversationId: activeConversation?._id,
     });
 
@@ -85,9 +107,9 @@ export default function MainLayout() {
       setActiveCall({
         callId,
         targetUserId,
-        displayName: targetUser?.displayName || targetUser?.username || 'User',
-        avatar: targetUser?.avatar,
-        type,
+        displayName: userObj?.displayName || userObj?.username || 'User',
+        avatar: userObj?.avatar,
+        type: callType,
         isIncoming: false,
       });
       socket.off('call:ringing', onRinging);
@@ -97,9 +119,9 @@ export default function MainLayout() {
     setActiveCall({
       callId: `temp_${Date.now()}`,
       targetUserId,
-      displayName: targetUser?.displayName || targetUser?.username || 'User',
-      avatar: targetUser?.avatar,
-      type,
+      displayName: userObj?.displayName || userObj?.username || 'User',
+      avatar: userObj?.avatar,
+      type: callType,
       isIncoming: false,
     });
   }, [activeConversation]);
@@ -129,7 +151,7 @@ export default function MainLayout() {
         ${isMobile && !showChatOnMobile ? 'pb-[56px]' : ''}
       `}
       >
-        {sidebarView === 'chats' && <ChatList />}
+        {sidebarView === 'chats' && <ChatList onOpenProfile={() => setShowProfileModal(true)} />}
         {sidebarView === 'calls' && (
           <CallsTab onStartCall={(friend, type) => handleStartCall(friend, type)} />
         )}
