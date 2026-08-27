@@ -65,6 +65,30 @@ export default function ChatWindow({ onStartCall }) {
   const [imageViewerData, setImageViewerData] = useState(null); // { images, initialIndex }
   const [pinnedList, setPinnedList] = useState(activeConversation?.pinnedMessages || []);
 
+  const [wallpaperState, setWallpaperState] = useState(() => {
+    const convId = activeConversation?._id;
+    const wpId = (typeof localStorage !== 'undefined' && (localStorage.getItem(`nexchat_wp_${convId}`) || localStorage.getItem('nexchat_global_wp'))) || 'default';
+    const bright = (typeof localStorage !== 'undefined' && (localStorage.getItem(`nexchat_wp_bright_${convId}`) || localStorage.getItem('nexchat_global_wp_bright'))) || 100;
+    const blr = (typeof localStorage !== 'undefined' && (localStorage.getItem(`nexchat_wp_blur_${convId}`) || localStorage.getItem('nexchat_global_wp_blur'))) || 0;
+    const custom = typeof localStorage !== 'undefined' ? localStorage.getItem('nexchat_custom_wp_data') : null;
+    return { wpId, bright: Number(bright), blr: Number(blr), custom };
+  });
+
+  useEffect(() => {
+    const updateWallpaper = () => {
+      const convId = activeConversation?._id;
+      const wpId = (typeof localStorage !== 'undefined' && (localStorage.getItem(`nexchat_wp_${convId}`) || localStorage.getItem('nexchat_global_wp'))) || 'default';
+      const bright = (typeof localStorage !== 'undefined' && (localStorage.getItem(`nexchat_wp_bright_${convId}`) || localStorage.getItem('nexchat_global_wp_bright'))) || 100;
+      const blr = (typeof localStorage !== 'undefined' && (localStorage.getItem(`nexchat_wp_blur_${convId}`) || localStorage.getItem('nexchat_global_wp_blur'))) || 0;
+      const custom = typeof localStorage !== 'undefined' ? localStorage.getItem('nexchat_custom_wp_data') : null;
+      setWallpaperState({ wpId, bright: Number(bright), blr: Number(blr), custom });
+    };
+
+    updateWallpaper();
+    window.addEventListener('nexchat_wallpaper_changed', updateWallpaper);
+    return () => window.removeEventListener('nexchat_wallpaper_changed', updateWallpaper);
+  }, [activeConversation?._id]);
+
   const myId = (user?._id || user)?.toString();
 
   useEffect(() => {
