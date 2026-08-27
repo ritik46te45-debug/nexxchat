@@ -434,6 +434,93 @@ export class WebRTCManager {
   }
 
   /**
+   * Set Audio Mute state
+   */
+  setAudioMuted(isMuted) {
+    this.isAudioMuted = isMuted;
+
+    if (this.localStream) {
+      this.localStream.getAudioTracks().forEach((track) => {
+        track.enabled = !isMuted;
+      });
+    }
+
+    if (this.pc) {
+      this.pc.getSenders().forEach((sender) => {
+        if (sender.track && sender.track.kind === 'audio') {
+          sender.track.enabled = !isMuted;
+        }
+      });
+    }
+
+    if (isMuted) {
+      this.audioAnalyzer.stop();
+      if (this.onSpeakingChange) this.onSpeakingChange(false);
+      if (this.onWaveformUpdate) this.onWaveformUpdate([10, 10, 10, 10, 10], 0);
+    } else {
+      const micTrack = this.localStream?.getAudioTracks()[0];
+      if (micTrack) {
+        this.audioAnalyzer.start(micTrack, this.onWaveformUpdate, this.onSpeakingChange);
+      }
+    }
+
+    return isMuted;
+  }
+
+  /**
+   * Set Video Disabled state
+   */
+  async setVideoDisabled(isDisabled) {
+    this.isVideoDisabled = isDisabled;
+
+    if (this.localStream) {
+      const videoTracks = this.localStream.getVideoTracks();
+      if (videoTracks.length > 0) {
+        videoTracks.forEach((track) => {
+          track.enabled = !isDisabled;
+        });
+      } else if (!isDisabled) {
+        // Video wasn't originally requested, dynamically capture camera track
+        try {
+          const vStream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              width: { ideal: 1280, max: 1920 },
+              height: { ideal: 720, max: 1080 },
+              frameRate: { ideal: 30, max: 30 },
+              facingMode: this.activeFacingMode,
+            },
+          });
+          const newVTrack = vStream.getVideoTracks()[0];
+          if (newVTrack) {
+            this.localStream.addTrack(newVTrack);
+            if (this.pc) {
+              const videoSender = this.pc.getSenders().find((s) => s.track?.kind === 'video');
+              if (videoSender) {
+                await videoSender.replaceTrack(newVTrack);
+              } else {
+                this.pc.addTrack(newVTrack, this.localStream);
+                await this.createAndSendOffer();
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('Turn on camera note:', e.message);
+        }
+      }
+    }
+
+    if (this.pc) {
+      this.pc.getSenders().forEach((sender) => {
+        if (sender.track && sender.track.kind === 'video') {
+          sender.track.enabled = !isDisabled;
+        }
+      });
+    }
+
+    return isDisabled;
+  }
+
+  /**
    * In-Call Device Switching: Microphone
    */
   async switchMicrophone(deviceId) {
@@ -450,6 +537,11 @@ export class WebRTCManager {
 
       const newAudioTrack = newStream.getAudioTracks()[0];
       if (!newAudioTrack) return false;
+
+      // Preserve current mute state on the new track
+      if (this.isAudioMuted) {
+        newAudioTrack.enabled = false;
+      }
 
       // Replace track on RTCRtpSender without renegotiating
       if (this.pc) {
@@ -469,8 +561,10 @@ export class WebRTCManager {
         this.localStream.addTrack(newAudioTrack);
       }
 
-      // Re-attach audio analyzer
-      this.audioAnalyzer.start(newAudioTrack, this.onWaveformUpdate, this.onSpeakingChange);
+      // Re-attach audio analyzer if unmuted
+      if (!this.isAudioMuted) {
+        this.audioAnalyzer.start(newAudioTrack, this.onWaveformUpdate, this.onSpeakingChange);
+      }
       return true;
     } catch (err) {
       console.error('Switch microphone error:', err);

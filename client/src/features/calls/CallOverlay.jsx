@@ -344,25 +344,37 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
 
   // Track toggles
   const toggleMute = () => {
+    const nextMuted = !isMuted;
+    setIsMuted(nextMuted);
+
     const manager = webrtcManagerRef.current;
-    if (manager?.localStream) {
-      const audioTrack = manager.localStream.getAudioTracks()[0];
-      if (audioTrack) {
-        audioTrack.enabled = !audioTrack.enabled;
-        setIsMuted(!audioTrack.enabled);
-      }
+    if (manager) {
+      manager.setAudioMuted(nextMuted);
     }
+
+    toast(nextMuted ? 'Microphone muted' : 'Microphone unmuted', {
+      icon: nextMuted ? '🔇' : '🎙️',
+      duration: 1500,
+    });
   };
 
-  const toggleVideo = () => {
+  const toggleVideo = async () => {
+    const nextVideoOff = !isVideoOff;
+    setIsVideoOff(nextVideoOff);
+
     const manager = webrtcManagerRef.current;
-    if (manager?.localStream) {
-      const videoTrack = manager.localStream.getVideoTracks()[0];
-      if (videoTrack) {
-        videoTrack.enabled = !videoTrack.enabled;
-        setIsVideoOff(!videoTrack.enabled);
+    if (manager) {
+      await manager.setVideoDisabled(nextVideoOff);
+      if (!nextVideoOff && localVideoRef.current && manager.localStream) {
+        localVideoRef.current.srcObject = manager.localStream;
+        localVideoRef.current.play().catch(() => {});
       }
     }
+
+    toast(nextVideoOff ? 'Camera turned off' : 'Camera turned on', {
+      icon: nextVideoOff ? '📷' : '🎥',
+      duration: 1500,
+    });
   };
 
   const toggleSpeaker = () => {
