@@ -1,7 +1,8 @@
 /**
  * Real Web Audio API Audio Analyzer & Voice Activity Detection (VAD)
  * Analyzes microphone and remote audio streams to compute live decibel levels,
- * normalized waveform bars, and true speaking state (no fake timers).
+ * normalized waveform bars, and true speaking state with throttled UI notifications
+ * to eliminate React re-render overhead and preserve full 30 FPS video streaming.
  */
 
 export class AudioAnalyzer {
@@ -16,6 +17,7 @@ export class AudioAnalyzer {
     this.onSpeakingChange = null;
     this.isSpeaking = false;
     this.animFrameId = null;
+    this.lastNotifyTime = 0;
   }
 
   /**
@@ -37,7 +39,7 @@ export class AudioAnalyzer {
 
       this.analyser = this.audioContext.createAnalyser();
       this.analyser.fftSize = 64;
-      this.analyser.smoothingTimeConstant = 0.65;
+      this.analyser.smoothingTimeConstant = 0.7;
 
       const stream = streamOrTrack instanceof MediaStream
         ? streamOrTrack
@@ -50,6 +52,7 @@ export class AudioAnalyzer {
       this.onVolumeChange = onVolumeChange;
       this.onSpeakingChange = onSpeakingChange;
       this.isAnalyzing = true;
+      this.lastNotifyTime = 0;
 
       this.loop();
     } catch (err) {
@@ -80,8 +83,10 @@ export class AudioAnalyzer {
       }
     }
 
-    // Generate 5-bar normalized waveform values (0–100%)
-    if (this.onVolumeChange) {
+    // Throttle volume callbacks to ~10Hz (every 100ms) to avoid saturating React render queue
+    const now = performance.now();
+    if (this.onVolumeChange && now - this.lastNotifyTime >= 100) {
+      this.lastNotifyTime = now;
       const bars = [
         Math.min(100, Math.max(15, (this.dataArray[1] / 255) * 100)),
         Math.min(100, Math.max(20, (this.dataArray[3] / 255) * 100)),
@@ -110,6 +115,7 @@ export class AudioAnalyzer {
       this.audioContext = null;
     }
     this.analyser = null;
+    this.dataArray = null;
     this.isSpeaking = false;
   }
 }

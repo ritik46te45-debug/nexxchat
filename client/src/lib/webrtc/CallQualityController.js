@@ -243,10 +243,10 @@ export class CallQualityController {
           break;
 
         case 'good':
-          maxBitrate = 1200000; // 1.2 Mbps (720p)
+          maxBitrate = 1800000; // 1.8 Mbps (720p 30 FPS)
           maxFramerate = 30;
           scaleResolutionDownBy = 1.0;
-          degradationPreference = 'balanced';
+          degradationPreference = 'maintain-framerate';
           break;
 
         case 'fair':

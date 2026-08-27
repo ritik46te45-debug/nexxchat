@@ -169,49 +169,55 @@ export default function MainLayout() {
       {/* Desktop / Laptop Sidebar Navigation */}
       {!isMobile && <Sidebar onOpenProfile={() => setShowProfileModal(true)} />}
 
-      {/* Main Left Column (Home, Chats, Calls, Status, Contacts, Notifications, Settings) */}
-      <div
-        className={`
-        ${showLeftPanel ? 'flex' : 'hidden'}
-        flex-col w-full md:w-[320px] lg:w-[360px] xl:w-[400px]
-        border-r border-dark-border bg-dark-bg flex-shrink-0 z-10 h-full overflow-hidden
-        ${isMobile && !showChatOnMobile ? 'pb-[56px]' : ''}
-      `}
-      >
-        {sidebarView === 'home' && (
+      {/* Main Content Area */}
+      {sidebarView === 'home' ? (
+        <div className={`flex-1 h-full overflow-hidden ${isMobile && !showChatOnMobile ? 'pb-[56px]' : ''}`}>
           <HomeTab
             onStartCall={(friend, type) => handleStartCall(friend, type)}
             onOpenNewChat={() => setShowNewChat(true)}
             onOpenNewGroup={() => setShowNewGroup(true)}
           />
-        )}
-        {sidebarView === 'chats' && <ChatList onOpenProfile={() => setShowProfileModal(true)} />}
-        {sidebarView === 'calls' && (
-          <CallsTab onStartCall={(friend, type) => handleStartCall(friend, type)} />
-        )}
-        {sidebarView === 'status' && <StatusTab />}
-        {sidebarView === 'contacts' && (
-          <ContactsTab onStartCall={(friend, type) => handleStartCall(friend, type)} />
-        )}
-        {sidebarView === 'notifications' && <NotificationsTab />}
-        {sidebarView === 'settings' && (
-          <SettingsTab onOpenProfile={() => setShowProfileModal(true)} />
-        )}
-      </div>
+        </div>
+      ) : (
+        <>
+          {/* Main Left Column (Chats, Calls, Status, Contacts, Notifications, Settings) */}
+          <div
+            className={`
+            ${showLeftPanel ? 'flex' : 'hidden'}
+            flex-col w-full md:w-[320px] lg:w-[360px] xl:w-[400px]
+            border-r border-dark-border bg-dark-bg flex-shrink-0 z-10 h-full overflow-hidden
+            ${isMobile && !showChatOnMobile ? 'pb-[56px]' : ''}
+          `}
+          >
+            {sidebarView === 'chats' && <ChatList onOpenProfile={() => setShowProfileModal(true)} />}
+            {sidebarView === 'calls' && (
+              <CallsTab onStartCall={(friend, type) => handleStartCall(friend, type)} />
+            )}
+            {sidebarView === 'status' && <StatusTab />}
+            {sidebarView === 'contacts' && (
+              <ContactsTab onStartCall={(friend, type) => handleStartCall(friend, type)} />
+            )}
+            {sidebarView === 'notifications' && <NotificationsTab />}
+            {sidebarView === 'settings' && (
+              <SettingsTab onOpenProfile={() => setShowProfileModal(true)} />
+            )}
+          </div>
 
-      {/* Chat window / Right area */}
-      <div
-        className={`
-        ${showRightPanel ? 'flex' : 'hidden'}
-        flex-col flex-1 min-w-0 h-full overflow-hidden
-      `}
-      >
-        {activeConversation ? (
-          <ChatWindow onStartCall={(targetUser, type) => handleStartCall(targetUser, type)} />
-        ) : (
-          !isMobile && <EmptyChat />
-        )}
-      </div>
+          {/* Chat window / Right area */}
+          <div
+            className={`
+            ${showRightPanel ? 'flex' : 'hidden'}
+            flex-col flex-1 min-w-0 h-full overflow-hidden
+          `}
+          >
+            {activeConversation ? (
+              <ChatWindow onStartCall={(targetUser, type) => handleStartCall(targetUser, type)} />
+            ) : (
+              !isMobile && <EmptyChat />
+            )}
+          </div>
+        </>
+      )}
 
       {/* Mobile Bottom Tab Bar (renders only when on tab lists, not inside an active chat) */}
       {isMobile && !showChatOnMobile && (
