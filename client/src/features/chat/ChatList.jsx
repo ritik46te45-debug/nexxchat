@@ -105,7 +105,7 @@ export default function ChatList({ onOpenProfile }) {
         </div>
 
         {/* Conversation list */}
-        <div className="flex-1 overflow-y-auto hide-scrollbar">
+        <div className="flex-1 overflow-y-auto hide-scrollbar px-2 py-1 space-y-1">
           {filteredConversations.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full px-8 text-center">
               <div className="w-16 h-16 rounded-2xl bg-dark-card border border-dark-border flex items-center justify-center mb-4">
@@ -215,10 +215,10 @@ function ConversationItem({ conversation, userId, isActive, onClick, typingUsers
     <button
       onClick={onClick}
       className={`
-        w-full flex items-center gap-3 px-4 py-3 transition-all duration-150 text-left
+        w-full flex items-center gap-3 px-3.5 py-3 transition-all duration-150 text-left rounded-2xl
         ${isActive
-          ? 'bg-primary-500/10 border-l-2 border-primary-500'
-          : 'hover:bg-dark-hover border-l-2 border-transparent'
+          ? 'bg-primary-500/15 text-white shadow-sm ring-1 ring-primary-500/30'
+          : 'hover:bg-dark-hover/60 text-surface-300'
         }
       `}
     >
