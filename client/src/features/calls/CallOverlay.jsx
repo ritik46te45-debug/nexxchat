@@ -755,11 +755,11 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
             </button>
           </div>
         ) : (
-          <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-6 py-2.5 sm:py-3.5 rounded-3xl bg-dark-card/90 backdrop-blur-xl border border-dark-border shadow-2xl">
+          <div className="flex items-center justify-center gap-1.5 sm:gap-3 px-2.5 sm:px-6 py-2 sm:py-3.5 rounded-3xl bg-dark-card/90 backdrop-blur-xl border border-dark-border shadow-2xl overflow-x-auto max-w-full hide-scrollbar">
             {/* Mic Toggle */}
             <button
               onClick={toggleMute}
-              className={`w-10 h-10 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center transition-all ${
+              className={`w-9 h-9 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all flex-shrink-0 ${
                 isMuted ? 'bg-accent-red/20 text-accent-red border border-accent-red/30' : 'bg-dark-hover text-surface-200 hover:text-white border border-dark-border'
               }`}
               title={isMuted ? 'Unmute microphone' : 'Mute microphone'}
@@ -771,7 +771,7 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
             {isVideoCall && (
               <button
                 onClick={toggleVideo}
-                className={`w-10 h-10 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center transition-all ${
+                className={`w-9 h-9 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all flex-shrink-0 ${
                   isVideoOff ? 'bg-accent-red/20 text-accent-red border border-accent-red/30' : 'bg-dark-hover text-surface-200 hover:text-white border border-dark-border'
                 }`}
                 title={isVideoOff ? 'Turn on camera' : 'Turn off camera'}
@@ -784,18 +784,18 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
             {isVideoCall && (
               <button
                 onClick={flipCamera}
-                className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-dark-hover text-surface-200 hover:text-white border border-dark-border flex items-center justify-center transition-all"
+                className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-dark-hover text-surface-200 hover:text-white border border-dark-border flex items-center justify-center transition-all flex-shrink-0"
                 title="Flip Camera (Front / Rear)"
               >
                 <Camera className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
             )}
 
-            {/* Screen Share */}
+            {/* Screen Share (Visible on all screens including Mobile) */}
             {isVideoCall && (
               <button
                 onClick={toggleScreenShare}
-                className={`w-10 h-10 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center transition-all hidden sm:flex ${
+                className={`w-9 h-9 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all flex-shrink-0 ${
                   isScreenSharing ? 'bg-primary-500 text-white shadow-lg shadow-primary-500/30' : 'bg-dark-hover text-surface-200 hover:text-white border border-dark-border'
                 }`}
                 title={isScreenSharing ? 'Stop screen sharing' : 'Share screen'}
@@ -804,11 +804,11 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
               </button>
             )}
 
-            {/* PiP button for Video */}
+            {/* PiP button for Video (Visible on all screens including Mobile) */}
             {isVideoCall && (
               <button
                 onClick={togglePiP}
-                className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-dark-hover text-surface-200 hover:text-white border border-dark-border hidden md:flex items-center justify-center transition-all"
+                className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-dark-hover text-surface-200 hover:text-white border border-dark-border flex items-center justify-center transition-all flex-shrink-0"
                 title="Picture in Picture"
               >
                 <PictureInPicture className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -818,7 +818,7 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
             {/* Speaker Output Mute/Unmute */}
             <button
               onClick={toggleSpeaker}
-              className={`w-10 h-10 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center transition-all border ${
+              className={`w-9 h-9 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all border flex-shrink-0 ${
                 !isSpeakerOn ? 'bg-accent-red/20 text-accent-red border-accent-red/30' : 'bg-dark-hover text-surface-200 hover:text-white border border-dark-border'
               }`}
               title="Speaker Audio"
@@ -829,10 +829,10 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
             {/* End Call Button */}
             <button
               onClick={handleEndCall}
-              className="w-12 h-10 sm:w-14 sm:h-12 rounded-2xl bg-accent-red text-white flex items-center justify-center shadow-lg shadow-red-500/30 hover:bg-red-600 active:scale-95 transition-all cursor-pointer ml-1"
+              className="w-11 h-9 sm:w-14 sm:h-12 rounded-xl sm:rounded-2xl bg-accent-red text-white flex items-center justify-center shadow-lg shadow-red-500/30 hover:bg-red-600 active:scale-95 transition-all cursor-pointer flex-shrink-0 ml-0.5"
               title="End Call"
             >
-              <PhoneOff className="w-5 h-5 sm:w-6 sm:h-6" />
+              <PhoneOff className="w-4 h-4 sm:w-6 sm:h-6" />
             </button>
           </div>
         )}
