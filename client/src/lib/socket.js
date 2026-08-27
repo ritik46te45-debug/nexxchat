@@ -8,14 +8,18 @@ export const getSocketURL = () => {
     return envUrl.replace(/\/api\/?$/, '').replace(/\/+$/, '');
   }
   if (typeof window !== 'undefined') {
-    if (window.location.hostname.includes('vercel.app')) {
+    const host = window.location.hostname;
+    if (host === 'localhost' || host === '127.0.0.1') {
+      return 'http://localhost:5000';
+    }
+    if (/^(\d{1,3}\.){3}\d{1,3}$/.test(host)) {
+      return `http://${host}:5000`;
+    }
+    if (host.includes('vercel.app') || host.includes('netlify.app') || host.includes('onrender.com') || host.includes('github.io')) {
       return 'https://nexxchat-5d29.onrender.com';
     }
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-      return `http://${window.location.hostname}:5000`;
-    }
   }
-  return window.location.origin;
+  return 'https://nexxchat-5d29.onrender.com';
 };
 
 export const connectSocket = (token) => {
