@@ -2,8 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Send, Smile, Mic, X, Image, FileText, Camera,
   Reply, Loader2, Video, MapPin, Bell, BellOff, Plus,
-  Sparkles, Check, Edit3, BarChart2, Gift, Image as ImageIcon,
-  Flame, Music
+  Sparkles, Check, Edit3, BarChart2, Gift, Image as ImageIcon
 } from 'lucide-react';
 import useChatStore from '../../stores/chatStore';
 import useAuthStore from '../../stores/authStore';
@@ -12,9 +11,7 @@ import { playSentMessageSound } from '../../lib/notifications';
 import CircularVideoRecorder from './CircularVideoRecorder';
 import LocationPickerModal from './LocationPickerModal';
 import CreatePollModal from './CreatePollModal';
-import EmojiPickerPopover from './EmojiPickerPopover';
-import GifPickerPopover from './GifPickerPopover';
-import StickerPickerPopover from './StickerPickerPopover';
+import UnifiedPickerModal from './UnifiedPickerModal';
 import VoiceRecorder from './VoiceRecorder';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
@@ -35,7 +32,7 @@ export default function MessageComposer() {
 
   // Popover & modal triggers
   const [showAttachMenu, setShowAttachMenu] = useState(false);
-  const [activePicker, setActivePicker] = useState(null); // 'emoji' | 'gif' | 'sticker' | null
+  const [showUnifiedPicker, setShowUnifiedPicker] = useState(false);
   const [showVideoNoteRecorder, setShowVideoNoteRecorder] = useState(false);
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [showPollModal, setShowPollModal] = useState(false);
@@ -62,7 +59,7 @@ export default function MessageComposer() {
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (pickerRef.current && !pickerRef.current.contains(e.target)) {
-        setActivePicker(null);
+        setShowUnifiedPicker(false);
       }
       if (attachMenuRef.current && !attachMenuRef.current.contains(e.target)) {
         setShowAttachMenu(false);
@@ -264,7 +261,7 @@ export default function MessageComposer() {
   // Send GIF
   const handleSendGif = async (gifUrl, title) => {
     if (!conversationId) return;
-    setActivePicker(null);
+    setShowUnifiedPicker(false);
     try {
       await sendMessage(conversationId, {
         type: 'gif',
@@ -286,7 +283,7 @@ export default function MessageComposer() {
   // Send Sticker
   const handleSendSticker = async (stickerUrl, name) => {
     if (!conversationId) return;
-    setActivePicker(null);
+    setShowUnifiedPicker(false);
     try {
       await sendMessage(conversationId, {
         type: 'sticker',
@@ -584,70 +581,28 @@ export default function MessageComposer() {
 
           {/* Text Input Capsule */}
           <div className="flex-1 min-w-0 bg-dark-input border border-dark-border focus-within:border-primary-500 rounded-3xl p-1.5 flex items-end gap-1.5 transition-all shadow-inner relative">
-            {/* Emoji / GIF / Sticker Switcher */}
+            {/* Unified Emojis / GIFs / Stickers Switcher */}
             <div className="relative" ref={pickerRef}>
-              <div className="flex items-center">
-                <button
-                  onClick={() => setActivePicker(activePicker === 'emoji' ? null : 'emoji')}
-                  className={`p-2 rounded-2xl transition-all ${
-                    activePicker === 'emoji'
-                      ? 'text-primary-400 bg-primary-500/20'
-                      : 'text-surface-400 hover:text-white hover:bg-dark-hover'
-                  }`}
-                  title="Emoji Picker"
-                >
-                  <Smile className="w-5 h-5" />
-                </button>
+              <button
+                onClick={() => setShowUnifiedPicker(!showUnifiedPicker)}
+                className={`p-2 rounded-2xl transition-all cursor-pointer ${
+                  showUnifiedPicker
+                    ? 'text-primary-400 bg-primary-500/20'
+                    : 'text-surface-400 hover:text-white hover:bg-dark-hover'
+                }`}
+                title="Emojis, GIFs & Stickers"
+              >
+                <Smile className="w-5 h-5" />
+              </button>
 
-                <button
-                  onClick={() => setActivePicker(activePicker === 'gif' ? null : 'gif')}
-                  className={`px-2 py-1 rounded-xl text-[10px] font-bold font-mono transition-all hidden sm:flex items-center ${
-                    activePicker === 'gif'
-                      ? 'text-primary-400 bg-primary-500/20'
-                      : 'text-surface-400 hover:text-white hover:bg-dark-hover'
-                  }`}
-                  title="GIFs"
-                >
-                  GIF
-                </button>
-
-                <button
-                  onClick={() => setActivePicker(activePicker === 'sticker' ? null : 'sticker')}
-                  className={`p-2 rounded-2xl transition-all hidden sm:flex ${
-                    activePicker === 'sticker'
-                      ? 'text-primary-400 bg-primary-500/20'
-                      : 'text-surface-400 hover:text-white hover:bg-dark-hover'
-                  }`}
-                  title="Stickers"
-                >
-                  <Sparkles className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Active Popovers */}
-              {activePicker === 'emoji' && (
+              {/* Active Unified Popover */}
+              {showUnifiedPicker && (
                 <div className="absolute left-0 bottom-12 z-50">
-                  <EmojiPickerPopover
+                  <UnifiedPickerModal
                     onSelectEmoji={(emoji) => setText((prev) => prev + emoji)}
-                    onClose={() => setActivePicker(null)}
-                  />
-                </div>
-              )}
-
-              {activePicker === 'gif' && (
-                <div className="absolute left-0 bottom-12 z-50">
-                  <GifPickerPopover
                     onSelectGif={handleSendGif}
-                    onClose={() => setActivePicker(null)}
-                  />
-                </div>
-              )}
-
-              {activePicker === 'sticker' && (
-                <div className="absolute left-0 bottom-12 z-50">
-                  <StickerPickerPopover
                     onSelectSticker={handleSendSticker}
-                    onClose={() => setActivePicker(null)}
+                    onClose={() => setShowUnifiedPicker(false)}
                   />
                 </div>
               )}
@@ -666,7 +621,7 @@ export default function MessageComposer() {
             />
           </div>
 
-          {/* Dynamic Action Button: Voice Recorder (when empty) vs Send Button (when text/files present) */}
+          {/* Dynamic Action Button: Voice Recorder vs Send Button */}
           {editingMessage ? (
             <button
               onClick={handleSaveEdit}

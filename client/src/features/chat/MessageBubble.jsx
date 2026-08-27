@@ -34,7 +34,7 @@ export default function MessageBubble({
   onToggleSelect,
 }) {
   const [showContextMenu, setShowContextMenu] = useState(false);
-  const [showReactions, setShowReactions] = useState(false);
+  const [showQuickReactions, setShowQuickReactions] = useState(false);
   const [showViewOnceModal, setShowViewOnceModal] = useState(false);
   const [translatedText, setTranslatedText] = useState(null);
   const [isTranslating, setIsTranslating] = useState(false);
@@ -52,7 +52,7 @@ export default function MessageBubble({
   const isViewOnceViewed = message?.isViewOnce && Array.isArray(message.viewedBy) && message.viewedBy.some(v => (v.user?._id || v.user)?.toString() === myId);
   const isStarred = Array.isArray(message?.starredBy) && message.starredBy.some(id => (id?._id || id)?.toString() === myId);
 
-  // Grouped Reactions calculations
+  // Grouped Reactions
   const reactionGroups = useMemo(() => {
     if (!message?.reactions || message.reactions.length === 0) return [];
     const groups = {};
@@ -82,7 +82,7 @@ export default function MessageBubble({
   if (message.type === 'system') {
     return (
       <div className="flex justify-center my-3 px-2">
-        <span className="px-3 py-1 rounded-full bg-dark-card/60 border border-dark-border text-[11px] text-surface-400">
+        <span className="px-3.5 py-1 rounded-full bg-dark-card/70 border border-dark-border text-[11px] text-surface-400 font-medium">
           {message.content}
         </span>
       </div>
@@ -118,7 +118,7 @@ export default function MessageBubble({
   // Handle reactions
   const handleReaction = async (emoji) => {
     await reactToMessage(message._id, emoji);
-    setShowReactions(false);
+    setShowQuickReactions(false);
     setShowContextMenu(false);
   };
 
@@ -142,7 +142,6 @@ export default function MessageBubble({
     if (!message.content) return;
     setIsTranslating(true);
     try {
-      // Free translation proxy
       const res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&q=${encodeURIComponent(message.content)}`);
       const data = await res.json();
       const translation = data?.[0]?.map((item) => item[0]).join('') || message.content;
@@ -190,6 +189,106 @@ export default function MessageBubble({
     }
   };
 
+  // 1. DEDICATED FULL CIRCULAR VIDEO NOTE LAYOUT (PERFECTLY CENTERED, NEVER CUT IN HALF)
+  if (message.type === 'video_note' && message.attachments?.[0]?.url) {
+    return (
+      <div className={`flex flex-col my-3 px-2 ${isOwn ? 'items-end' : 'items-start'}`}>
+        <div className="flex items-center gap-2">
+          {showAvatar && !isOwn && (
+            <div className="w-7 h-7 rounded-full flex-shrink-0 mb-1">
+              {message.sender?.avatar?.url ? (
+                <img src={message.sender.avatar.url} alt="" className="w-7 h-7 rounded-full object-cover shadow-sm" />
+              ) : (
+                <div className="w-7 h-7 rounded-full gradient-primary text-white text-xs font-bold flex items-center justify-center">
+                  {(message.sender?.displayName || 'U').charAt(0).toUpperCase()}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex flex-col items-center">
+            <div className="w-48 h-48 sm:w-56 sm:h-56 rounded-full overflow-hidden border-4 border-primary-500 shadow-2xl bg-black relative flex items-center justify-center">
+              <video
+                src={message.attachments[0].url}
+                playsInline
+                controls
+                className="w-full h-full object-cover rounded-full"
+              />
+            </div>
+
+            <div className="flex items-center gap-2 mt-1.5 px-3 py-1 rounded-full bg-dark-card/80 border border-dark-border text-[10px] text-surface-400">
+              <span>🎥 Video Note</span>
+              <span>•</span>
+              <span>{message.createdAt ? format(new Date(message.createdAt), 'h:mm a') : ''}</span>
+              <StatusIcon />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. DEDICATED FULL POLL CARD (CENTERED / WELL-PROPORTIONED)
+  if (message.type === 'poll' && message.poll) {
+    return (
+      <div className={`flex my-2 px-2 ${isOwn ? 'justify-end' : 'justify-start'}`}>
+        <div className="w-full max-w-sm sm:max-w-md p-4 rounded-3xl bg-dark-card border border-dark-border/80 shadow-2xl text-xs select-none relative">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-xl bg-primary-500/20 text-primary-400 flex items-center justify-center">
+                <BarChart2 className="w-4 h-4" />
+              </div>
+              <span className="font-bold text-white text-sm">{message.poll.question}</span>
+            </div>
+            {showName && !isOwn && (
+              <span className="text-[10px] text-primary-400 font-semibold">{message.sender?.displayName}</span>
+            )}
+          </div>
+
+          {/* Poll Options */}
+          <div className="space-y-2.5">
+            {message.poll.options?.map((opt, idx) => {
+              const totalVotes = message.poll.options.reduce((sum, o) => sum + (o.votes?.length || 0), 0);
+              const optVotes = opt.votes?.length || 0;
+              const percentage = totalVotes > 0 ? Math.round((optVotes / totalVotes) * 100) : 0;
+              const hasVoted = opt.votes?.some((v) => (v?._id || v)?.toString() === myId);
+
+              return (
+                <button
+                  key={idx}
+                  onClick={() => votePoll(message._id, idx)}
+                  className={`w-full p-3 rounded-2xl border text-left relative overflow-hidden transition-all cursor-pointer ${
+                    hasVoted
+                      ? 'border-primary-500 bg-primary-500/20 shadow-md'
+                      : 'border-dark-border bg-dark-input/60 hover:bg-dark-hover'
+                  }`}
+                >
+                  <div
+                    className="absolute inset-y-0 left-0 bg-primary-500/30 transition-all duration-500 pointer-events-none"
+                    style={{ width: `${percentage}%` }}
+                  />
+                  <div className="relative flex items-center justify-between gap-2 z-10">
+                    <span className="font-semibold text-white">{opt.text}</span>
+                    <span className="font-mono text-xs font-bold text-primary-300">{percentage}% ({optVotes})</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-3 pt-2.5 border-t border-dark-border/60 flex items-center justify-between text-[10px] text-surface-400">
+            <span>{message.poll.isAnonymous ? '🔒 Anonymous' : '👥 Public'} • {message.poll.isMultipleChoice ? 'Multiple choice' : 'Single choice'}</span>
+            <div className="flex items-center gap-1">
+              <span>{message.createdAt ? format(new Date(message.createdAt), 'h:mm a') : ''}</span>
+              <StatusIcon />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 3. STANDARD MESSAGE BUBBLES
   return (
     <div
       id={`msg-${message._id}`}
@@ -265,7 +364,7 @@ export default function MessageBubble({
             <p className="text-[11px] font-bold text-primary-400 mb-1">{message.sender?.displayName}</p>
           )}
 
-          {/* 1. VIEW ONCE MEDIA */}
+          {/* VIEW ONCE MEDIA */}
           {message.isViewOnce && (
             <div className="my-1">
               {isViewOnceViewed ? (
@@ -283,7 +382,7 @@ export default function MessageBubble({
             </div>
           )}
 
-          {/* 2. PHOTOS / IMAGES */}
+          {/* PHOTOS / IMAGES */}
           {!message.isViewOnce && (message.type === 'image' || message.type === 'gif' || message.type === 'sticker') && message.attachments?.[0]?.url && (
             <div className="my-1 rounded-xl overflow-hidden max-w-sm">
               <img
@@ -295,24 +394,14 @@ export default function MessageBubble({
             </div>
           )}
 
-          {/* 3. VIDEOS */}
+          {/* VIDEOS */}
           {!message.isViewOnce && message.type === 'video' && message.attachments?.[0]?.url && (
             <div className="my-1 max-w-sm sm:max-w-md">
               <CustomVideoPlayer src={message.attachments[0].url} isOwn={isOwn} />
             </div>
           )}
 
-          {/* 4. CIRCULAR VIDEO NOTE */}
-          {message.type === 'video_note' && message.attachments?.[0]?.url && (
-            <div className="my-1.5 flex flex-col items-center">
-              <div className="w-48 h-48 sm:w-56 sm:h-56 rounded-full overflow-hidden border-2 border-primary-500/80 shadow-2xl bg-black relative">
-                <video src={message.attachments[0].url} controls playsInline className="w-full h-full object-cover rounded-full" />
-              </div>
-              <span className="text-[10px] text-surface-400 mt-1">🎥 Video Note</span>
-            </div>
-          )}
-
-          {/* 5. AUDIO & VOICE NOTES */}
+          {/* AUDIO & VOICE NOTES */}
           {(message.type === 'voice' || message.type === 'audio') && message.attachments?.[0]?.url && (
             <div className="my-1">
               <AudioWaveformPlayer
@@ -323,7 +412,7 @@ export default function MessageBubble({
             </div>
           )}
 
-          {/* 6. DOCUMENTS & FILES */}
+          {/* DOCUMENTS & FILES */}
           {(message.type === 'document' || message.type === 'file') && message.attachments?.[0]?.url && (
             <div className="my-1">
               <a
@@ -350,54 +439,7 @@ export default function MessageBubble({
             </div>
           )}
 
-          {/* 7. INTERACTIVE POLLS */}
-          {message.type === 'poll' && message.poll && (
-            <div className="my-1 p-3.5 rounded-2xl bg-dark-bg/60 border border-dark-border max-w-sm text-xs select-none">
-              <div className="flex items-center gap-2 mb-2 font-bold text-white">
-                <BarChart2 className="w-4 h-4 text-primary-400 flex-shrink-0" />
-                <span>{message.poll.question}</span>
-              </div>
-
-              {/* Poll Options */}
-              <div className="space-y-2">
-                {message.poll.options?.map((opt, idx) => {
-                  const totalVotes = message.poll.options.reduce((sum, o) => sum + (o.votes?.length || 0), 0);
-                  const optVotes = opt.votes?.length || 0;
-                  const percentage = totalVotes > 0 ? Math.round((optVotes / totalVotes) * 100) : 0;
-                  const hasVoted = opt.votes?.some((v) => (v?._id || v)?.toString() === myId);
-
-                  return (
-                    <button
-                      key={idx}
-                      onClick={() => votePoll(message._id, idx)}
-                      className={`w-full p-2.5 rounded-xl border text-left relative overflow-hidden transition-all cursor-pointer ${
-                        hasVoted
-                          ? 'border-primary-500 bg-primary-500/15'
-                          : 'border-dark-border bg-dark-input/50 hover:bg-dark-hover'
-                      }`}
-                    >
-                      {/* Percentage fill bar */}
-                      <div
-                        className="absolute inset-y-0 left-0 bg-primary-500/20 transition-all duration-500 pointer-events-none"
-                        style={{ width: `${percentage}%` }}
-                      />
-                      <div className="relative flex items-center justify-between gap-2 z-10">
-                        <span className="font-semibold text-white truncate">{opt.text}</span>
-                        <span className="font-mono text-[10px] text-surface-300 font-bold">{percentage}% ({optVotes})</span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="mt-2.5 pt-2 border-t border-dark-border/60 flex items-center justify-between text-[10px] text-surface-400">
-                <span>{message.poll.isAnonymous ? 'Anonymous' : 'Public'}</span>
-                <span>{message.poll.isMultipleChoice ? 'Multiple choice' : 'Single choice'}</span>
-              </div>
-            </div>
-          )}
-
-          {/* 8. LOCATION CARD */}
+          {/* LOCATION CARD */}
           {message.type === 'location' && message.location && (
             <div className="my-1 rounded-xl overflow-hidden bg-dark-bg border border-dark-border max-w-xs">
               <div className="h-28 w-full bg-dark-input relative overflow-hidden">
@@ -428,7 +470,7 @@ export default function MessageBubble({
             </div>
           )}
 
-          {/* 9. TEXT CONTENT */}
+          {/* TEXT CONTENT */}
           {message.content && message.type !== 'poll' && (
             <p className={`whitespace-pre-wrap break-words leading-relaxed ${isOnlyEmoji ? 'text-3xl my-1' : 'text-xs sm:text-sm'}`}>
               {message.content}
@@ -443,7 +485,7 @@ export default function MessageBubble({
             </div>
           )}
 
-          {/* Metadata Footer: Timestamp, Edited badge, Status */}
+          {/* Metadata Footer */}
           <div className="flex items-center justify-end gap-1.5 mt-1 text-[10px] text-surface-400/90 select-none">
             {isPinned && <Pin className="w-3 h-3 text-primary-400 rotate-45" />}
             {isStarred && <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />}
@@ -453,6 +495,42 @@ export default function MessageBubble({
           </div>
         </div>
 
+        {/* Hover / Direct Action Buttons Toolbar (Always visible on hover for instant accessibility!) */}
+        <div
+          className={`absolute top-0 -translate-y-1/2 ${
+            isOwn ? 'left-0 -translate-x-full pr-1.5' : 'right-0 translate-x-full pl-1.5'
+          } hidden group-hover:flex items-center gap-1 bg-dark-card/90 border border-dark-border/80 px-2 py-1 rounded-2xl shadow-xl backdrop-blur-md z-20`}
+        >
+          <button
+            onClick={() => handleReaction('👍')}
+            className="p-1 rounded-lg hover:bg-dark-hover text-sm hover:scale-125 transition-transform"
+            title="React 👍"
+          >
+            👍
+          </button>
+          <button
+            onClick={() => handleReaction('❤️')}
+            className="p-1 rounded-lg hover:bg-dark-hover text-sm hover:scale-125 transition-transform"
+            title="React ❤️"
+          >
+            ❤️
+          </button>
+          <button
+            onClick={() => setReplyingMessage(message)}
+            className="p-1 rounded-lg hover:bg-dark-hover text-surface-400 hover:text-white transition-colors"
+            title="Reply"
+          >
+            <Reply className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={() => setShowContextMenu(true)}
+            className="p-1 rounded-lg hover:bg-dark-hover text-surface-400 hover:text-white transition-colors"
+            title="More Options"
+          >
+            <MoreHorizontal className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
         {/* Reaction Badges */}
         {reactionGroups.length > 0 && (
           <div className={`flex flex-wrap gap-1 mt-1 ${isOwn ? 'justify-end' : 'justify-start'}`}>
@@ -460,7 +538,7 @@ export default function MessageBubble({
               <button
                 key={grp.emoji}
                 onClick={() => handleReaction(grp.emoji)}
-                className="px-2 py-0.5 rounded-full bg-dark-card border border-dark-border text-xs flex items-center gap-1 shadow-sm hover:scale-105 transition-transform"
+                className="px-2 py-0.5 rounded-full bg-dark-card border border-dark-border text-xs flex items-center gap-1 shadow-sm hover:scale-105 transition-transform cursor-pointer"
                 title={grp.users.join(', ')}
               >
                 <span>{grp.emoji}</span>
@@ -470,7 +548,7 @@ export default function MessageBubble({
           </div>
         )}
 
-        {/* Context Menu Popover */}
+        {/* Context Menu Modal / Popover */}
         {showContextMenu && (
           <div
             ref={contextMenuRef}
@@ -484,7 +562,7 @@ export default function MessageBubble({
                 <button
                   key={emoji}
                   onClick={() => handleReaction(emoji)}
-                  className="w-7 h-7 rounded-xl hover:bg-dark-hover flex items-center justify-center text-base hover:scale-125 active:scale-95 transition-all"
+                  className="w-7 h-7 rounded-xl hover:bg-dark-hover flex items-center justify-center text-base hover:scale-125 active:scale-95 transition-all cursor-pointer"
                 >
                   {emoji}
                 </button>
