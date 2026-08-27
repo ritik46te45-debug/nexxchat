@@ -58,11 +58,10 @@ export const sendFriendRequest = async (req, res) => {
       data: { friendRequestId: friendRequest._id },
     });
 
-    // Emit socket event
+    // Emit socket event directly to recipient room
     const io = req.app.get('io');
-    const targetSocketIds = targetUser.socketIds || [];
-    targetSocketIds.forEach(socketId => {
-      io.to(socketId).emit('friend:request', {
+    if (io) {
+      io.to(userId.toString()).to(`user:${userId.toString()}`).emit('friend:request', {
         request: friendRequest,
         from: {
           _id: req.user._id,
@@ -71,7 +70,7 @@ export const sendFriendRequest = async (req, res) => {
           avatar: req.user.avatar,
         },
       });
-    });
+    }
 
     res.status(201).json({ message: 'Friend request sent', request: friendRequest });
   } catch (error) {
@@ -114,12 +113,11 @@ export const acceptFriendRequest = async (req, res) => {
       body: `${req.user.displayName} accepted your friend request`,
     });
 
-    // Emit socket event
+    // Emit socket event directly to sender room
     const io = req.app.get('io');
-    const fromUser = await User.findById(friendRequest.from);
-    const fromSocketIds = fromUser?.socketIds || [];
-    fromSocketIds.forEach(socketId => {
-      io.to(socketId).emit('friend:accepted', {
+    if (io) {
+      const fromIdStr = friendRequest.from.toString();
+      io.to(fromIdStr).to(`user:${fromIdStr}`).emit('friend:accepted', {
         request: friendRequest,
         user: {
           _id: req.user._id,
@@ -129,7 +127,7 @@ export const acceptFriendRequest = async (req, res) => {
           isOnline: req.user.isOnline,
         },
       });
-    });
+    }
 
     res.json({ message: 'Friend request accepted' });
   } catch (error) {

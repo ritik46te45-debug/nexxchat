@@ -35,8 +35,22 @@ export const setupSocket = (io) => {
     socket.join(userId.toString());
     socket.join(`user:${userId.toString()}`);
 
+    // Automatically join all existing conversations for this user
+    try {
+      const userConversations = await Conversation.find({
+        'participants.user': userId,
+      }).select('_id');
+
+      userConversations.forEach((conv) => {
+        socket.join(conv._id.toString());
+        socket.join(`conv:${conv._id.toString()}`);
+      });
+    } catch (e) {
+      console.warn('Socket auto room join note:', e.message);
+    }
+
     // Join/Leave active conversation rooms
-    socket.on('conversation:join', ({ conversationId }) => {
+    socket.on('conversation:join', async ({ conversationId }) => {
       if (conversationId) {
         socket.join(conversationId.toString());
         socket.join(`conv:${conversationId.toString()}`);
@@ -112,20 +126,67 @@ export const setupSocket = (io) => {
           }
           await message.save();
 
-          // Notify sender
-          const senderSockets = onlineUsers.get(message.sender.toString());
-          if (senderSockets) {
-            senderSockets.forEach(sid => {
-              io.to(sid).emit('message:delivered', {
-                messageId,
-                conversationId,
-                deliveredBy: userId,
-              });
+          const senderIdStr = message.sender.toString();
+          io.to(senderIdStr).to(`user:${senderIdStr}`).emit('message:delivered', {
+            messageId,
+            conversationId,
+            deliveredBy: userId,
+          });
+
+          if (conversationId) {
+            io.to(conversationId.toString()).to(`conv:${conversationId.toString()}`).emit('message:delivered', {
+              messageId,
+              conversationId,
+              deliveredBy: userId,
             });
           }
         }
       } catch (error) {
         console.error('Message delivered error:', error);
+      }
+    });
+
+    // ====== MESSAGE READ ======
+    socket.on('message:read', async ({ conversationId }) => {
+      try {
+        if (!conversationId) return;
+        const conversation = await Conversation.findOne({
+          _id: conversationId,
+          'participants.user': userId,
+        });
+        if (!conversation) return;
+
+        // Reset unread count for reader
+        const pIdx = conversation.participants.findIndex(
+          p => p.user.toString() === userId
+        );
+        if (pIdx !== -1) {
+          conversation.participants[pIdx].unreadCount = 0;
+          conversation.participants[pIdx].lastReadAt = new Date();
+          await conversation.save();
+        }
+
+        // Mark messages as read in DB
+        await Message.updateMany(
+          {
+            conversation: conversationId,
+            sender: { $ne: userId },
+            status: { $ne: 'read' },
+          },
+          {
+            $set: { status: 'read' },
+            $addToSet: { readBy: { user: userId, readAt: new Date() } },
+          }
+        );
+
+        // Broadcast to conversation & sender rooms
+        io.to(conversationId.toString()).to(`conv:${conversationId.toString()}`).emit('message:read', {
+          conversationId,
+          readBy: userId,
+          readAt: new Date(),
+        });
+      } catch (err) {
+        console.error('Socket message:read error:', err);
       }
     });
 

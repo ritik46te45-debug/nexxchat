@@ -289,18 +289,24 @@ export const editMessage = async (req, res) => {
     const populatedMessage = await Message.findById(messageId)
       .populate('sender', 'username displayName avatar');
 
-    // Notify via Socket.IO
+    // Notify via Socket.IO directly to room and participants
     const io = req.app.get('io');
-    const conversation = await Conversation.findById(message.conversation);
-    conversation.participants.forEach(async (p) => {
-      const user = await User.findById(p.user);
-      (user?.socketIds || []).forEach(socketId => {
-        io.to(socketId).emit('message:edited', {
-          message: populatedMessage,
-          conversationId: message.conversation,
-        });
+    if (io) {
+      io.to(message.conversation.toString()).to(`conv:${message.conversation.toString()}`).emit('message:edited', {
+        message: populatedMessage,
+        conversationId: message.conversation,
       });
-    });
+
+      conversation.participants.forEach((p) => {
+        const pUserId = (p.user?._id || p.user)?.toString();
+        if (pUserId) {
+          io.to(pUserId).to(`user:${pUserId}`).emit('message:edited', {
+            message: populatedMessage,
+            conversationId: message.conversation,
+          });
+        }
+      });
+    }
 
     res.json({ message: populatedMessage });
   } catch (error) {
@@ -332,19 +338,26 @@ export const deleteMessage = async (req, res) => {
       message.attachments = [];
       await message.save();
 
-      // Notify via Socket.IO
+      // Notify via Socket.IO directly to room and participants
       const io = req.app.get('io');
-      const conversation = await Conversation.findById(message.conversation);
-      conversation.participants.forEach(async (p) => {
-        const user = await User.findById(p.user);
-        (user?.socketIds || []).forEach(socketId => {
-          io.to(socketId).emit('message:deleted', {
-            messageId,
-            conversationId: message.conversation,
-            forEveryone: true,
-          });
+      if (io) {
+        io.to(message.conversation.toString()).to(`conv:${message.conversation.toString()}`).emit('message:deleted', {
+          messageId,
+          conversationId: message.conversation,
+          forEveryone: true,
         });
-      });
+
+        conversation.participants.forEach((p) => {
+          const pUserId = (p.user?._id || p.user)?.toString();
+          if (pUserId) {
+            io.to(pUserId).to(`user:${pUserId}`).emit('message:deleted', {
+              messageId,
+              conversationId: message.conversation,
+              forEveryone: true,
+            });
+          }
+        });
+      }
     } else {
       // Delete for me
       message.deletedFor.push(req.userId);
@@ -384,21 +397,30 @@ export const reactToMessage = async (req, res) => {
     const populatedMessage = await Message.findById(messageId)
       .populate('reactions.user', 'username displayName');
 
-    // Notify via Socket.IO
+    // Notify via Socket.IO directly to room and participants
     const io = req.app.get('io');
-    const conversation = await Conversation.findById(message.conversation);
-    conversation.participants.forEach(async (p) => {
-      const user = await User.findById(p.user);
-      (user?.socketIds || []).forEach(socketId => {
-        io.to(socketId).emit('message:reaction', {
-          messageId,
-          conversationId: message.conversation,
-          reactions: populatedMessage.reactions,
-          user: { _id: req.userId, displayName: req.user.displayName },
-          emoji,
-        });
+    if (io) {
+      io.to(message.conversation.toString()).to(`conv:${message.conversation.toString()}`).emit('message:reaction', {
+        messageId,
+        conversationId: message.conversation,
+        reactions: populatedMessage.reactions,
+        user: { _id: req.userId, displayName: req.user.displayName },
+        emoji,
       });
-    });
+
+      conversation.participants.forEach((p) => {
+        const pUserId = (p.user?._id || p.user)?.toString();
+        if (pUserId) {
+          io.to(pUserId).to(`user:${pUserId}`).emit('message:reaction', {
+            messageId,
+            conversationId: message.conversation,
+            reactions: populatedMessage.reactions,
+            user: { _id: req.userId, displayName: req.user.displayName },
+            emoji,
+          });
+        }
+      });
+    }
 
     res.json({ reactions: populatedMessage.reactions });
   } catch (error) {
@@ -496,19 +518,24 @@ export const forwardMessage = async (req, res) => {
 
       forwarded.push(populated);
 
-      // Emit to participants
+      // Emit to conversation and user rooms
       const io = req.app.get('io');
-      conversation.participants.forEach(async (p) => {
-        if (p.user.toString() !== req.userId.toString()) {
-          const user = await User.findById(p.user);
-          (user?.socketIds || []).forEach(socketId => {
-            io.to(socketId).emit('message:new', {
+      if (io) {
+        io.to(convId.toString()).to(`conv:${convId.toString()}`).emit('message:new', {
+          message: populated,
+          conversationId: convId,
+        });
+
+        conversation.participants.forEach((p) => {
+          const pUserId = (p.user?._id || p.user)?.toString();
+          if (pUserId) {
+            io.to(pUserId).to(`user:${pUserId}`).emit('message:new', {
               message: populated,
               conversationId: convId,
             });
-          });
-        }
-      });
+          }
+        });
+      }
     }
 
     res.json({ messages: forwarded });
@@ -595,13 +622,18 @@ export const markAsRead = async (req, res) => {
       await msg.save();
     }
 
-    // Notify senders that messages were read
+    // Notify senders that messages were read directly via room emissions
     const io = req.app.get('io');
-    const senderIds = [...new Set(unreadMessages.map(m => m.sender.toString()))];
-    for (const senderId of senderIds) {
-      const sender = await User.findById(senderId);
-      (sender?.socketIds || []).forEach(socketId => {
-        io.to(socketId).emit('message:read', {
+    if (io) {
+      io.to(conversationId.toString()).to(`conv:${conversationId.toString()}`).emit('message:read', {
+        conversationId,
+        readBy: req.userId,
+        readAt: new Date(),
+      });
+
+      const senderIds = [...new Set(unreadMessages.map(m => m.sender.toString()))];
+      senderIds.forEach((sId) => {
+        io.to(sId).to(`user:${sId}`).emit('message:read', {
           conversationId,
           readBy: req.userId,
           readAt: new Date(),
@@ -748,19 +780,26 @@ export const votePoll = async (req, res) => {
 
     await message.save();
 
-    // Emit update
+    // Emit update directly to room and participants
     const io = req.app.get('io');
-    const conversation = await Conversation.findById(message.conversation);
-    conversation.participants.forEach(async (p) => {
-      const user = await User.findById(p.user);
-      (user?.socketIds || []).forEach(socketId => {
-        io.to(socketId).emit('poll:updated', {
-          messageId,
-          conversationId: message.conversation,
-          poll: message.poll,
-        });
+    if (io) {
+      io.to(message.conversation.toString()).to(`conv:${message.conversation.toString()}`).emit('poll:updated', {
+        messageId,
+        conversationId: message.conversation,
+        poll: message.poll,
       });
-    });
+
+      conversation.participants.forEach((p) => {
+        const pUserId = (p.user?._id || p.user)?.toString();
+        if (pUserId) {
+          io.to(pUserId).to(`user:${pUserId}`).emit('poll:updated', {
+            messageId,
+            conversationId: message.conversation,
+            poll: message.poll,
+          });
+        }
+      });
+    }
 
     res.json({ poll: message.poll });
   } catch (error) {

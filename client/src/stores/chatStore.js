@@ -301,15 +301,20 @@ const useChatStore = create((set, get) => ({
     const msgConvId = (conversationId || message?.conversation?._id || message?.conversation)?.toString();
 
     if (activeConvId && msgConvId && activeConvId === msgConvId) {
-      // Check for duplicates
-      const exists = state.messages.some(m =>
-        (m._id && message._id && m._id.toString() === message._id.toString()) ||
-        (m.clientId && message.clientId && m.clientId === message.clientId)
+      const msgs = [...state.messages];
+      const matchIdx = msgs.findIndex(m =>
+        (m.clientId && message.clientId && m.clientId === message.clientId) ||
+        (m._id && message._id && m._id.toString() === message._id.toString())
       );
-      if (!exists) {
-        set({ messages: [...state.messages, message] });
+
+      if (matchIdx !== -1) {
+        msgs[matchIdx] = message;
+      } else {
+        msgs.push(message);
       }
-      // Auto mark as read
+      set({ messages: msgs });
+
+      // Auto mark as read if currently in active chat
       state.markAsRead(msgConvId);
     }
     state.updateConversationInList(msgConvId, message);
