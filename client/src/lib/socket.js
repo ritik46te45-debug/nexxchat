@@ -7,8 +7,13 @@ const getSocketURL = () => {
   if (envUrl) {
     return envUrl.replace(/\/api\/?$/, '').replace(/\/+$/, '');
   }
-  if (typeof window !== 'undefined' && window.location.hostname.includes('vercel.app')) {
-    return 'https://nexxchat-5d29.onrender.com';
+  if (typeof window !== 'undefined') {
+    if (window.location.hostname.includes('vercel.app')) {
+      return 'https://nexxchat-5d29.onrender.com';
+    }
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      return `http://${window.location.hostname}:5000`;
+    }
   }
   return window.location.origin;
 };

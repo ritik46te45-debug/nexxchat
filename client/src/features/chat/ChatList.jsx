@@ -31,8 +31,9 @@ export default function ChatList({ onOpenProfile }) {
     convs.sort((a, b) => {
       const aPinned = a._participant?.isPinned ? 1 : 0;
       const bPinned = b._participant?.isPinned ? 1 : 0;
-      if (aPinned !== bPinned) return bPinned - aPinned;
-      return new Date(b.lastMessageAt) - new Date(a.lastMessageAt);
+      const timeA = new Date(a.lastMessageAt || a.updatedAt || 0).getTime();
+      const timeB = new Date(b.lastMessageAt || b.updatedAt || 0).getTime();
+      return timeB - timeA;
     });
 
     return convs;
