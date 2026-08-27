@@ -176,16 +176,16 @@ export default function MessageBubble({
   // Check if content is purely 1-3 emojis
   const isOnlyEmoji = message.type === 'text' && message.content && /^(\p{Emoji_Presentation}|\p{Extended_Pictographic}){1,3}$/u.test(message.content.trim());
 
-  // Delivery status icon
+  // Delivery status icon (Vivid WhatsApp Blue for Read ticks)
   const StatusIcon = () => {
     if (!isOwn) return null;
     switch (message.status) {
-      case 'sending': return <Clock className="w-3 h-3 text-surface-500 animate-spin" />;
-      case 'sent': return <Check className="w-3 h-3 text-surface-500" />;
-      case 'delivered': return <CheckCheck className="w-3 h-3 text-surface-400" />;
-      case 'read': return <CheckCheck className="w-3 h-3 text-primary-400" />;
-      case 'failed': return <AlertCircle className="w-3 h-3 text-accent-red" />;
-      default: return <Check className="w-3 h-3 text-surface-500" />;
+      case 'sending': return <Clock className="w-3.5 h-3.5 text-surface-400 animate-spin" />;
+      case 'sent': return <Check className="w-3.5 h-3.5 text-surface-400" />;
+      case 'delivered': return <CheckCheck className="w-3.5 h-3.5 text-surface-300" />;
+      case 'read': return <CheckCheck className="w-3.5 h-3.5 text-[#38bdf8] drop-shadow-[0_0_6px_rgba(56,189,248,0.6)] font-bold" />;
+      case 'failed': return <AlertCircle className="w-3.5 h-3.5 text-accent-red" />;
+      default: return <Check className="w-3.5 h-3.5 text-surface-400" />;
     }
   };
 

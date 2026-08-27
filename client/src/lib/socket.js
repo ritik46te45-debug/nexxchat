@@ -14,10 +14,20 @@ const getSocketURL = () => {
 };
 
 export const connectSocket = (token) => {
-  if (socket?.connected) return socket;
+  const authToken = token || (typeof localStorage !== 'undefined' ? localStorage.getItem('accessToken') : null);
+
+  if (socket) {
+    if (authToken && socket.auth?.token !== authToken) {
+      socket.auth = { token: authToken };
+      if (!socket.connected) {
+        socket.connect();
+      }
+    }
+    return socket;
+  }
 
   socket = io(getSocketURL(), {
-    auth: { token },
+    auth: { token: authToken },
     reconnection: true,
     reconnectionAttempts: Infinity,
     reconnectionDelay: 1000,
@@ -53,11 +63,9 @@ export const disconnectSocket = () => {
 };
 
 export const getSocket = () => {
-  if (!socket || !socket.connected) {
-    const token = localStorage.getItem('accessToken');
-    if (token) {
-      return connectSocket(token);
-    }
+  if (!socket) {
+    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('accessToken') : null;
+    return connectSocket(token);
   }
   return socket;
 };

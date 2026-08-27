@@ -72,167 +72,168 @@ function App() {
   // Setup socket listeners when authenticated
   useEffect(() => {
     if (!isAuthenticated) return;
-
-    // Fetch conversations
     fetchConversations();
 
-    let cleanupFn = null;
+    const socket = getSocket();
+    if (!socket) return;
 
-    // Setup socket listeners with a small delay to ensure connection
-    const setupListeners = () => {
-      const socket = getSocket();
-      if (!socket) return;
+    // Messages
+    const handleNewMessage = ({ message, conversationId }) => {
+      addMessage(message, conversationId);
 
-      // Messages
-      socket.on('message:new', ({ message, conversationId }) => {
-        addMessage(message, conversationId);
+      const currentUserId = (useAuthStore.getState().user?._id || useAuthStore.getState().user)?.toString();
+      const senderId = (message.sender?._id || message.sender)?.toString();
 
-        const currentUserId = (useAuthStore.getState().user?._id || useAuthStore.getState().user)?.toString();
-        const senderId = (message.sender?._id || message.sender)?.toString();
+      if (senderId && currentUserId && senderId !== currentUserId) {
+        const userState = useAuthStore.getState().user;
+        const notifSettings = userState?.notificationSettings || {};
 
-        if (senderId && currentUserId && senderId !== currentUserId) {
-          const userState = useAuthStore.getState().user;
-          const notifSettings = userState?.notificationSettings || {};
-
-          // Cross-platform Web Audio chime (Windows & Mobile)
-          if (notifSettings.sound !== false) {
-            playIncomingMessageSound();
-          }
-
-          // Native Windows / Android / iOS system notification
-          const activeConv = useChatStore.getState().activeConversation;
-          const isCurrentActiveChat = activeConv?._id?.toString() === conversationId?.toString();
-
-          if (notifSettings.messages !== false && (!isCurrentActiveChat || (typeof document !== 'undefined' && document.hidden))) {
-            const senderName = message.sender?.displayName || message.sender?.username || 'NexChat User';
-            const previewText = notifSettings.showPreview !== false
-              ? (message.content || (message.type ? `Sent a ${message.type}` : 'Sent an attachment'))
-              : 'New message';
-
-            showSystemNotification({
-              title: senderName,
-              body: previewText,
-              icon: message.sender?.avatar?.url,
-              data: { conversationId },
-              onClick: () => {
-                const convs = useChatStore.getState().conversations;
-                const targetConv = convs.find(c => c._id?.toString() === conversationId?.toString());
-                if (targetConv) {
-                  useChatStore.getState().setActiveConversation(targetConv);
-                }
-              },
-            });
-          }
+        // Cross-platform Web Audio chime (Windows & Mobile)
+        if (notifSettings.sound !== false) {
+          playIncomingMessageSound();
         }
-      });
 
-      socket.on('message:edited', ({ message }) => {
-        updateMessageInList(message._id, message);
-      });
+        // Native Windows / Android / iOS system notification
+        const activeConv = useChatStore.getState().activeConversation;
+        const isCurrentActiveChat = activeConv?._id?.toString() === conversationId?.toString();
 
-      socket.on('message:deleted', ({ messageId, forEveryone }) => {
-        if (forEveryone) {
-          updateMessageInList(messageId, { isDeletedForEveryone: true, content: '' });
+        if (notifSettings.messages !== false && (!isCurrentActiveChat || (typeof document !== 'undefined' && document.hidden))) {
+          const senderName = message.sender?.displayName || message.sender?.username || 'NexChat User';
+          const previewText = notifSettings.showPreview !== false
+            ? (message.content || (message.type ? `Sent a ${message.type}` : 'Sent an attachment'))
+            : 'New message';
+
+          showSystemNotification({
+            title: senderName,
+            body: previewText,
+            icon: message.sender?.avatar?.url,
+            data: { conversationId },
+            onClick: () => {
+              const convs = useChatStore.getState().conversations;
+              const targetConv = convs.find(c => c._id?.toString() === conversationId?.toString());
+              if (targetConv) {
+                useChatStore.getState().setActiveConversation(targetConv);
+              }
+            },
+          });
         }
-      });
-
-      socket.on('message:reaction', ({ messageId, reactions }) => {
-        updateMessageInList(messageId, { reactions });
-      });
-
-      socket.on('message:delivered', ({ messageId }) => {
-        updateMessageInList(messageId, { status: 'delivered' });
-      });
-
-      socket.on('message:read', ({ conversationId }) => {
-        const state = useChatStore.getState();
-        if (state.activeConversation?._id === conversationId) {
-          const messages = state.messages.map(m => ({ ...m, status: 'read' }));
-          useChatStore.setState({ messages });
-        }
-      });
-
-      // Typing
-      socket.on('typing:start', ({ conversationId, userId, displayName }) => {
-        setTypingUser(conversationId, userId, displayName);
-      });
-      socket.on('typing:stop', ({ conversationId, userId }) => {
-        clearTypingUser(conversationId, userId);
-      });
-
-      // Recording
-      socket.on('recording:start', ({ conversationId, userId, displayName }) => {
-        setRecordingUser(conversationId, userId, displayName);
-      });
-      socket.on('recording:stop', ({ conversationId, userId }) => {
-        clearRecordingUser(conversationId, userId);
-      });
-
-      // Presence
-      socket.on('user:online', ({ userId }) => setUserOnline(userId));
-      socket.on('user:offline', ({ userId }) => setUserOffline(userId));
-
-      // In-App Notifications
-      socket.on('notification:new', (notif) => {
-        if (!notif) return;
-        const currentUserId = (useAuthStore.getState().user?._id || useAuthStore.getState().user)?.toString();
-        const recipientId = (notif.recipient?._id || notif.recipient)?.toString();
-        if (recipientId && currentUserId && recipientId === currentUserId) {
-          toast((t) => (
-            <div className="flex items-center gap-2.5 text-xs">
-              <span className="text-base">🔔</span>
-              <div>
-                <p className="font-bold text-white">{notif.title || 'Notification'}</p>
-                <p className="text-surface-300 text-[11px] line-clamp-1">{notif.body}</p>
-              </div>
-            </div>
-          ), { duration: 4000 });
-        }
-      });
-
-      // Friend requests
-      socket.on('friend:request', () => {
-        toast('New friend request received! 👥', { icon: '👋' });
-      });
-      socket.on('friend:accepted', () => {
-        toast.success('Friend request accepted! 🎉');
-        fetchConversations();
-      });
-
-      // Connection
-      socket.on('reconnect', () => {
-        setReconnecting(false);
-        fetchConversations();
-      });
-      socket.on('disconnect', () => setReconnecting(true));
-      socket.on('connect', () => setReconnecting(false));
-
-      // Store cleanup
-      cleanupFn = () => {
-        socket.off('message:new');
-        socket.off('message:edited');
-        socket.off('message:deleted');
-        socket.off('message:reaction');
-        socket.off('message:delivered');
-        socket.off('message:read');
-        socket.off('typing:start');
-        socket.off('typing:stop');
-        socket.off('recording:start');
-        socket.off('recording:stop');
-        socket.off('user:online');
-        socket.off('user:offline');
-        socket.off('friend:request');
-        socket.off('friend:accepted');
-        socket.off('reconnect');
-        socket.off('disconnect');
-        socket.off('connect');
-      };
+      }
     };
 
-    const timer = setTimeout(setupListeners, 500);
+    const handleMessageEdited = ({ message }) => {
+      updateMessageInList(message._id, message);
+    };
+
+    const handleMessageDeleted = ({ messageId, forEveryone }) => {
+      if (forEveryone) {
+        updateMessageInList(messageId, { isDeletedForEveryone: true, content: '' });
+      }
+    };
+
+    const handleMessageReaction = ({ messageId, reactions }) => {
+      updateMessageInList(messageId, { reactions });
+    };
+
+    const handleMessageDelivered = ({ messageId }) => {
+      updateMessageInList(messageId, { status: 'delivered' });
+    };
+
+    const handleMessageRead = ({ conversationId }) => {
+      const state = useChatStore.getState();
+      if (state.activeConversation?._id?.toString() === conversationId?.toString()) {
+        const messages = state.messages.map(m => ({ ...m, status: 'read' }));
+        useChatStore.setState({ messages });
+      }
+    };
+
+    const handleTypingStart = ({ conversationId, userId, displayName }) => {
+      setTypingUser(conversationId, userId, displayName);
+    };
+    const handleTypingStop = ({ conversationId, userId }) => {
+      clearTypingUser(conversationId, userId);
+    };
+
+    const handleRecordingStart = ({ conversationId, userId, displayName }) => {
+      setRecordingUser(conversationId, userId, displayName);
+    };
+    const handleRecordingStop = ({ conversationId, userId }) => {
+      clearRecordingUser(conversationId, userId);
+    };
+
+    const handleUserOnline = ({ userId }) => setUserOnline(userId);
+    const handleUserOffline = ({ userId }) => setUserOffline(userId);
+
+    const handleNotificationNew = (notif) => {
+      if (!notif) return;
+      const currentUserId = (useAuthStore.getState().user?._id || useAuthStore.getState().user)?.toString();
+      const recipientId = (notif.recipient?._id || notif.recipient)?.toString();
+      if (recipientId && currentUserId && recipientId === currentUserId) {
+        toast((t) => (
+          <div className="flex items-center gap-2">
+            <span className="text-primary-400 font-bold">🔔 {notif.title || 'New Notification'}</span>
+            <span className="text-surface-300 text-xs truncate max-w-[200px]">{notif.body || notif.message}</span>
+          </div>
+        ), { duration: 4000 });
+      }
+    };
+
+    const handleFriendRequest = () => {
+      toast('New friend request received! 👥', { icon: '👋' });
+    };
+    const handleFriendAccepted = () => {
+      toast.success('Friend request accepted! 🎉');
+      fetchConversations();
+    };
+
+    const handleReconnect = () => {
+      setReconnecting(false);
+      fetchConversations();
+    };
+    const handleDisconnect = () => setReconnecting(true);
+    const handleConnect = () => {
+      setReconnecting(false);
+      fetchConversations();
+    };
+
+    // Attach listeners
+    socket.on('message:new', handleNewMessage);
+    socket.on('message:edited', handleMessageEdited);
+    socket.on('message:deleted', handleMessageDeleted);
+    socket.on('message:reaction', handleMessageReaction);
+    socket.on('message:delivered', handleMessageDelivered);
+    socket.on('message:read', handleMessageRead);
+    socket.on('typing:start', handleTypingStart);
+    socket.on('typing:stop', handleTypingStop);
+    socket.on('recording:start', handleRecordingStart);
+    socket.on('recording:stop', handleRecordingStop);
+    socket.on('user:online', handleUserOnline);
+    socket.on('user:offline', handleUserOffline);
+    socket.on('notification:new', handleNotificationNew);
+    socket.on('friend:request', handleFriendRequest);
+    socket.on('friend:accepted', handleFriendAccepted);
+    socket.on('reconnect', handleReconnect);
+    socket.on('disconnect', handleDisconnect);
+    socket.on('connect', handleConnect);
+
     return () => {
-      clearTimeout(timer);
-      if (cleanupFn) cleanupFn();
+      socket.off('message:new', handleNewMessage);
+      socket.off('message:edited', handleMessageEdited);
+      socket.off('message:deleted', handleMessageDeleted);
+      socket.off('message:reaction', handleMessageReaction);
+      socket.off('message:delivered', handleMessageDelivered);
+      socket.off('message:read', handleMessageRead);
+      socket.off('typing:start', handleTypingStart);
+      socket.off('typing:stop', handleTypingStop);
+      socket.off('recording:start', handleRecordingStart);
+      socket.off('recording:stop', handleRecordingStop);
+      socket.off('user:online', handleUserOnline);
+      socket.off('user:offline', handleUserOffline);
+      socket.off('notification:new', handleNotificationNew);
+      socket.off('friend:request', handleFriendRequest);
+      socket.off('friend:accepted', handleFriendAccepted);
+      socket.off('reconnect', handleReconnect);
+      socket.off('disconnect', handleDisconnect);
+      socket.off('connect', handleConnect);
     };
   }, [isAuthenticated]);
 
