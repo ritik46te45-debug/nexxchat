@@ -62,12 +62,6 @@ export default function ChatWindow({ onStartCall }) {
     if (socket) {
       socket.emit('conversation:join', { conversationId: convId });
     }
-
-    return () => {
-      if (socket) {
-        socket.emit('conversation:leave', { conversationId: convId });
-      }
-    };
   }, [activeConversation?._id]);
 
   useEffect(() => {

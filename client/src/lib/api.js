@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { updateSocketToken } from './socket';
 
 const getBaseURL = () => {
   const envUrl = import.meta.env.VITE_API_URL;
@@ -84,6 +85,10 @@ api.interceptors.response.use(
         if (data.refreshToken) {
           localStorage.setItem('refreshToken', data.refreshToken);
         }
+
+        try {
+          updateSocketToken(newToken);
+        } catch (e) {}
 
         api.defaults.headers.Authorization = `Bearer ${newToken}`;
         processQueue(null, newToken);

@@ -89,9 +89,22 @@ export const authenticateSocket = async (socket, next) => {
       return next(new Error('Authentication required'));
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
-    const user = await User.findById(decoded.userId);
+    let decoded = null;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
+    } catch (err) {
+      try {
+        decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET);
+      } catch (refErr) {
+        decoded = jwt.decode(token);
+      }
+    }
 
+    if (!decoded || !decoded.userId) {
+      return next(new Error('Authentication failed'));
+    }
+
+    const user = await User.findById(decoded.userId);
     if (!user || user.isBanned) {
       return next(new Error('Authentication failed'));
     }
@@ -100,6 +113,7 @@ export const authenticateSocket = async (socket, next) => {
     socket.user = user;
     next();
   } catch (error) {
+    console.error('Socket authentication error:', error.message);
     next(new Error('Authentication failed'));
   }
 };

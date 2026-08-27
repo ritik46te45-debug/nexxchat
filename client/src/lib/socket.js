@@ -2,7 +2,7 @@ import { io } from 'socket.io-client';
 
 let socket = null;
 
-const getSocketURL = () => {
+export const getSocketURL = () => {
   const envUrl = import.meta.env.VITE_API_URL;
   if (envUrl) {
     return envUrl.replace(/\/api\/?$/, '').replace(/\/+$/, '');
@@ -36,28 +36,63 @@ export const connectSocket = (token) => {
     reconnection: true,
     reconnectionAttempts: Infinity,
     reconnectionDelay: 1000,
-    reconnectionDelayMax: 10000,
+    reconnectionDelayMax: 5000,
     timeout: 20000,
     transports: ['websocket', 'polling'],
   });
 
   socket.on('connect', () => {
-    console.log('🔗 Socket connected:', socket.id);
+    console.log('[SOCKET] Connected to real-time server:', socket.id);
   });
 
   socket.on('disconnect', (reason) => {
-    console.log('🔌 Socket disconnected:', reason);
+    console.log('[SOCKET] Disconnected:', reason);
   });
 
-  socket.on('connect_error', (error) => {
-    console.error('❌ Socket connection error:', error.message);
+  socket.on('connect_error', async (error) => {
+    console.error('[SOCKET] Connection error:', error.message);
+    // If token expired, attempt automatic silent refresh using refreshToken
+    if (error.message?.includes('Authentication') || error.message?.includes('jwt') || error.message?.includes('token')) {
+      const storedRefreshToken = typeof localStorage !== 'undefined' ? localStorage.getItem('refreshToken') : null;
+      if (storedRefreshToken) {
+        try {
+          const res = await fetch(`${getSocketURL()}/api/auth/refresh`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refreshToken: storedRefreshToken }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.accessToken) {
+              localStorage.setItem('accessToken', data.accessToken);
+              if (data.refreshToken) {
+                localStorage.setItem('refreshToken', data.refreshToken);
+              }
+              socket.auth = { token: data.accessToken };
+              socket.connect();
+            }
+          }
+        } catch (e) {
+          console.warn('[SOCKET] Auto token refresh failed:', e.message);
+        }
+      }
+    }
   });
 
   socket.on('reconnect', (attempt) => {
-    console.log('🔄 Socket reconnected after', attempt, 'attempts');
+    console.log('[SOCKET] Reconnected after attempt:', attempt);
   });
 
   return socket;
+};
+
+export const updateSocketToken = (newToken) => {
+  if (socket && newToken) {
+    socket.auth = { token: newToken };
+    if (!socket.connected) {
+      socket.connect();
+    }
+  }
 };
 
 export const disconnectSocket = () => {
@@ -75,4 +110,4 @@ export const getSocket = () => {
   return socket;
 };
 
-export default { connectSocket, disconnectSocket, getSocket };
+export default { connectSocket, disconnectSocket, getSocket, updateSocketToken, getSocketURL };
