@@ -185,6 +185,14 @@ const useChatStore = create((set, get) => ({
   toggleStarMessage: async (messageId) => {
     try {
       await api.post(`/messages/${messageId}/star`);
+      set((state) => ({
+        messages: state.messages.map(m => {
+          if (m._id !== messageId) return m;
+          const starredBy = Array.isArray(m.starredBy) ? [...m.starredBy] : [];
+          // toggle optimistic
+          return { ...m, starredBy };
+        })
+      }));
     } catch (error) {
       console.error('Star error:', error);
     }
@@ -197,6 +205,78 @@ const useChatStore = create((set, get) => ({
       console.error('Forward error:', error);
       throw error;
     }
+  },
+
+  votePoll: async (messageId, optionIndex) => {
+    try {
+      const { data } = await api.post(`/messages/${messageId}/poll/vote`, { optionIndex });
+      set((state) => ({
+        messages: state.messages.map(m =>
+          m._id === messageId ? { ...m, poll: data.poll } : m
+        ),
+      }));
+    } catch (error) {
+      console.error('Poll vote error:', error);
+    }
+  },
+
+  // Multi-select & editing states
+  editingMessage: null,
+  setEditingMessage: (message) => set({ editingMessage: message }),
+
+  replyingMessage: null,
+  setReplyingMessage: (message) => set({ replyingMessage: message }),
+
+  selectedMessageIds: [],
+  toggleSelectMessage: (messageId) => {
+    set((state) => {
+      const exists = state.selectedMessageIds.includes(messageId);
+      return {
+        selectedMessageIds: exists
+          ? state.selectedMessageIds.filter(id => id !== messageId)
+          : [...state.selectedMessageIds, messageId],
+      };
+    });
+  },
+  clearSelectedMessages: () => set({ selectedMessageIds: [] }),
+
+  batchDeleteMessages: async (messageIds, forEveryone = false) => {
+    for (const id of messageIds) {
+      try {
+        await api.delete(`/messages/${id}`, { data: { forEveryone } });
+      } catch (e) {}
+    }
+    if (forEveryone) {
+      set((state) => ({
+        messages: state.messages.map(m =>
+          messageIds.includes(m._id) ? { ...m, isDeletedForEveryone: true, content: '' } : m
+        ),
+        selectedMessageIds: [],
+      }));
+    } else {
+      set((state) => ({
+        messages: state.messages.filter(m => !messageIds.includes(m._id)),
+        selectedMessageIds: [],
+      }));
+    }
+  },
+
+  batchStarMessages: async (messageIds) => {
+    for (const id of messageIds) {
+      try {
+        await api.post(`/messages/${id}/star`);
+      } catch (e) {}
+    }
+    set({ selectedMessageIds: [] });
+  },
+
+  batchForwardMessages: async (messageIds, conversationIds) => {
+    for (const id of messageIds) {
+      try {
+        await api.post(`/messages/${id}/forward`, { conversationIds });
+      } catch (e) {}
+    }
+    set({ selectedMessageIds: [] });
   },
 
   markAsRead: async (conversationId) => {
