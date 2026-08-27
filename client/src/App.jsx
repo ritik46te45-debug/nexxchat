@@ -79,6 +79,7 @@ function App() {
 
     // Messages
     const handleNewMessage = ({ message, conversationId }) => {
+      console.log(`[REALTIME] message:new RECEIVED -> Message ID: ${message?._id} | Conv ID: ${conversationId}`);
       addMessage(message, conversationId);
 
       const currentUserId = (useAuthStore.getState().user?._id || useAuthStore.getState().user)?.toString();

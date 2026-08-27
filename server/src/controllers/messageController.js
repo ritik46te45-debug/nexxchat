@@ -107,10 +107,15 @@ export const sendMessage = async (req, res) => {
       });
 
     // Emit socket event to conversation room & participant rooms
+    // Emit socket event to conversation room & participant rooms
     const io = req.app.get('io');
     if (io) {
+      const convRoom = `conv:${conversationId.toString()}`;
+      const convSockets = io.sockets.adapter.rooms.get(convRoom)?.size || 0;
+      console.log(`[REALTIME] EMIT message:new -> Message ID: ${message._id} | Conv: ${convRoom} (active sockets: ${convSockets})`);
+
       // 1. Emit to conversation room
-      io.to(conversationId.toString()).to(`conv:${conversationId.toString()}`).emit('message:new', {
+      io.to(conversationId.toString()).to(convRoom).emit('message:new', {
         message: populatedMessage,
         conversationId,
       });
@@ -119,7 +124,11 @@ export const sendMessage = async (req, res) => {
       conversation.participants.forEach(p => {
         const pUserId = (p.user?._id || p.user)?.toString();
         if (pUserId) {
-          io.to(pUserId).to(`user:${pUserId}`).emit('message:new', {
+          const userRoom = `user:${pUserId}`;
+          const userSockets = io.sockets.adapter.rooms.get(userRoom)?.size || 0;
+          console.log(`[REALTIME] Target ${userRoom} -> Active sockets: ${userSockets}`);
+
+          io.to(pUserId).to(userRoom).emit('message:new', {
             message: populatedMessage,
             conversationId,
           });

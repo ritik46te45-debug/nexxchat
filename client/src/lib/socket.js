@@ -46,11 +46,12 @@ export const connectSocket = (token) => {
   });
 
   socket.on('connect', () => {
-    console.log('[SOCKET] Connected to real-time server:', socket.id);
+    const transport = socket.io?.engine?.transport?.name || 'unknown';
+    console.log(`[REALTIME] SOCKET CONNECTED | ID: ${socket.id} | Transport: ${transport} | URL: ${getSocketURL()}`);
   });
 
   socket.on('disconnect', (reason) => {
-    console.log('[SOCKET] Disconnected:', reason);
+    console.log('[REALTIME] SOCKET DISCONNECTED:', reason);
   });
 
   socket.on('connect_error', async (error) => {

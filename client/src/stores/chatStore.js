@@ -300,6 +300,8 @@ const useChatStore = create((set, get) => ({
     const activeConvId = state.activeConversation?._id?.toString();
     const msgConvId = (conversationId || message?.conversation?._id || message?.conversation)?.toString();
 
+    console.log(`[CHAT STORE] addMessage -> ID: ${message?._id} | MsgConv: ${msgConvId} | ActiveConv: ${activeConvId} | ActiveMatches: ${activeConvId === msgConvId}`);
+
     if (activeConvId && msgConvId && activeConvId === msgConvId) {
       const msgs = [...state.messages];
       const matchIdx = msgs.findIndex(m =>

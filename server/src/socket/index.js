@@ -16,7 +16,8 @@ export const setupSocket = (io) => {
 
   io.on('connection', async (socket) => {
     const userId = socket.userId;
-    console.log(`🔗 Socket connected: ${userId} (${socket.id})`);
+    const transport = socket.conn.transport.name;
+    console.log(`[REALTIME] SOCKET CONNECTED -> User: ${userId} | Socket: ${socket.id} | Transport: ${transport}`);
 
     // Register socket
     if (!onlineUsers.has(userId)) {
@@ -34,6 +35,8 @@ export const setupSocket = (io) => {
     // Join personal user rooms for direct event emissions
     socket.join(userId.toString());
     socket.join(`user:${userId.toString()}`);
+    const userRoomSockets = io.sockets.adapter.rooms.get(`user:${userId.toString()}`)?.size || 0;
+    console.log(`[REALTIME] USER ROOM REGISTERED -> user:${userId} (active sockets: ${userRoomSockets})`);
 
     // Automatically join all existing conversations for this user
     try {
@@ -45,6 +48,7 @@ export const setupSocket = (io) => {
         socket.join(conv._id.toString());
         socket.join(`conv:${conv._id.toString()}`);
       });
+      console.log(`[REALTIME] Auto-joined ${userConversations.length} conversation room(s) for user ${userId}`);
     } catch (e) {
       console.warn('Socket auto room join note:', e.message);
     }
@@ -54,6 +58,8 @@ export const setupSocket = (io) => {
       if (conversationId) {
         socket.join(conversationId.toString());
         socket.join(`conv:${conversationId.toString()}`);
+        const roomSockets = io.sockets.adapter.rooms.get(`conv:${conversationId.toString()}`)?.size || 0;
+        console.log(`[REALTIME] JOIN CONVERSATION -> User: ${userId} | Room: conv:${conversationId} (active sockets: ${roomSockets})`);
       }
     });
 
