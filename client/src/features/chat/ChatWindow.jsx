@@ -23,21 +23,6 @@ import MultiSelectToolbar from './MultiSelectToolbar';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
 
-const WALLPAPER_MAP = {
-  default: 'bg-dark-bg',
-  amoled: 'bg-[#000000]',
-  carbon: 'bg-[#121218]',
-  midnight: 'bg-gradient-to-b from-[#130d24] to-[#0a0614]',
-  ocean: 'bg-gradient-to-b from-[#0a192f] to-[#020c1b]',
-  forest: 'bg-gradient-to-b from-[#06201b] to-[#020e0c]',
-  sunset: 'bg-gradient-to-b from-[#2a1309] to-[#120502]',
-  mountain: 'bg-gradient-to-b from-[#161d28] to-[#0c1017]',
-  aurora: 'bg-gradient-to-b from-[#0a1e24] to-[#030d10]',
-  cyber: 'bg-gradient-to-b from-[#1c0e29] to-[#0a0514]',
-  glass: 'bg-gradient-to-b from-[#1a1429] to-[#0d071a]',
-  retro: 'bg-gradient-to-b from-[#24081c] to-[#0d020a]',
-};
-
 export default function ChatWindow({ onStartCall }) {
   const {
     activeConversation, messages, isLoadingMessages, hasMoreMessages,
@@ -64,30 +49,6 @@ export default function ChatWindow({ onStartCall }) {
   const [reminderMessage, setReminderMessage] = useState(null);
   const [imageViewerData, setImageViewerData] = useState(null); // { images, initialIndex }
   const [pinnedList, setPinnedList] = useState(activeConversation?.pinnedMessages || []);
-
-  const [wallpaperState, setWallpaperState] = useState(() => {
-    const convId = activeConversation?._id;
-    const wpId = (typeof localStorage !== 'undefined' && (localStorage.getItem(`nexchat_wp_${convId}`) || localStorage.getItem('nexchat_global_wp'))) || 'default';
-    const bright = (typeof localStorage !== 'undefined' && (localStorage.getItem(`nexchat_wp_bright_${convId}`) || localStorage.getItem('nexchat_global_wp_bright'))) || 100;
-    const blr = (typeof localStorage !== 'undefined' && (localStorage.getItem(`nexchat_wp_blur_${convId}`) || localStorage.getItem('nexchat_global_wp_blur'))) || 0;
-    const custom = typeof localStorage !== 'undefined' ? localStorage.getItem('nexchat_custom_wp_data') : null;
-    return { wpId, bright: Number(bright), blr: Number(blr), custom };
-  });
-
-  useEffect(() => {
-    const updateWallpaper = () => {
-      const convId = activeConversation?._id;
-      const wpId = (typeof localStorage !== 'undefined' && (localStorage.getItem(`nexchat_wp_${convId}`) || localStorage.getItem('nexchat_global_wp'))) || 'default';
-      const bright = (typeof localStorage !== 'undefined' && (localStorage.getItem(`nexchat_wp_bright_${convId}`) || localStorage.getItem('nexchat_global_wp_bright'))) || 100;
-      const blr = (typeof localStorage !== 'undefined' && (localStorage.getItem(`nexchat_wp_blur_${convId}`) || localStorage.getItem('nexchat_global_wp_blur'))) || 0;
-      const custom = typeof localStorage !== 'undefined' ? localStorage.getItem('nexchat_custom_wp_data') : null;
-      setWallpaperState({ wpId, bright: Number(bright), blr: Number(blr), custom });
-    };
-
-    updateWallpaper();
-    window.addEventListener('nexchat_wallpaper_changed', updateWallpaper);
-    return () => window.removeEventListener('nexchat_wallpaper_changed', updateWallpaper);
-  }, [activeConversation?._id]);
 
   const myId = (user?._id || user)?.toString();
 
@@ -432,21 +393,8 @@ export default function ChatWindow({ onStartCall }) {
         <div
           ref={messagesContainerRef}
           onScroll={handleScroll}
-          className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-1 hide-scrollbar relative z-0"
+          className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-1 hide-scrollbar bg-dark-bg relative"
         >
-          {/* Active Dynamic Wallpaper Background Layer */}
-          <div
-            className={`absolute inset-0 -z-10 pointer-events-none transition-all duration-300 ${
-              wallpaperState?.wpId === 'custom' ? '' : (WALLPAPER_MAP[wallpaperState?.wpId || 'default'] || 'bg-[#0a0a1a]')
-            }`}
-            style={{
-              backgroundImage: wallpaperState?.wpId === 'custom' && wallpaperState?.custom ? `url(${wallpaperState.custom})` : undefined,
-              backgroundSize: 'cover',
-              backgroundPosition: 'center',
-              filter: `brightness(${wallpaperState?.bright || 100}%) blur(${wallpaperState?.blr || 0}px)`,
-              opacity: 0.95,
-            }}
-          />
 
           {/* Top Loading Spinner for Infinite History Scroll */}
           {isLoadingMessages && (

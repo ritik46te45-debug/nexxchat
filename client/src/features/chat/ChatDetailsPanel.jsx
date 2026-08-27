@@ -281,27 +281,7 @@ export default function ChatDetailsPanel({
           </div>
         </div>
 
-        {/* Chat Wallpaper / Theme */}
-        <div className="p-3.5 rounded-2xl bg-dark-input/40 border border-dark-border space-y-2.5">
-          <div className="flex items-center gap-2">
-            <Palette className="w-4 h-4 text-primary-400" />
-            <h4 className="font-bold text-white uppercase tracking-wider text-[11px]">Chat Wallpaper</h4>
-          </div>
-          <div className="grid grid-cols-5 gap-1.5">
-            {WALLPAPERS.map((wp) => (
-              <button
-                key={wp.id}
-                onClick={() => handleSelectWallpaper(wp.id)}
-                className={`h-10 rounded-xl border-2 transition-all ${wp.bg} flex items-center justify-center ${
-                  activeWallpaper === wp.id ? 'border-primary-500 scale-105 shadow-md' : 'border-dark-border hover:border-surface-400'
-                }`}
-                title={wp.name}
-              >
-                {activeWallpaper === wp.id && <Check className="w-4 h-4 text-white" />}
-              </button>
-            ))}
-          </div>
-        </div>
+
 
         {/* Export Chat */}
         <div className="p-3.5 rounded-2xl bg-dark-input/40 border border-dark-border space-y-2.5">

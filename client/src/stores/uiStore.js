@@ -17,7 +17,6 @@ const useUIStore = create((set) => ({
   // Global Modals & Overlays
   showGlobalSearch: false,
   showCommandPalette: false,
-  showWallpaperModal: false,
   activeModal: null,
   modalData: null,
 
@@ -31,8 +30,8 @@ const useUIStore = create((set) => ({
   isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
   isReconnecting: false,
 
-  // Theme & Appearance
-  theme: typeof localStorage !== 'undefined' ? (localStorage.getItem('nexchat_theme') || 'dark') : 'dark',
+  // Theme & Appearance (Default Permanent Dark Mode)
+  theme: 'dark',
   chatFontSize: typeof localStorage !== 'undefined' ? (localStorage.getItem('nexchat_font_size') || 'normal') : 'normal',
   bubbleStyle: typeof localStorage !== 'undefined' ? (localStorage.getItem('nexchat_bubble_style') || 'rounded') : 'rounded',
 
@@ -54,7 +53,6 @@ const useUIStore = create((set) => ({
 
   setShowGlobalSearch: (show) => set({ showGlobalSearch: show }),
   setShowCommandPalette: (show) => set({ showCommandPalette: show }),
-  setShowWallpaperModal: (show) => set({ showWallpaperModal: show }),
 
   toggleRightPanel: (view) => set((s) => ({
     isRightPanelOpen: view ? true : !s.isRightPanelOpen,
@@ -70,13 +68,6 @@ const useUIStore = create((set) => ({
 
   setOnline: (isOnline) => set({ isOnline }),
   setReconnecting: (isReconnecting) => set({ isReconnecting }),
-
-  setTheme: (theme) => {
-    localStorage.setItem('nexchat_theme', theme);
-    document.documentElement.setAttribute('data-theme', theme);
-    document.documentElement.classList.add('dark');
-    set({ theme });
-  },
 
   setChatFontSize: (fontSize) => {
     localStorage.setItem('nexchat_font_size', fontSize);
@@ -109,11 +100,14 @@ if (typeof window !== 'undefined') {
   window.addEventListener('offline', () => useUIStore.getState().setOnline(false));
 }
 
-// Initial theme setup on script load
+// Ensure permanent dark mode on load
 if (typeof document !== 'undefined') {
-  const initialTheme = localStorage.getItem('nexchat_theme') || 'dark';
-  document.documentElement.setAttribute('data-theme', initialTheme);
   document.documentElement.classList.add('dark');
+  document.documentElement.setAttribute('data-theme', 'dark');
+  try {
+    localStorage.removeItem('nexchat_theme');
+    localStorage.removeItem('nexchat_global_wp');
+  } catch (e) {}
 }
 
 export default useUIStore;

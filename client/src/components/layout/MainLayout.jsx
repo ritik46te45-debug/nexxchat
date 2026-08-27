@@ -19,7 +19,6 @@ import CallOverlay from '../../features/calls/CallOverlay';
 import AppLockOverlay from '../../features/auth/AppLockOverlay';
 import GlobalSearchModal from '../../features/search/GlobalSearchModal';
 import CommandPalette from '../../features/command/CommandPalette';
-import WallpaperModal from '../../features/chat/WallpaperModal';
 import NewChatModal from '../../features/chat/NewChatModal';
 import NewGroupModal from '../../features/groups/NewGroupModal';
 
@@ -28,8 +27,7 @@ export default function MainLayout() {
     isMobile, showChatOnMobile, sidebarView, setSidebarView,
     isOnline, isReconnecting,
     showGlobalSearch, setShowGlobalSearch,
-    showCommandPalette, setShowCommandPalette,
-    showWallpaperModal, setShowWallpaperModal
+    showCommandPalette, setShowCommandPalette
   } = useUIStore();
   const activeConversation = useChatStore((s) => s.activeConversation);
 
@@ -251,13 +249,7 @@ export default function MainLayout() {
         />
       )}
 
-      {/* Wallpaper & Chat Style Customizer Modal */}
-      {showWallpaperModal && (
-        <WallpaperModal
-          onClose={() => setShowWallpaperModal(false)}
-          conversationId={activeConversation?._id}
-        />
-      )}
+
 
       {/* New DM Modal */}
       {showNewChat && (

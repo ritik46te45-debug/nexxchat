@@ -294,23 +294,6 @@ export default function SettingsTab({ onOpenProfile }) {
 
             {/* Settings links */}
             <div className="space-y-2">
-              {(!searchQuery || 'chat wallpaper appearance theme background'.includes(searchQuery.toLowerCase())) && (
-                <button
-                  onClick={() => setShowWallpaperModal(true)}
-                  className="w-full flex items-center justify-between p-3.5 rounded-xl bg-dark-card hover:bg-dark-hover border border-dark-border transition-all cursor-pointer"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-pink-500/20 text-pink-400 flex items-center justify-center">
-                      <Palette className="w-4 h-4" />
-                    </div>
-                    <div className="text-left">
-                      <p className="text-sm font-semibold text-white">Chat Wallpaper & Appearance</p>
-                      <p className="text-xs text-surface-500">AMOLED, nature backgrounds, bubble styles & font</p>
-                    </div>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-surface-500" />
-                </button>
-              )}
 
               {(!searchQuery || 'privacy lock passcode pin biometrics'.includes(searchQuery.toLowerCase())) && (
                 <button
@@ -402,50 +385,6 @@ export default function SettingsTab({ onOpenProfile }) {
                 </button>
               )}
 
-              {(!searchQuery || 'theme dark midnight amoled cyber emerald mode'.includes(searchQuery.toLowerCase())) && (
-                <div className="p-3.5 rounded-2xl bg-dark-card border border-dark-border space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-lg bg-yellow-500/20 text-yellow-400 flex items-center justify-center">
-                        <Moon className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-white">App Color Theme</p>
-                        <p className="text-xs text-surface-500">Choose from 5 premium color themes</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
-                    {[
-                      { id: 'dark', name: 'NexChat Dark', color: 'from-[#0a0a1a] to-[#111128]', border: 'border-primary-500' },
-                      { id: 'light', name: 'Light Mode', color: 'from-[#e2e8f0] to-[#f8fafc]', border: 'border-blue-400' },
-                      { id: 'midnight', name: 'Midnight Violet', color: 'from-[#0d061e] to-[#160c33]', border: 'border-purple-500' },
-                      { id: 'amoled', name: 'AMOLED Black', color: 'from-[#000000] to-[#0a0a0a]', border: 'border-neutral-700' },
-                      { id: 'cyber', name: 'Cyberpunk Neon', color: 'from-[#080314] to-[#13072b]', border: 'border-cyan-500' },
-                      { id: 'emerald', name: 'Emerald Matrix', color: 'from-[#03120e] to-[#08211b]', border: 'border-emerald-500' },
-                    ].map((t) => (
-                      <button
-                        key={t.id}
-                        onClick={() => {
-                          setTheme(t.id);
-                          toast.success(`Applied ${t.name} theme!`);
-                        }}
-                        className={`p-2.5 rounded-xl border bg-gradient-to-b ${t.color} text-left transition-all cursor-pointer ${
-                          theme === t.id
-                            ? 'border-primary-500 ring-2 ring-primary-500/40 scale-105 shadow-md text-white'
-                            : 'border-dark-border text-surface-400 hover:text-white'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-[11px] font-bold">{t.name}</span>
-                          {theme === t.id && <Check className="w-3.5 h-3.5 text-primary-400" />}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* Logout button */}

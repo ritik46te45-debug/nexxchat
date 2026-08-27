@@ -18,8 +18,7 @@ export default function CommandPalette({
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   const {
-    setSidebarView, setShowGlobalSearch, setShowWallpaperModal,
-    theme, setTheme
+    setSidebarView, setShowGlobalSearch
   } = useUIStore();
 
   const commands = useMemo(() => [
@@ -56,31 +55,7 @@ export default function CommandPalette({
         onClose();
       },
     },
-    {
-      id: 'wallpaper',
-      title: 'Change Chat Wallpaper & Theme',
-      subtitle: 'Customize chat background and bubble styles',
-      icon: Palette,
-      category: 'Appearance',
-      action: () => {
-        setShowWallpaperModal(true);
-        onClose();
-      },
-    },
-    {
-      id: 'toggle_theme',
-      title: `Switch Theme (Current: ${theme})`,
-      subtitle: 'Cycle Dark, Midnight, AMOLED, Cyber',
-      icon: Moon,
-      category: 'Appearance',
-      action: () => {
-        const themes = ['dark', 'midnight', 'amoled', 'cyber'];
-        const nextTheme = themes[(themes.indexOf(theme) + 1) % themes.length];
-        setTheme(nextTheme);
-        toast.success(`Theme switched to ${nextTheme}`);
-        onClose();
-      },
-    },
+
     {
       id: 'profile',
       title: 'Open Profile & DP Customizer',
@@ -114,7 +89,7 @@ export default function CommandPalette({
         onClose();
       },
     },
-  ], [onOpenNewChat, onOpenNewGroup, onOpenProfile, onClose, setShowGlobalSearch, setShowWallpaperModal, setSidebarView, setTheme, theme]);
+  ], [onOpenNewChat, onOpenNewGroup, onOpenProfile, onClose, setShowGlobalSearch, setSidebarView]);
 
   const filteredCommands = useMemo(() => {
     if (!query.trim()) return commands;
