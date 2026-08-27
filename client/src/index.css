@@ -2,52 +2,46 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ====== 5 THEMES DEFINITIONS ====== */
+/* ====== 5 THEMES DEFINITIONS (RGB for Tailwind Alpha / Opacity Support) ====== */
 :root, [data-theme="dark"] {
-  --theme-bg: #0a0a1a;
-  --theme-card: #111128;
-  --theme-hover: #1a1a3e;
-  --theme-border: #1e1e4a;
-  --theme-input: #151530;
+  --theme-bg: 10, 10, 26;
+  --theme-card: 17, 17, 40;
+  --theme-hover: 26, 26, 62;
+  --theme-border: 30, 30, 74;
+  --theme-input: 21, 21, 48;
 }
 
 [data-theme="midnight"] {
-  --theme-bg: #0d061e;
-  --theme-card: #160c33;
-  --theme-hover: #22144d;
-  --theme-border: #2c1a63;
-  --theme-input: #1a0f3d;
+  --theme-bg: 13, 6, 30;
+  --theme-card: 22, 12, 51;
+  --theme-hover: 34, 20, 77;
+  --theme-border: 44, 26, 99;
+  --theme-input: 26, 15, 61;
 }
 
 [data-theme="amoled"] {
-  --theme-bg: #000000;
-  --theme-card: #0a0a0a;
-  --theme-hover: #171717;
-  --theme-border: #262626;
-  --theme-input: #121212;
+  --theme-bg: 0, 0, 0;
+  --theme-card: 10, 10, 10;
+  --theme-hover: 23, 23, 23;
+  --theme-border: 38, 38, 38;
+  --theme-input: 18, 18, 18;
 }
 
 [data-theme="cyber"] {
-  --theme-bg: #080314;
-  --theme-card: #13072b;
-  --theme-hover: #210c4a;
-  --theme-border: #351375;
-  --theme-input: #180938;
+  --theme-bg: 8, 3, 20;
+  --theme-card: 19, 7, 43;
+  --theme-hover: 33, 12, 74;
+  --theme-border: 53, 19, 117;
+  --theme-input: 24, 9, 56;
 }
 
 [data-theme="emerald"] {
-  --theme-bg: #03120e;
-  --theme-card: #08211b;
-  --theme-hover: #0e332a;
-  --theme-border: #15473b;
-  --theme-input: #0a2921;
+  --theme-bg: 3, 18, 14;
+  --theme-card: 8, 33, 27;
+  --theme-hover: 14, 51, 42;
+  --theme-border: 21, 71, 59;
+  --theme-input: 10, 41, 33;
 }
-
-.bg-dark-bg { background-color: var(--theme-bg) !important; }
-.bg-dark-card { background-color: var(--theme-card) !important; }
-.hover\:bg-dark-hover:hover { background-color: var(--theme-hover) !important; }
-.border-dark-border { border-color: var(--theme-border) !important; }
-.bg-dark-input { background-color: var(--theme-input) !important; }
 
 /* ====== BASE STYLES ====== */
 @layer base {
@@ -64,7 +58,8 @@
 
   body {
     min-height: 100dvh;
-    background: var(--theme-bg);
+    background-color: rgb(var(--theme-bg));
+    color: #f8fafc;
     overflow-x: hidden;
   }
 
@@ -107,7 +102,7 @@
   input:-webkit-autofill:hover,
   input:-webkit-autofill:focus {
     -webkit-text-fill-color: #e2e8f0;
-    -webkit-box-shadow: 0 0 0px 1000px #151530 inset;
+    -webkit-box-shadow: 0 0 0px 1000px rgb(var(--theme-input)) inset;
     transition: background-color 5000s ease-in-out 0s;
   }
 }
@@ -125,7 +120,7 @@
   }
 
   .gradient-dark {
-    background: linear-gradient(180deg, #0a0a1a 0%, #111128 50%, #0a0a1a 100%);
+    background: linear-gradient(180deg, rgb(var(--theme-bg)) 0%, rgb(var(--theme-card)) 50%, rgb(var(--theme-bg)) 100%);
   }
 
   .gradient-glow {

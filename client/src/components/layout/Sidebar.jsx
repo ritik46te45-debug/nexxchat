@@ -41,6 +41,7 @@ export default function Sidebar({ onOpenProfile }) {
       { id: 'chats', icon: MessageSquare, label: 'Chats', badge: unreadTotal },
       { id: 'contacts', icon: Users, label: 'Friends' },
       { id: 'calls', icon: Phone, label: 'Calls' },
+      { id: 'settings', icon: Settings, label: 'Settings' },
     ];
 
     return (

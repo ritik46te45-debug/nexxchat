@@ -34,11 +34,11 @@ export default {
           950: '#020617',
         },
         dark: {
-          bg: '#0a0a1a',
-          card: '#111128',
-          hover: '#1a1a3e',
-          border: '#1e1e4a',
-          input: '#151530',
+          bg: 'rgb(var(--theme-bg) / <alpha-value>)',
+          card: 'rgb(var(--theme-card) / <alpha-value>)',
+          hover: 'rgb(var(--theme-hover) / <alpha-value>)',
+          border: 'rgb(var(--theme-border) / <alpha-value>)',
+          input: 'rgb(var(--theme-input) / <alpha-value>)',
         },
         accent: {
           green: '#22c55e',
