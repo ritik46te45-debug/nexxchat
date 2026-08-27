@@ -120,6 +120,20 @@ export const setupSocket = (io) => {
           return;
         }
 
+        // Check if receiver is already busy in another call
+        let isReceiverBusy = false;
+        for (const [id, c] of activeCalls.entries()) {
+          if ((c.caller === targetId || c.receiver === targetId) && (c.status === 'ongoing' || c.status === 'ringing')) {
+            isReceiverBusy = true;
+            break;
+          }
+        }
+
+        if (isReceiverBusy) {
+          socket.emit('call:busy', { to: targetId, message: 'User is on another call' });
+          return;
+        }
+
         let callId = `call_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
         try {
           const call = await Call.create({
@@ -345,12 +359,32 @@ export const setupSocket = (io) => {
       }
     });
 
-    socket.on('call:screen-share', ({ to, enabled }) => {
+    socket.on('call:ice-restart', ({ to, callId }) => {
       const targetId = to?.toString();
       const targetSockets = onlineUsers.get(targetId);
       if (targetSockets) {
         targetSockets.forEach(sid => {
-          io.to(sid).emit('call:screen-share', { from: userId, enabled });
+          io.to(sid).emit('call:ice-restart', { from: userId, callId });
+        });
+      }
+    });
+
+    socket.on('call:renegotiate', ({ to, offer, callId }) => {
+      const targetId = to?.toString();
+      const targetSockets = onlineUsers.get(targetId);
+      if (targetSockets) {
+        targetSockets.forEach(sid => {
+          io.to(sid).emit('call:renegotiate', { from: userId, offer, callId });
+        });
+      }
+    });
+
+    socket.on('call:screen-share', ({ to, enabled, callId }) => {
+      const targetId = to?.toString();
+      const targetSockets = onlineUsers.get(targetId);
+      if (targetSockets) {
+        targetSockets.forEach(sid => {
+          io.to(sid).emit('call:screen-share', { from: userId, enabled, callId });
         });
       }
     });

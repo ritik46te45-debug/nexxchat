@@ -40,3 +40,15 @@ export const clearCallHistory = async (req, res) => {
     res.status(500).json({ error: 'Failed to clear call history' });
   }
 };
+
+// Get WebRTC ICE Server Configuration
+export const getIceConfig = async (req, res) => {
+  try {
+    const { getIceServers } = await import('../config/webrtc.js');
+    const config = getIceServers();
+    res.json({ config });
+  } catch (error) {
+    console.error('Get ICE config error:', error);
+    res.status(500).json({ error: 'Failed to get ICE configuration' });
+  }
+};

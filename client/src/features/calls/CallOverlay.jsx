@@ -2,39 +2,15 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Mic, MicOff, Video as VideoIcon, VideoOff, PhoneOff,
   ScreenShare, StopCircle, Maximize2, Minimize2, Volume2,
-  VolumeX, Radio, Wifi, WifiOff
+  VolumeX, Radio, Wifi, WifiOff, Activity, RefreshCw,
+  Camera, Settings, Sparkles, Check, ChevronDown, PictureInPicture
 } from 'lucide-react';
 import { getSocket } from '../../lib/socket';
+import { WebRTCManager } from '../../lib/webrtc/WebRTCManager';
+import ConnectionInfoModal from './ConnectionInfoModal';
 import toast from 'react-hot-toast';
 
-// ICE servers with free TURN for NAT traversal on mobile & corporate networks
-const ICE_SERVERS = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:stun3.l.google.com:19302' },
-    // Free TURN servers for mobile/symmetric NAT traversal
-    {
-      urls: 'turn:openrelay.metered.ca:80',
-      username: 'openrelayproject',
-      credential: 'openrelayproject',
-    },
-    {
-      urls: 'turn:openrelay.metered.ca:443',
-      username: 'openrelayproject',
-      credential: 'openrelayproject',
-    },
-    {
-      urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-      username: 'openrelayproject',
-      credential: 'openrelayproject',
-    },
-  ],
-  iceCandidatePoolSize: 10,
-};
-
-// Web Audio API Ringtone synthesizer
+// Web Audio API Ringtone generator
 const startRingtoneAudio = (type = 'incoming') => {
   try {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -71,7 +47,7 @@ const startRingtoneAudio = (type = 'incoming') => {
           osc.stop(ctx.currentTime + 1.2);
         }
       } catch (err) {
-        console.warn('Ringtone tone error:', err);
+        console.warn('Ringtone tone note:', err);
       }
     };
 
@@ -89,323 +65,269 @@ const startRingtoneAudio = (type = 'incoming') => {
 };
 
 export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdUpdate }) {
-  const [callStatus, setCallStatus] = useState(isIncoming ? 'incoming' : 'ringing');
+  const [callStatus, setCallStatus] = useState(isIncoming ? 'incoming' : 'calling');
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(callData.type === 'voice');
   const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [isRemoteScreenSharing, setIsRemoteScreenSharing] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [connectionState, setConnectionState] = useState('new');
   const [isSpeakerOn, setIsSpeakerOn] = useState(true);
+  const [stats, setStats] = useState(null);
+  const [showStatsModal, setShowStatsModal] = useState(false);
+  const [showDeviceMenu, setShowDeviceMenu] = useState(false);
+  const [qualityMode, setQualityMode] = useState('auto'); // 'auto' | 'saver' | 'high'
+
+  // Device lists
+  const [devices, setDevices] = useState({ audioInputs: [], videoInputs: [], audioOutputs: [] });
+  const [selectedAudioId, setSelectedAudioId] = useState('');
+  const [selectedVideoId, setSelectedVideoId] = useState('');
+  const [selectedSpeakerId, setSelectedSpeakerId] = useState('');
+
+  // Audio VAD & Waveform
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [waveformBars, setWaveformBars] = useState([20, 35, 45, 30, 20]);
 
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const remoteAudioRef = useRef(null);
-  const peerConnectionRef = useRef(null);
-  const localStreamRef = useRef(null);
-  const screenStreamRef = useRef(null);
-  const timerRef = useRef(null);
   const containerRef = useRef(null);
-  const candidateQueueRef = useRef([]);
+  const timerRef = useRef(null);
+  const webrtcManagerRef = useRef(null);
   const callIdRef = useRef(callData.callId);
 
   const isVideoCall = callData.type === 'video';
 
-  // Keep callId ref in sync
   useEffect(() => {
     callIdRef.current = callData.callId;
   }, [callData.callId]);
 
-  // Ringtone sound
+  // Load available devices
+  const loadDevices = useCallback(async () => {
+    try {
+      if (!navigator.mediaDevices?.enumerateDevices) return;
+      const deviceList = await navigator.mediaDevices.enumerateDevices();
+      setDevices({
+        audioInputs: deviceList.filter((d) => d.kind === 'audioinput'),
+        videoInputs: deviceList.filter((d) => d.kind === 'videoinput'),
+        audioOutputs: deviceList.filter((d) => d.kind === 'audiooutput'),
+      });
+    } catch (e) {
+      console.warn('Enumerate devices note:', e.message);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadDevices();
+    navigator.mediaDevices?.addEventListener('devicechange', loadDevices);
+    return () => {
+      navigator.mediaDevices?.removeEventListener('devicechange', loadDevices);
+    };
+  }, [loadDevices]);
+
+  // Ringtone synthesizer
   useEffect(() => {
     let stopRingtone = () => {};
     if (callStatus === 'incoming') {
       stopRingtone = startRingtoneAudio('incoming');
-    } else if (callStatus === 'ringing') {
+    } else if (callStatus === 'calling' || callStatus === 'ringing') {
       stopRingtone = startRingtoneAudio('outgoing');
     }
     return () => stopRingtone();
   }, [callStatus]);
 
-  // Setup local media stream
-  const setupLocalStream = useCallback(async () => {
-    if (localStreamRef.current) return localStreamRef.current;
-    if (!navigator.mediaDevices?.getUserMedia) {
-      toast.error('Voice/Video calls require browser media support');
-      return null;
-    }
-
-    let stream = null;
-
-    if (isVideoCall) {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-          video: { width: { ideal: 1280, max: 1920 }, height: { ideal: 720, max: 1080 }, facingMode: 'user' },
-        });
-      } catch (hdErr) {
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-        } catch (basicVideoErr) {
-          try {
-            stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-            setIsVideoOff(true);
-            toast('Camera unavailable — continuing with audio only', { icon: '🎙️' });
-          } catch (audioErr) {
-            toast.error('Please check microphone permissions');
-            return null;
-          }
-        }
-      }
-    } else {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-          video: false,
-        });
-      } catch (audioErr) {
-        toast.error('Please check microphone permissions');
-        return null;
-      }
-    }
-
-    localStreamRef.current = stream;
-
-    if (localVideoRef.current && isVideoCall && stream.getVideoTracks().length > 0) {
-      localVideoRef.current.srcObject = stream;
-    }
-
-    return stream;
-  }, [isVideoCall]);
-
-  // Add local tracks to peer connection
-  const addLocalTracksToPeer = useCallback((pc, stream) => {
-    if (!pc || !stream) return;
-    const existingSenders = pc.getSenders();
-    stream.getTracks().forEach((track) => {
-      const alreadyAdded = existingSenders.some(s => s.track === track);
-      if (!alreadyAdded) {
-        try {
-          pc.addTrack(track, stream);
-        } catch (err) {
-          console.warn('Track add error:', err);
-        }
-      }
-    });
-  }, []);
-
-  // Initialize WebRTC
-  useEffect(() => {
-    const socket = getSocket();
-    if (!socket) return;
-
-    const pc = new RTCPeerConnection(ICE_SERVERS);
-    peerConnectionRef.current = pc;
-
-    // Monitor connection state for UI feedback
-    pc.onconnectionstatechange = () => {
-      const state = pc.connectionState;
-      setConnectionState(state);
-      if (state === 'failed') {
-        toast.error('Call connection failed. Retrying...');
-        // Attempt ICE restart
-        try {
-          pc.restartIce();
-        } catch (e) {
-          console.warn('ICE restart failed:', e);
-        }
-      }
-      if (state === 'disconnected') {
-        toast('Connection interrupted, reconnecting...', { icon: '🔄' });
-      }
-    };
-
-    pc.oniceconnectionstatechange = () => {
-      if (pc.iceConnectionState === 'failed') {
-        try { pc.restartIce(); } catch (e) {}
-      }
-    };
-
-    // Handle ICE candidates
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        socket.emit('call:ice-candidate', {
-          to: callData.targetUserId,
-          candidate: event.candidate,
-          callId: callIdRef.current,
-        });
-      }
-    };
-
-    // Handle remote stream
-    pc.ontrack = (event) => {
-      const stream = event.streams?.[0] || new MediaStream([event.track]);
-      if (event.track.kind === 'video' && remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = stream;
-        remoteVideoRef.current.play().catch(() => {});
-      }
-      if (event.track.kind === 'audio' && remoteAudioRef.current) {
-        remoteAudioRef.current.srcObject = stream;
-        remoteAudioRef.current.play().catch(() => {});
-      }
-    };
-
-    // Handle server callId update (for caller)
-    socket.on('call:ringing', ({ callId }) => {
-      if (callId && onCallIdUpdate) {
-        callIdRef.current = callId;
-        onCallIdUpdate(callId);
-      }
-      setCallStatus('ringing');
-    });
-
-    // Caller: received acceptance → create offer
-    socket.on('call:accepted', async () => {
-      setCallStatus('ongoing');
-      startTimer();
-      try {
-        const stream = await setupLocalStream();
-        if (stream) addLocalTracksToPeer(pc, stream);
-
-        const offer = await pc.createOffer({
-          offerToReceiveAudio: true,
-          offerToReceiveVideo: isVideoCall,
-        });
-        await pc.setLocalDescription(offer);
-        socket.emit('call:offer', {
-          to: callData.targetUserId,
-          offer,
-          callId: callIdRef.current,
-        });
-      } catch (err) {
-        console.error('Error creating offer:', err);
-      }
-    });
-
-    // Receiver: got offer → create answer
-    socket.on('call:offer', async ({ offer }) => {
-      try {
-        const stream = await setupLocalStream();
-        if (stream) addLocalTracksToPeer(pc, stream);
-
-        await pc.setRemoteDescription(new RTCSessionDescription(offer));
-
-        // Drain queued ICE candidates
-        while (candidateQueueRef.current.length > 0) {
-          const cand = candidateQueueRef.current.shift();
-          try { await pc.addIceCandidate(new RTCIceCandidate(cand)); } catch (e) {}
-        }
-
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        socket.emit('call:answer', {
-          to: callData.targetUserId,
-          answer,
-          callId: callIdRef.current,
-        });
-        setCallStatus('ongoing');
-        startTimer();
-      } catch (err) {
-        console.error('Error handling offer:', err);
-      }
-    });
-
-    // Caller: got answer
-    socket.on('call:answer', async ({ answer }) => {
-      try {
-        await pc.setRemoteDescription(new RTCSessionDescription(answer));
-        while (candidateQueueRef.current.length > 0) {
-          const cand = candidateQueueRef.current.shift();
-          try { await pc.addIceCandidate(new RTCIceCandidate(cand)); } catch (e) {}
-        }
-      } catch (err) {
-        console.error('Error setting remote description:', err);
-      }
-    });
-
-    // ICE candidates
-    socket.on('call:ice-candidate', async ({ candidate }) => {
-      try {
-        if (!candidate) return;
-        if (pc.remoteDescription?.type) {
-          await pc.addIceCandidate(new RTCIceCandidate(candidate));
-        } else {
-          candidateQueueRef.current.push(candidate);
-        }
-      } catch (err) {
-        console.warn('ICE candidate error:', err);
-      }
-    });
-
-    socket.on('call:missed', () => { toast('User is not answering'); cleanupAndExit(); });
-    socket.on('call:error', ({ error }) => { toast.error(error || 'Call failed'); cleanupAndExit(); });
-    socket.on('call:rejected', () => { toast.error('Call declined'); cleanupAndExit(); });
-    socket.on('call:ended', () => { toast('Call ended'); cleanupAndExit(); });
-    socket.on('call:timeout', () => { toast('Call timed out'); cleanupAndExit(); });
-
-    // Get local stream ready (but don't add to PC yet — that happens in offer/answer flow)
-    setupLocalStream();
-
-    return () => {
-      socket.off('call:ringing');
-      socket.off('call:accepted');
-      socket.off('call:offer');
-      socket.off('call:answer');
-      socket.off('call:ice-candidate');
-      socket.off('call:missed');
-      socket.off('call:error');
-      socket.off('call:rejected');
-      socket.off('call:ended');
-      socket.off('call:timeout');
-      if (timerRef.current) clearInterval(timerRef.current);
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach((t) => { try { t.stop(); } catch (e) {} });
-      }
-      if (screenStreamRef.current) {
-        screenStreamRef.current.getTracks().forEach((t) => { try { t.stop(); } catch (e) {} });
-      }
-      if (peerConnectionRef.current) {
-        try { peerConnectionRef.current.close(); } catch (e) {}
-      }
-    };
-  }, []);
-
-  const startTimer = () => {
+  // Timer
+  const startTimer = useCallback(() => {
     if (timerRef.current) return;
     timerRef.current = setInterval(() => {
       setCallDuration((prev) => prev + 1);
     }, 1000);
-  };
+  }, []);
 
-  const cleanupAndExit = () => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((t) => { try { t.stop(); } catch (e) {} });
-      localStreamRef.current = null;
+  const cleanupAndExit = useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
     }
-    if (screenStreamRef.current) {
-      screenStreamRef.current.getTracks().forEach((t) => { try { t.stop(); } catch (e) {} });
-      screenStreamRef.current = null;
-    }
-    if (peerConnectionRef.current) {
-      try { peerConnectionRef.current.close(); } catch (e) {}
-      peerConnectionRef.current = null;
+    if (webrtcManagerRef.current) {
+      webrtcManagerRef.current.destroy();
+      webrtcManagerRef.current = null;
     }
     onEndCall();
-  };
+  }, [onEndCall]);
 
+  // Initialize WebRTC Manager & Socket Signaling
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+
+    const manager = new WebRTCManager({
+      socket,
+      callId: callIdRef.current,
+      targetUserId: callData.targetUserId,
+      isCaller: !isIncoming,
+      isVideo: isVideoCall,
+      onRemoteStream: (stream, track) => {
+        if (track.kind === 'video' && remoteVideoRef.current) {
+          remoteVideoRef.current.srcObject = stream;
+          remoteVideoRef.current.play().catch(() => {});
+        }
+        if (track.kind === 'audio' && remoteAudioRef.current) {
+          remoteAudioRef.current.srcObject = stream;
+          remoteAudioRef.current.play().catch(() => {});
+        }
+      },
+      onConnectionStateChange: (state) => {
+        setConnectionState(state);
+        if (state === 'connected') {
+          setCallStatus('ongoing');
+          startTimer();
+        }
+      },
+      onStatsUpdate: (metrics) => {
+        setStats(metrics);
+      },
+      onSpeakingChange: (speaking) => {
+        setIsSpeaking(speaking);
+      },
+      onWaveformUpdate: (bars) => {
+        setWaveformBars(bars);
+      },
+    });
+
+    webrtcManagerRef.current = manager;
+
+    // Caller initiates media preparation immediately
+    if (!isIncoming) {
+      manager.setupLocalMedia().then((stream) => {
+        if (stream && localVideoRef.current && isVideoCall) {
+          localVideoRef.current.srcObject = stream;
+        }
+      });
+    }
+
+    // Socket listeners
+    const onRinging = ({ callId }) => {
+      if (callId && onCallIdUpdate) {
+        callIdRef.current = callId;
+        manager.callId = callId;
+        onCallIdUpdate(callId);
+      }
+      setCallStatus('ringing');
+    };
+
+    const onAccepted = async ({ callId }) => {
+      if (callId) {
+        callIdRef.current = callId;
+        manager.callId = callId;
+      }
+      setCallStatus('connecting');
+      await manager.initializePeerConnection();
+      await manager.createAndSendOffer();
+    };
+
+    const onOffer = async ({ offer, callId }) => {
+      if (callId) {
+        callIdRef.current = callId;
+        manager.callId = callId;
+      }
+      await manager.handleOffer(offer);
+    };
+
+    const onAnswer = async ({ answer }) => {
+      await manager.handleAnswer(answer);
+    };
+
+    const onIceCandidate = async ({ candidate }) => {
+      await manager.handleIceCandidate(candidate);
+    };
+
+    const onRenegotiate = async ({ offer }) => {
+      await manager.handleOffer(offer);
+    };
+
+    const onIceRestart = async () => {
+      await manager.attemptIceRestart();
+    };
+
+    const onScreenShare = ({ enabled }) => {
+      setIsRemoteScreenSharing(Boolean(enabled));
+      toast(enabled ? 'Remote screen sharing started' : 'Remote screen sharing ended', { icon: '🖥️' });
+    };
+
+    const onBusy = () => {
+      toast.error('User is currently on another call');
+      cleanupAndExit();
+    };
+
+    const onRejected = () => {
+      toast.error('Call declined');
+      cleanupAndExit();
+    };
+
+    const onEnded = () => {
+      toast('Call ended');
+      cleanupAndExit();
+    };
+
+    const onTimeout = () => {
+      toast('Call timed out — no answer');
+      cleanupAndExit();
+    };
+
+    const onError = ({ error }) => {
+      toast.error(error || 'Call error');
+      cleanupAndExit();
+    };
+
+    socket.on('call:ringing', onRinging);
+    socket.on('call:accepted', onAccepted);
+    socket.on('call:offer', onOffer);
+    socket.on('call:answer', onAnswer);
+    socket.on('call:ice-candidate', onIceCandidate);
+    socket.on('call:renegotiate', onRenegotiate);
+    socket.on('call:ice-restart', onIceRestart);
+    socket.on('call:screen-share', onScreenShare);
+    socket.on('call:busy', onBusy);
+    socket.on('call:rejected', onRejected);
+    socket.on('call:ended', onEnded);
+    socket.on('call:timeout', onTimeout);
+    socket.on('call:error', onError);
+
+    return () => {
+      socket.off('call:ringing', onRinging);
+      socket.off('call:accepted', onAccepted);
+      socket.off('call:offer', onOffer);
+      socket.off('call:answer', onAnswer);
+      socket.off('call:ice-candidate', onIceCandidate);
+      socket.off('call:renegotiate', onRenegotiate);
+      socket.off('call:ice-restart', onIceRestart);
+      socket.off('call:screen-share', onScreenShare);
+      socket.off('call:busy', onBusy);
+      socket.off('call:rejected', onRejected);
+      socket.off('call:ended', onEnded);
+      socket.off('call:timeout', onTimeout);
+      socket.off('call:error', onError);
+      manager.destroy();
+    };
+  }, [callData.targetUserId, isIncoming, isVideoCall, onCallIdUpdate, startTimer, cleanupAndExit]);
+
+  // Answer call (Receiver)
   const handleAccept = async () => {
     const socket = getSocket();
-    if (socket) {
-      // Get stream ready BEFORE emitting accept
-      const stream = await setupLocalStream();
-      if (stream && peerConnectionRef.current) {
-        addLocalTracksToPeer(peerConnectionRef.current, stream);
-      }
-      socket.emit('call:accept', { callId: callIdRef.current });
-      setCallStatus('ongoing');
-      startTimer();
+    if (!socket || !webrtcManagerRef.current) return;
+
+    setCallStatus('connecting');
+    const manager = webrtcManagerRef.current;
+    const stream = await manager.setupLocalMedia();
+
+    if (stream && localVideoRef.current && isVideoCall) {
+      localVideoRef.current.srcObject = stream;
     }
+
+    await manager.initializePeerConnection();
+    socket.emit('call:accept', { callId: callIdRef.current });
   };
 
   const handleReject = () => {
@@ -420,9 +342,11 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
     cleanupAndExit();
   };
 
+  // Track toggles
   const toggleMute = () => {
-    if (localStreamRef.current) {
-      const audioTrack = localStreamRef.current.getAudioTracks()[0];
+    const manager = webrtcManagerRef.current;
+    if (manager?.localStream) {
+      const audioTrack = manager.localStream.getAudioTracks()[0];
       if (audioTrack) {
         audioTrack.enabled = !audioTrack.enabled;
         setIsMuted(!audioTrack.enabled);
@@ -431,8 +355,9 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
   };
 
   const toggleVideo = () => {
-    if (localStreamRef.current) {
-      const videoTrack = localStreamRef.current.getVideoTracks()[0];
+    const manager = webrtcManagerRef.current;
+    if (manager?.localStream) {
+      const videoTrack = manager.localStream.getVideoTracks()[0];
       if (videoTrack) {
         videoTrack.enabled = !videoTrack.enabled;
         setIsVideoOff(!videoTrack.enabled);
@@ -443,46 +368,95 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
   const toggleSpeaker = () => {
     const newState = !isSpeakerOn;
     setIsSpeakerOn(newState);
-    // Actually mute/unmute remote audio
     if (remoteAudioRef.current) {
       remoteAudioRef.current.muted = !newState;
     }
   };
 
   const toggleScreenShare = async () => {
+    const manager = webrtcManagerRef.current;
+    if (!manager) return;
+
     if (isScreenSharing) {
-      if (screenStreamRef.current) {
-        screenStreamRef.current.getTracks().forEach((t) => t.stop());
-      }
-      const videoTrack = localStreamRef.current?.getVideoTracks()[0];
-      if (videoTrack && peerConnectionRef.current) {
-        const sender = peerConnectionRef.current.getSenders().find((s) => s.track?.kind === 'video');
-        if (sender) sender.replaceTrack(videoTrack);
-      }
+      await manager.stopScreenShare();
       setIsScreenSharing(false);
     } else {
-      try {
-        const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-        screenStreamRef.current = screenStream;
-        const screenTrack = screenStream.getVideoTracks()[0];
-        if (peerConnectionRef.current) {
-          const sender = peerConnectionRef.current.getSenders().find((s) => s.track?.kind === 'video');
-          if (sender) sender.replaceTrack(screenTrack);
-        }
-        screenTrack.onended = () => toggleScreenShare();
+      const screenStream = await manager.startScreenShare(() => {
+        setIsScreenSharing(false);
+      });
+      if (screenStream) {
         setIsScreenSharing(true);
-      } catch (err) {
-        console.error('Screen sharing error:', err);
+      }
+    }
+  };
+
+  const flipCamera = async () => {
+    const manager = webrtcManagerRef.current;
+    if (!manager) return;
+    const newTrack = await manager.flipCamera();
+    if (newTrack && localVideoRef.current) {
+      localVideoRef.current.srcObject = new MediaStream([newTrack]);
+    }
+    toast('Camera flipped', { icon: '🔄' });
+  };
+
+  const handleSwitchMic = async (deviceId) => {
+    setSelectedAudioId(deviceId);
+    const manager = webrtcManagerRef.current;
+    if (manager) {
+      const ok = await manager.switchMicrophone(deviceId);
+      if (ok) toast.success('Microphone switched');
+    }
+  };
+
+  const handleSwitchCamera = async (deviceId) => {
+    setSelectedVideoId(deviceId);
+    const manager = webrtcManagerRef.current;
+    if (manager) {
+      const newTrack = await manager.switchCamera(deviceId);
+      if (newTrack && localVideoRef.current) {
+        localVideoRef.current.srcObject = new MediaStream([newTrack]);
+        toast.success('Camera switched');
+      }
+    }
+  };
+
+  const handleSwitchSpeaker = async (deviceId) => {
+    setSelectedSpeakerId(deviceId);
+    const manager = webrtcManagerRef.current;
+    if (manager && remoteAudioRef.current) {
+      const ok = await manager.setAudioOutputDevice(remoteAudioRef.current, deviceId);
+      if (ok) toast.success('Speaker output switched');
+    }
+  };
+
+  const handleChangeQualityMode = (mode) => {
+    setQualityMode(mode);
+    const manager = webrtcManagerRef.current;
+    if (manager) {
+      manager.setQualityMode(mode);
+      toast.success(mode === 'saver' ? 'Data Saver mode enabled' : mode === 'high' ? 'High Quality mode enabled' : 'Auto Adaptive mode enabled');
+    }
+  };
+
+  const togglePiP = async () => {
+    if (document.pictureInPictureElement) {
+      await document.exitPictureInPicture();
+    } else if (remoteVideoRef.current) {
+      try {
+        await remoteVideoRef.current.requestPictureInPicture();
+      } catch (e) {
+        toast.error('Picture-in-Picture not supported');
       }
     }
   };
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
-      containerRef.current?.requestFullscreen();
+      containerRef.current?.requestFullscreen?.();
       setIsFullscreen(true);
     } else {
-      document.exitFullscreen();
+      document.exitFullscreen?.();
       setIsFullscreen(false);
     }
   };
@@ -493,61 +467,188 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
     return `${String(mins).padStart(2, '0')}:${String(rem).padStart(2, '0')}`;
   };
 
-  const connectionLabel = connectionState === 'connecting' ? 'Connecting...'
-    : connectionState === 'disconnected' ? 'Reconnecting...'
-    : connectionState === 'failed' ? 'Connection Failed'
-    : null;
+  const getStatusBadge = () => {
+    if (connectionState === 'reconnecting') {
+      return { text: 'Reconnecting...', color: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' };
+    }
+    if (connectionState === 'failed') {
+      return { text: 'Connection Failed', color: 'bg-accent-red/20 text-accent-red border-accent-red/30' };
+    }
+    if (callStatus === 'ongoing') {
+      if (stats?.rating === 'poor') {
+        return { text: 'Poor (Audio Priority)', color: 'bg-accent-red/20 text-accent-red border-accent-red/30' };
+      }
+      return { text: 'Connected (HD)', color: 'bg-accent-green/20 text-accent-green border-accent-green/30' };
+    }
+    if (callStatus === 'connecting') return { text: 'Connecting...', color: 'bg-primary-500/20 text-primary-400 border-primary-500/30' };
+    if (callStatus === 'ringing') return { text: 'Ringing...', color: 'bg-primary-500/20 text-primary-400 border-primary-500/30' };
+    return { text: 'Calling...', color: 'bg-surface-800 text-surface-400 border-surface-700' };
+  };
+
+  const statusBadge = getStatusBadge();
 
   return (
     <div
       ref={containerRef}
-      className="fixed inset-0 z-[100] bg-dark-bg/95 backdrop-blur-2xl flex flex-col items-center justify-between p-3 sm:p-6 animate-fade-in safe-top safe-bottom"
+      className="fixed inset-0 z-[100] bg-dark-bg/98 backdrop-blur-2xl flex flex-col items-center justify-between p-3 sm:p-5 animate-fade-in select-none safe-top safe-bottom"
     >
-      {/* Remote Audio */}
+      {/* Remote Audio Track (always autoPlay) */}
       <audio ref={remoteAudioRef} autoPlay playsInline />
 
-      {/* Top bar */}
-      <div className="w-full flex items-center justify-between text-surface-300 z-10 flex-shrink-0">
+      {/* Top Header Bar */}
+      <div className="w-full flex items-center justify-between z-10 flex-shrink-0 gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          <div className="w-2.5 h-2.5 rounded-full bg-accent-green animate-pulse flex-shrink-0" />
-          <span className="text-xs sm:text-sm font-semibold tracking-wide text-white truncate">
+          <div className={`w-2.5 h-2.5 rounded-full ${callStatus === 'ongoing' ? 'bg-accent-green animate-pulse' : 'bg-primary-400'}`} />
+          <span className="text-xs sm:text-sm font-bold tracking-wide text-white truncate">
             {isVideoCall ? 'Video Call' : 'Voice Call'}
           </span>
-          {connectionLabel && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 flex items-center gap-1 flex-shrink-0">
-              <WifiOff className="w-3 h-3" /> {connectionLabel}
-            </span>
-          )}
+
+          {/* Connection Status Badge */}
+          <span className={`text-[10px] sm:text-[11px] px-2.5 py-0.5 rounded-full font-semibold border flex items-center gap-1 ${statusBadge.color}`}>
+            {connectionState === 'reconnecting' ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Wifi className="w-3 h-3" />}
+            {statusBadge.text}
+          </span>
         </div>
 
+        {/* Live Call Duration */}
         {callStatus === 'ongoing' && (
-          <div className="flex items-center gap-2 bg-dark-card px-3 py-1 rounded-full border border-dark-border flex-shrink-0">
+          <div className="flex items-center gap-1.5 bg-dark-card/90 px-3 py-1 rounded-full border border-dark-border shadow-sm">
             <Radio className="w-3.5 h-3.5 text-accent-green animate-pulse" />
-            <span className="text-xs sm:text-sm font-mono text-white font-medium">{formatTimer(callDuration)}</span>
+            <span className="text-xs sm:text-sm font-mono text-white font-bold">{formatTimer(callDuration)}</span>
           </div>
         )}
 
-        <button
-          onClick={toggleFullscreen}
-          className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-dark-card hover:bg-dark-hover flex items-center justify-center border border-dark-border text-surface-400 hover:text-white transition-all flex-shrink-0"
-        >
-          {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-        </button>
+        {/* Header Actions: Stats Diagnostics, Device Settings, Fullscreen */}
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {/* Stats Button */}
+          {callStatus === 'ongoing' && (
+            <button
+              onClick={() => setShowStatsModal(true)}
+              className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-dark-card hover:bg-dark-hover flex items-center justify-center border border-dark-border text-surface-400 hover:text-primary-400 transition-all"
+              title="Connection Stats & Metrics"
+            >
+              <Activity className="w-4 h-4" />
+            </button>
+          )}
+
+          {/* In-Call Settings Menu */}
+          <div className="relative">
+            <button
+              onClick={() => setShowDeviceMenu(!showDeviceMenu)}
+              className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-dark-card hover:bg-dark-hover flex items-center justify-center border border-dark-border text-surface-400 hover:text-white transition-all"
+              title="Device Settings & Quality"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+
+            {/* Device Selector Popover */}
+            {showDeviceMenu && (
+              <div className="absolute right-0 top-11 w-72 bg-dark-card border border-dark-border rounded-3xl p-3.5 shadow-2xl z-50 animate-scale-in space-y-3">
+                <div className="flex items-center justify-between border-b border-dark-border pb-2">
+                  <h4 className="text-xs font-bold text-white uppercase tracking-wider">Call Settings</h4>
+                  <button onClick={() => setShowDeviceMenu(false)} className="text-surface-400 hover:text-white">
+                    ✕
+                  </button>
+                </div>
+
+                {/* Quality Mode */}
+                <div>
+                  <label className="text-[10px] font-bold text-surface-400 uppercase tracking-wider block mb-1">Quality Mode</label>
+                  <div className="grid grid-cols-3 gap-1 bg-dark-input p-1 rounded-xl border border-dark-border text-[11px]">
+                    {['auto', 'saver', 'high'].map((m) => (
+                      <button
+                        key={m}
+                        onClick={() => handleChangeQualityMode(m)}
+                        className={`py-1 rounded-lg font-semibold capitalize transition-all ${
+                          qualityMode === m ? 'bg-primary-500 text-white shadow-sm' : 'text-surface-400 hover:text-white'
+                        }`}
+                      >
+                        {m}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Microphones */}
+                {devices.audioInputs.length > 0 && (
+                  <div>
+                    <label className="text-[10px] font-bold text-surface-400 uppercase tracking-wider block mb-1">Microphone</label>
+                    <select
+                      value={selectedAudioId}
+                      onChange={(e) => handleSwitchMic(e.target.value)}
+                      className="w-full bg-dark-input border border-dark-border text-white text-xs p-2 rounded-xl focus:outline-none"
+                    >
+                      {devices.audioInputs.map((d) => (
+                        <option key={d.deviceId} value={d.deviceId}>
+                          {d.label || `Microphone ${d.deviceId.slice(0, 5)}`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Cameras */}
+                {isVideoCall && devices.videoInputs.length > 0 && (
+                  <div>
+                    <label className="text-[10px] font-bold text-surface-400 uppercase tracking-wider block mb-1">Camera</label>
+                    <select
+                      value={selectedVideoId}
+                      onChange={(e) => handleSwitchCamera(e.target.value)}
+                      className="w-full bg-dark-input border border-dark-border text-white text-xs p-2 rounded-xl focus:outline-none"
+                    >
+                      {devices.videoInputs.map((d) => (
+                        <option key={d.deviceId} value={d.deviceId}>
+                          {d.label || `Camera ${d.deviceId.slice(0, 5)}`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Speaker Audio Output */}
+                {devices.audioOutputs.length > 0 && (
+                  <div>
+                    <label className="text-[10px] font-bold text-surface-400 uppercase tracking-wider block mb-1">Audio Output</label>
+                    <select
+                      value={selectedSpeakerId}
+                      onChange={(e) => handleSwitchSpeaker(e.target.value)}
+                      className="w-full bg-dark-input border border-dark-border text-white text-xs p-2 rounded-xl focus:outline-none"
+                    >
+                      {devices.audioOutputs.map((d) => (
+                        <option key={d.deviceId} value={d.deviceId}>
+                          {d.label || `Speaker ${d.deviceId.slice(0, 5)}`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <button
+            onClick={toggleFullscreen}
+            className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-dark-card hover:bg-dark-hover flex items-center justify-center border border-dark-border text-surface-400 hover:text-white transition-all"
+          >
+            {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+          </button>
+        </div>
       </div>
 
       {/* Main Display Area */}
-      <div className="relative w-full flex-1 flex items-center justify-center my-2 sm:my-4 overflow-hidden rounded-2xl sm:rounded-3xl border border-dark-border bg-dark-card/40 min-h-0">
+      <div className="relative w-full flex-1 flex items-center justify-center my-2 sm:my-3 overflow-hidden rounded-3xl border border-dark-border bg-dark-card/40 min-h-0">
         {isVideoCall ? (
           <>
-            {/* Remote Video */}
+            {/* Remote Video Stream */}
             <video
               ref={remoteVideoRef}
               autoPlay
               playsInline
-              className="w-full h-full object-cover rounded-2xl sm:rounded-3xl"
+              className={`w-full h-full ${isRemoteScreenSharing ? 'object-contain' : 'object-cover'} rounded-3xl bg-black`}
             />
-            {/* Local Video Thumbnail — responsive sizing */}
-            <div className="absolute bottom-3 right-3 sm:bottom-6 sm:right-6 w-24 h-32 sm:w-36 sm:h-48 md:w-48 md:h-64 rounded-xl sm:rounded-2xl overflow-hidden border-2 border-primary-500/60 shadow-2xl bg-black z-20">
+
+            {/* Local Video Picture-in-Picture Thumbnail */}
+            <div className="absolute bottom-3 right-3 sm:bottom-5 sm:right-5 w-28 h-36 sm:w-40 sm:h-52 rounded-2xl overflow-hidden border-2 border-primary-500/70 shadow-2xl bg-black z-20 transition-all">
               <video
                 ref={localVideoRef}
                 autoPlay
@@ -556,30 +657,42 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
                 className={`w-full h-full object-cover ${isVideoOff ? 'hidden' : 'block'}`}
               />
               {isVideoOff && (
-                <div className="w-full h-full flex flex-col items-center justify-center bg-dark-card text-surface-500 text-xs">
-                  <VideoOff className="w-5 h-5 mb-1" />
+                <div className="w-full h-full flex flex-col items-center justify-center bg-dark-card text-surface-400 text-xs">
+                  <VideoOff className="w-5 h-5 mb-1 text-accent-red" />
                   Camera off
                 </div>
               )}
             </div>
           </>
         ) : (
-          /* Voice Call Avatar */
+          /* Voice Call Center Avatar with Live Speaking Glow */
           <div className="flex flex-col items-center gap-4 sm:gap-6 animate-scale-in px-4">
             <div className="relative">
               {callData.avatar?.url ? (
                 <img
                   src={callData.avatar.url}
                   alt={callData.displayName}
-                  className="w-24 h-24 sm:w-32 sm:h-32 rounded-full object-cover ring-4 ring-primary-500/40 shadow-2xl shadow-primary-500/30"
+                  className={`w-28 h-28 sm:w-36 sm:h-36 rounded-full object-cover ring-4 shadow-2xl transition-all duration-300 ${
+                    isSpeaking
+                      ? 'ring-accent-green shadow-accent-green/40 scale-105'
+                      : 'ring-primary-500/40 shadow-primary-500/30'
+                  }`}
                 />
               ) : (
-                <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-full gradient-primary flex items-center justify-center text-3xl sm:text-4xl font-bold text-white shadow-2xl shadow-primary-500/30">
+                <div
+                  className={`w-28 h-28 sm:w-36 sm:h-36 rounded-full gradient-primary flex items-center justify-center text-4xl sm:text-5xl font-bold text-white shadow-2xl transition-all duration-300 ${
+                    isSpeaking
+                      ? 'ring-4 ring-accent-green shadow-accent-green/40 scale-105'
+                      : 'shadow-primary-500/30'
+                  }`}
+                >
                   {callData.displayName?.charAt(0)?.toUpperCase() || '?'}
                 </div>
               )}
-              {callStatus === 'ringing' && (
-                <div className="absolute inset-0 rounded-full ring-4 ring-primary-400 animate-ping opacity-30" />
+
+              {/* Ping Ring for Ringing / Calling */}
+              {(callStatus === 'ringing' || callStatus === 'calling') && (
+                <div className="absolute inset-0 rounded-full ring-4 ring-primary-400 animate-ping opacity-30 pointer-events-none" />
               )}
             </div>
 
@@ -587,16 +700,22 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
               <h3 className="text-xl sm:text-2xl font-bold text-white mb-1">{callData.displayName}</h3>
               <p className="text-surface-400 text-xs sm:text-sm">
                 {callStatus === 'incoming' && 'Incoming Call...'}
+                {callStatus === 'calling' && 'Calling...'}
                 {callStatus === 'ringing' && 'Ringing...'}
-                {callStatus === 'ongoing' && 'Connected'}
+                {callStatus === 'connecting' && 'Connecting WebRTC...'}
+                {callStatus === 'ongoing' && (isSpeaking ? 'Speaking...' : 'Connected')}
               </p>
             </div>
 
-            {/* Waveform */}
+            {/* Live Reacting Web Audio Waveform */}
             {callStatus === 'ongoing' && (
-              <div className="flex items-center gap-1.5 h-10 px-6 py-2 rounded-2xl bg-dark-card border border-dark-border">
-                {[4, 7, 9, 5, 8].map((h, i) => (
-                  <div key={i} className={`w-1.5 rounded-full bg-primary-${400 + (i % 3) * 100} animate-wave`} style={{ height: `${h * 4}px`, animationDelay: `${0.1 + i * 0.08}s` }} />
+              <div className="flex items-center gap-1.5 h-10 px-5 py-2 rounded-2xl bg-dark-card border border-dark-border shadow-inner">
+                {waveformBars.map((height, i) => (
+                  <div
+                    key={i}
+                    className="w-1.5 rounded-full bg-gradient-to-t from-primary-600 to-primary-400 transition-all duration-75"
+                    style={{ height: `${Math.max(6, (height / 100) * 28)}px` }}
+                  />
                 ))}
               </div>
             )}
@@ -604,41 +723,43 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
         )}
       </div>
 
-      {/* Control Buttons */}
+      {/* Bottom Control Bar */}
       <div className="flex items-center justify-center z-10 w-full max-w-xl pb-1 flex-shrink-0">
         {callStatus === 'incoming' ? (
           <div className="flex items-center gap-6 sm:gap-8 animate-slide-up">
             <button
               onClick={handleReject}
-              className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-accent-red text-white flex items-center justify-center shadow-xl shadow-red-500/30 hover:scale-105 active:scale-95 transition-all"
+              className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-accent-red text-white flex items-center justify-center shadow-xl shadow-red-500/30 hover:scale-105 active:scale-95 transition-all cursor-pointer"
               title="Decline"
             >
               <PhoneOff className="w-6 h-6 sm:w-7 sm:h-7" />
             </button>
             <button
               onClick={handleAccept}
-              className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-accent-green text-white flex items-center justify-center shadow-xl shadow-green-500/30 hover:scale-105 active:scale-95 transition-all animate-bounce-soft"
+              className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-accent-green text-white flex items-center justify-center shadow-xl shadow-green-500/30 hover:scale-105 active:scale-95 transition-all animate-bounce-soft cursor-pointer"
               title="Accept"
             >
               <Mic className="w-6 h-6 sm:w-7 sm:h-7" />
             </button>
           </div>
         ) : (
-          <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-6 py-2.5 sm:py-3.5 rounded-2xl bg-dark-card border border-dark-border shadow-2xl">
+          <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-6 py-2.5 sm:py-3.5 rounded-3xl bg-dark-card/90 backdrop-blur-xl border border-dark-border shadow-2xl">
+            {/* Mic Toggle */}
             <button
               onClick={toggleMute}
-              className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center transition-all ${
+              className={`w-10 h-10 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center transition-all ${
                 isMuted ? 'bg-accent-red/20 text-accent-red border border-accent-red/30' : 'bg-dark-hover text-surface-200 hover:text-white border border-dark-border'
               }`}
-              title={isMuted ? 'Unmute' : 'Mute'}
+              title={isMuted ? 'Unmute microphone' : 'Mute microphone'}
             >
               {isMuted ? <MicOff className="w-4 h-4 sm:w-5 sm:h-5" /> : <Mic className="w-4 h-4 sm:w-5 sm:h-5" />}
             </button>
 
+            {/* Video Toggle */}
             {isVideoCall && (
               <button
                 onClick={toggleVideo}
-                className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center transition-all ${
+                className={`w-10 h-10 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center transition-all ${
                   isVideoOff ? 'bg-accent-red/20 text-accent-red border border-accent-red/30' : 'bg-dark-hover text-surface-200 hover:text-white border border-dark-border'
                 }`}
                 title={isVideoOff ? 'Turn on camera' : 'Turn off camera'}
@@ -647,31 +768,56 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
               </button>
             )}
 
+            {/* Mobile Camera Flip */}
+            {isVideoCall && (
+              <button
+                onClick={flipCamera}
+                className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-dark-hover text-surface-200 hover:text-white border border-dark-border flex items-center justify-center transition-all"
+                title="Flip Camera (Front / Rear)"
+              >
+                <Camera className="w-4 h-4 sm:w-5 sm:h-5" />
+              </button>
+            )}
+
+            {/* Screen Share */}
             {isVideoCall && (
               <button
                 onClick={toggleScreenShare}
-                className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center transition-all hidden sm:flex ${
-                  isScreenSharing ? 'bg-primary-500 text-white' : 'bg-dark-hover text-surface-200 hover:text-white border border-dark-border'
+                className={`w-10 h-10 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center transition-all hidden sm:flex ${
+                  isScreenSharing ? 'bg-primary-500 text-white shadow-lg shadow-primary-500/30' : 'bg-dark-hover text-surface-200 hover:text-white border border-dark-border'
                 }`}
-                title={isScreenSharing ? 'Stop sharing' : 'Share screen'}
+                title={isScreenSharing ? 'Stop screen sharing' : 'Share screen'}
               >
                 {isScreenSharing ? <StopCircle className="w-4 h-4 sm:w-5 sm:h-5" /> : <ScreenShare className="w-4 h-4 sm:w-5 sm:h-5" />}
               </button>
             )}
 
+            {/* PiP button for Video */}
+            {isVideoCall && (
+              <button
+                onClick={togglePiP}
+                className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-dark-hover text-surface-200 hover:text-white border border-dark-border hidden md:flex items-center justify-center transition-all"
+                title="Picture in Picture"
+              >
+                <PictureInPicture className="w-4 h-4 sm:w-5 sm:h-5" />
+              </button>
+            )}
+
+            {/* Speaker Output Mute/Unmute */}
             <button
               onClick={toggleSpeaker}
-              className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center transition-all border ${
-                !isSpeakerOn ? 'bg-accent-red/20 text-accent-red border-accent-red/30' : 'bg-dark-hover text-surface-200 hover:text-white border-dark-border'
+              className={`w-10 h-10 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center transition-all border ${
+                !isSpeakerOn ? 'bg-accent-red/20 text-accent-red border-accent-red/30' : 'bg-dark-hover text-surface-200 hover:text-white border border-dark-border'
               }`}
-              title="Speaker"
+              title="Speaker Audio"
             >
               {isSpeakerOn ? <Volume2 className="w-4 h-4 sm:w-5 sm:h-5" /> : <VolumeX className="w-4 h-4 sm:w-5 sm:h-5" />}
             </button>
 
+            {/* End Call Button */}
             <button
               onClick={handleEndCall}
-              className="w-12 h-10 sm:w-14 sm:h-12 rounded-xl bg-accent-red text-white flex items-center justify-center shadow-lg shadow-red-500/30 hover:bg-red-600 active:scale-95 transition-all"
+              className="w-12 h-10 sm:w-14 sm:h-12 rounded-2xl bg-accent-red text-white flex items-center justify-center shadow-lg shadow-red-500/30 hover:bg-red-600 active:scale-95 transition-all cursor-pointer ml-1"
               title="End Call"
             >
               <PhoneOff className="w-5 h-5 sm:w-6 sm:h-6" />
@@ -679,6 +825,14 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
           </div>
         )}
       </div>
+
+      {/* Connection Info Modal */}
+      {showStatsModal && (
+        <ConnectionInfoModal
+          stats={stats}
+          onClose={() => setShowStatsModal(false)}
+        />
+      )}
     </div>
   );
 }
