@@ -123,7 +123,7 @@ export default function MainLayout() {
     }
 
     socket.emit('call:initiate', {
-      to: targetUserId,
+      receiverId: targetUserId,
       type: callType,
       conversationId: activeConversation?._id,
     });
