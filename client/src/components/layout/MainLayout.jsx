@@ -54,16 +54,27 @@ export default function MainLayout() {
       const socket = getSocket();
       if (!socket) return null;
 
-      const onIncoming = ({ callId, from, type, conversationId }) => {
-        setActiveCall({
-          callId,
-          targetUserId: from._id || from,
-          displayName: from.displayName || 'Incoming Caller',
-          avatar: from.avatar,
-          type: type || 'voice',
-          conversationId,
-          isIncoming: true,
-        });
+      const onIncoming = (data) => {
+        const call = data?.call;
+        const callId = data?.callId || call?._id || call?.id;
+        const caller = data?.from || call?.caller;
+        const targetUserId = (caller?._id || caller)?.toString();
+        const displayName = caller?.displayName || caller?.username || 'Incoming Caller';
+        const avatar = caller?.avatar;
+        const type = data?.type || call?.type || 'voice';
+        const conversationId = data?.conversationId || call?.conversation?._id || call?.conversation;
+
+        if (callId && targetUserId) {
+          setActiveCall({
+            callId,
+            targetUserId,
+            displayName,
+            avatar,
+            type,
+            conversationId,
+            isIncoming: true,
+          });
+        }
       };
 
       socket.on('call:incoming', onIncoming);
@@ -124,22 +135,19 @@ export default function MainLayout() {
 
     socket.emit('call:initiate', {
       receiverId: targetUserId,
+      to: targetUserId,
       type: callType,
       conversationId: activeConversation?._id,
     });
 
-    const onRinging = ({ callId }) => {
-      setActiveCall({
-        callId,
-        targetUserId,
-        displayName: userObj?.displayName || userObj?.username || 'User',
-        avatar: userObj?.avatar,
-        type: callType,
-        isIncoming: false,
-      });
-      socket.off('call:ringing', onRinging);
+    const onCallCreated = (data) => {
+      const callId = data?.callId || data?.call?._id || data?.call?.id;
+      if (callId) {
+        setActiveCall((prev) => (prev ? { ...prev, callId } : null));
+      }
     };
-    socket.on('call:ringing', onRinging);
+    socket.once('call:initiated', onCallCreated);
+    socket.once('call:ringing', onCallCreated);
 
     setActiveCall({
       callId: `temp_${Date.now()}`,
