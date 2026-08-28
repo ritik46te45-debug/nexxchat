@@ -335,45 +335,91 @@ export const setupSocket = (io) => {
     });
 
     // ====== CALLS ======
-    socket.on('call:initiate', async ({ conversationId, receiverId, type = 'voice', isGroup = false }) => {
+    socket.on('call:initiate', async ({ conversationId, receiverId, to, type = 'voice', isGroup = false }) => {
       try {
-        console.log(`[CALL] initiate: from ${userId} to ${receiverId}, conv: ${conversationId}, type: ${type}`);
+        const targetReceiver = (receiverId || to)?.toString();
+        console.log(`[CALL] initiate: from ${userId} to ${targetReceiver}, conv: ${conversationId}, type: ${type}`);
+
+        if (!targetReceiver && !isGroup) {
+          return socket.emit('call:error', { error: 'Receiver ID is required' });
+        }
+
+        // Auto-resolve conversation if not provided
+        let convId = conversationId;
+        if (!convId && targetReceiver) {
+          let conv = await Conversation.findOne({
+            type: 'private',
+            'participants.user': { $all: [userId, targetReceiver] },
+          });
+          if (!conv) {
+            conv = await Conversation.create({
+              type: 'private',
+              participants: [
+                { user: userId, role: 'member' },
+                { user: targetReceiver, role: 'member' },
+              ],
+            });
+          }
+          convId = conv._id;
+        }
+
         const call = await Call.create({
-          conversation: conversationId,
+          conversation: convId,
           caller: userId,
-          receiver: isGroup ? null : receiverId,
-          participants: [{ user: userId, status: 'joined', joinedAt: new Date() }],
+          receiver: isGroup ? null : targetReceiver,
           type,
-          isGroup,
           status: 'ringing',
         });
 
         const populatedCall = await Call.findById(call._id)
           .populate('caller', 'username displayName avatar')
-          .populate('receiver', 'username displayName avatar')
-          .populate('participants.user', 'username displayName avatar');
+          .populate('receiver', 'username displayName avatar');
 
         activeCalls.set(call._id.toString(), {
           caller: userId,
-          receiver: receiverId,
+          receiver: targetReceiver,
           type,
-          conversationId,
+          conversationId: convId,
           isGroup,
         });
 
         if (isGroup) {
-          broadcastToConversation(io, conversationId, userId, 'call:incoming', {
+          broadcastToConversation(io, convId, userId, 'call:incoming', {
             call: populatedCall,
+            callId: call._id.toString(),
+            from: populatedCall.caller,
+            type,
+            conversationId: convId,
           });
-        } else {
-          const receiverSockets = connectionManager.getUserSockets(receiverId.toString());
+        } else if (targetReceiver) {
+          const receiverSockets = connectionManager.getUserSockets(targetReceiver);
+          console.log(`[CALL] Emitting call:incoming to receiver ${targetReceiver} (active sockets: ${receiverSockets.length})`);
           receiverSockets.forEach(sid => {
-            io.to(sid).emit('call:incoming', { call: populatedCall });
+            io.to(sid).emit('call:incoming', {
+              call: populatedCall,
+              callId: call._id.toString(),
+              from: populatedCall.caller,
+              type,
+              conversationId: convId,
+            });
           });
-          io.to(`user:${receiverId.toString()}`).emit('call:incoming', { call: populatedCall });
+          io.to(`user:${targetReceiver}`).emit('call:incoming', {
+            call: populatedCall,
+            callId: call._id.toString(),
+            from: populatedCall.caller,
+            type,
+            conversationId: convId,
+          });
         }
 
-        socket.emit('call:initiated', { call: populatedCall });
+        socket.emit('call:initiated', {
+          call: populatedCall,
+          callId: call._id.toString(),
+        });
+        socket.emit('call:ringing', {
+          callId: call._id.toString(),
+          call: populatedCall,
+        });
       } catch (error) {
         console.error('Call initiate error:', error);
         socket.emit('call:error', { error: 'Failed to initiate call' });
