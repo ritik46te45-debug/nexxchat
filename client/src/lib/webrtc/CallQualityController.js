@@ -195,13 +195,23 @@ export class CallQualityController {
       return;
     }
 
+    const tierRank = { poor: 0, fair: 1, good: 2, excellent: 3 };
+    const isDowngrade = tierRank[newRating] < tierRank[this.currentTier];
+
     if (newRating !== this.currentTier) {
-      this.hysteresisCounter++;
-      // Wait for 2 consecutive consistent polls before switching tiers (prevents flapping)
-      if (this.hysteresisCounter >= 2) {
+      if (isDowngrade) {
+        // React immediately to bad conditions
         this.currentTier = newRating;
         this.hysteresisCounter = 0;
         await this.applyQualityTier(newRating);
+      } else {
+        // Require 2 consistent polls before upgrading
+        this.hysteresisCounter++;
+        if (this.hysteresisCounter >= 2) {
+          this.currentTier = newRating;
+          this.hysteresisCounter = 0;
+          await this.applyQualityTier(newRating);
+        }
       }
     } else {
       this.hysteresisCounter = 0;

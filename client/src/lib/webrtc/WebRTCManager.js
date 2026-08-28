@@ -240,7 +240,14 @@ export class WebRTCManager {
     // Add local tracks to PeerConnection
     if (this.localStream) {
       this.localStream.getTracks().forEach((track) => {
-        pc.addTrack(track, this.localStream);
+        const sender = pc.addTrack(track, this.localStream);
+        if (track.kind === 'video' && sender.setParameters) {
+          const params = sender.getParameters();
+          if (!params.encodings) params.encodings = [{}];
+          params.encodings[0].maxBitrate = 900000;
+          params.encodings[0].maxFramerate = 24;
+          sender.setParameters(params).catch(() => {});
+        }
       });
     }
 
