@@ -115,6 +115,82 @@ export const setupSocket = (io) => {
       });
     });
 
+    // ====== REAL-TIME MESSAGE SEND (SOCKET DIRECT) ======
+    socket.on('message:send', async ({ conversationId, content, type = 'text', clientId, replyTo, attachments, isViewOnce }, callback) => {
+      try {
+        console.log(`[SOCKET RT] message:send received -> User: ${userId} | Conv: ${conversationId} | ClientId: ${clientId}`);
+        const conversation = await Conversation.findOne({
+          _id: conversationId,
+          'participants.user': userId,
+        });
+        if (!conversation) {
+          if (typeof callback === 'function') callback({ error: 'Conversation not found' });
+          return;
+        }
+
+        // Deduplicate by clientId
+        let message = null;
+        if (clientId) {
+          message = await Message.findOne({ clientId, sender: userId });
+        }
+
+        if (!message) {
+          message = await Message.create({
+            conversation: conversationId,
+            sender: userId,
+            type,
+            content: content || '',
+            clientId,
+            attachments: attachments || [],
+            replyTo,
+            isViewOnce: Boolean(isViewOnce),
+          });
+
+          conversation.lastMessage = message._id;
+          conversation.lastMessageAt = new Date();
+          conversation.participants.forEach(p => {
+            if (p.user.toString() !== userId.toString()) {
+              p.unreadCount = (p.unreadCount || 0) + 1;
+            }
+          });
+          await conversation.save();
+        }
+
+        const populatedMessage = await Message.findById(message._id)
+          .populate('sender', 'username displayName avatar')
+          .populate({
+            path: 'replyTo',
+            select: 'content type sender attachments',
+            populate: { path: 'sender', select: 'username displayName' },
+          });
+
+        const payload = {
+          message: populatedMessage,
+          conversationId: conversationId.toString(),
+        };
+
+        // Broadcast to ALL participants (including all sender sockets for multi-device sync)
+        conversation.participants.forEach(p => {
+          const pUserId = (p.user?._id || p.user || p)?.toString();
+          const sockets = onlineUsers.get(pUserId);
+          if (sockets) {
+            sockets.forEach(sid => {
+              io.to(sid).emit('message:new', payload);
+            });
+          }
+          io.to(`user:${pUserId}`).to(pUserId).emit('message:new', payload);
+        });
+        io.to(`conv:${conversationId}`).to(conversationId.toString()).emit('message:new', payload);
+
+        if (typeof callback === 'function') {
+          callback({ success: true, message: populatedMessage });
+        }
+      } catch (err) {
+        console.error('[SOCKET RT] message:send error:', err);
+        if (typeof callback === 'function') callback({ error: err.message });
+      }
+    });
+
     // ====== MESSAGE DELIVERY ======
     socket.on('message:delivered', async ({ messageId, conversationId }) => {
       try {

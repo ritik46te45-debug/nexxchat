@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import api from '../lib/api';
+import { getSocket } from '../lib/socket';
 
 const useChatStore = create((set, get) => ({
   conversations: [],
@@ -105,6 +106,21 @@ const useChatStore = create((set, get) => ({
         messages: [...state.messages, optimisticMsg],
       }));
 
+      // 1. Direct WebSocket send for immediate event loop dispatch
+      try {
+        const socket = getSocket();
+        if (socket && socket.connected) {
+          socket.emit('message:send', {
+            conversationId,
+            ...messageData,
+            clientId,
+          });
+        }
+      } catch (wsErr) {
+        console.warn('Direct WebSocket send warning:', wsErr.message);
+      }
+
+      // 2. HTTP persistence confirmation
       const { data } = await api.post(`/messages/${conversationId}`, {
         ...messageData,
         clientId,
