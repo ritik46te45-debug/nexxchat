@@ -106,54 +106,23 @@ const useChatStore = create((set, get) => ({
         messages: [...state.messages, optimisticMsg],
       }));
 
-      const socket = getSocket();
-      console.log(`[RT-CLIENT-SEND] event=message:send socketConnected=${Boolean(socket?.connected)} socketId=${socket?.id} conversationId=${conversationId} clientId=${clientId}`);
+      // Direct HTTP send (matching reactToMessage / editMessage pattern)
+      const { data } = await api.post(`/messages/${conversationId}`, {
+        ...messageData,
+        clientId,
+      });
 
-      let canonicalMessage = null;
-
-      // 1. Direct WebSocket send via Socket.IO connection event loop
-      if (socket && socket.connected) {
-        try {
-          canonicalMessage = await new Promise((resolve) => {
-            socket.emit('message:send', {
-              conversationId,
-              ...messageData,
-              clientId,
-            }, (response) => {
-              if (response?.success && response?.message) {
-                resolve(response.message);
-              } else {
-                resolve(null);
-              }
-            });
-            // Timeout fallback to HTTP after 1.5 seconds if socket ack is delayed
-            setTimeout(() => resolve(null), 1500);
-          });
-        } catch (wsErr) {
-          console.warn('[RT-CLIENT-WARN] WebSocket send error:', wsErr.message);
-        }
-      }
-
-      // 2. HTTP Fallback / persistence confirmation if socket ack not received
-      if (!canonicalMessage) {
-        const { data } = await api.post(`/messages/${conversationId}`, {
-          ...messageData,
-          clientId,
-        });
-        canonicalMessage = data.message;
-      }
-
-      // Replace optimistic message with real one
+      // Replace optimistic message with canonical server message
       set((state) => ({
         messages: state.messages.map(m =>
-          m.clientId === clientId ? canonicalMessage : m
+          m.clientId === clientId ? data.message : m
         ),
       }));
 
       // Update conversation list
-      get().updateConversationInList(conversationId, canonicalMessage);
+      get().updateConversationInList(conversationId, data.message);
 
-      return canonicalMessage;
+      return data.message;
     } catch (error) {
       // Mark optimistic message as failed
       set((state) => ({

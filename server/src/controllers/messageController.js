@@ -151,11 +151,11 @@ export const sendMessage = async (req, res) => {
     console.log(`[MSG-3] RECIPIENT_RESOLUTION -> recipientIds: [${recipientIds.join(', ')}]`);
 
     recipientIds.forEach(rId => {
-      const sIds = onlineUsers.get(rId) ? Array.from(onlineUsers.get(rId)) : [];
+      const sIds = connectionManager.getUserSockets(rId);
       console.log(`[MSG-4] RECIPIENT_SOCKET_RESOLUTION -> recipientUserId: ${rId} | socketIds: [${sIds.join(', ')}] | count: ${sIds.length}`);
     });
 
-    // Emit socket event to conversation room & participant rooms
+    // Emit socket event to conversation room & participant rooms (EXACTLY like reactToMessage)
     const io = req.app.get('io');
     if (io) {
       console.log(`[MSG-5] ABOUT_TO_EMIT -> event: message:new | messageId: ${message._id}`);
