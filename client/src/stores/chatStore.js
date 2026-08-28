@@ -298,17 +298,20 @@ const useChatStore = create((set, get) => ({
 
   // ====== REAL-TIME HANDLERS ======
   addMessage: (message, conversationId) => {
+    if (!message) return;
     const state = get();
-    const activeConvId = state.activeConversation?._id?.toString();
-    const msgConvId = (conversationId || message?.conversation?._id || message?.conversation)?.toString();
+    const activeConv = state.activeConversation;
+    const activeConvId = (activeConv?._id || activeConv?.id || activeConv)?.toString();
+    const msgConvId = (conversationId || message?.conversation?._id || message?.conversation?.id || message?.conversation)?.toString();
 
     console.log(`[CHAT STORE] addMessage -> ID: ${message?._id} | MsgConv: ${msgConvId} | ActiveConv: ${activeConvId} | ActiveMatches: ${activeConvId === msgConvId}`);
 
     if (activeConvId && msgConvId && activeConvId === msgConvId) {
       const msgs = [...state.messages];
+      const mId = (message._id || message.id)?.toString();
       const matchIdx = msgs.findIndex(m =>
         (m.clientId && message.clientId && m.clientId === message.clientId) ||
-        (m._id && message._id && m._id.toString() === message._id.toString())
+        ((m._id || m.id) && mId && (m._id || m.id).toString() === mId)
       );
 
       if (matchIdx !== -1) {
