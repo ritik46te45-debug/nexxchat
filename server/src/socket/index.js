@@ -428,35 +428,26 @@ export const setupSocket = (io) => {
 
     socket.on('call:accept', async ({ callId }) => {
       try {
+        console.log(`[CALL] accept: callId ${callId} accepted by user ${userId}`);
         const call = await Call.findById(callId);
         if (!call) return;
 
         call.status = 'ongoing';
         call.startedAt = new Date();
-        const pIndex = call.participants.findIndex(p => p.user.toString() === userId);
-        if (pIndex !== -1) {
-          call.participants[pIndex].status = 'joined';
-          call.participants[pIndex].joinedAt = new Date();
-        } else {
-          call.participants.push({ user: userId, status: 'joined', joinedAt: new Date() });
-        }
         await call.save();
 
         const populatedCall = await Call.findById(callId)
           .populate('caller', 'username displayName avatar')
-          .populate('receiver', 'username displayName avatar')
-          .populate('participants.user', 'username displayName avatar');
+          .populate('receiver', 'username displayName avatar');
 
-        const callerSockets = connectionManager.getUserSockets(call.caller.toString());
-        callerSockets.forEach(sid => {
-          io.to(sid).emit('call:accepted', { call: populatedCall, userId });
-        });
-
-        if (call.isGroup) {
-          broadcastToConversation(io, call.conversation, userId, 'call:participant-joined', {
-            call: populatedCall,
-            userId,
+        const callerId = (call.caller?._id || call.caller)?.toString();
+        if (callerId) {
+          const callerSockets = connectionManager.getUserSockets(callerId);
+          console.log(`[CALL] Emitting call:accepted to caller ${callerId} (active sockets: ${callerSockets.length})`);
+          callerSockets.forEach(sid => {
+            io.to(sid).emit('call:accepted', { call: populatedCall, callId, userId });
           });
+          io.to(`user:${callerId}`).emit('call:accepted', { call: populatedCall, callId, userId });
         }
       } catch (error) {
         console.error('Call accept error:', error);
@@ -475,10 +466,14 @@ export const setupSocket = (io) => {
 
         activeCalls.delete(callId);
 
-        const callerSockets = connectionManager.getUserSockets(call.caller.toString());
-        callerSockets.forEach(sid => {
-          io.to(sid).emit('call:rejected', { callId, reason, userId });
-        });
+        const callerId = (call.caller?._id || call.caller)?.toString();
+        if (callerId) {
+          const callerSockets = connectionManager.getUserSockets(callerId);
+          callerSockets.forEach(sid => {
+            io.to(sid).emit('call:rejected', { callId, reason, userId });
+          });
+          io.to(`user:${callerId}`).emit('call:rejected', { callId, reason, userId });
+        }
       } catch (error) {
         console.error('Call reject error:', error);
       }
@@ -497,23 +492,16 @@ export const setupSocket = (io) => {
 
         activeCalls.delete(callId);
 
-        const callData = activeCalls.get(callId);
-        if (callData?.isGroup) {
-          broadcastToConversation(io, call.conversation, userId, 'call:ended', {
-            callId,
-            duration,
-          });
-        } else {
-          const otherUserId = call.caller.toString() === userId
-            ? call.receiver?.toString()
-            : call.caller.toString();
+        const callerId = (call.caller?._id || call.caller)?.toString();
+        const receiverId = (call.receiver?._id || call.receiver)?.toString();
+        const otherUserId = callerId === userId ? receiverId : callerId;
 
-          if (otherUserId) {
-            const otherSockets = connectionManager.getUserSockets(otherUserId);
-            otherSockets.forEach(sid => {
-              io.to(sid).emit('call:ended', { callId, duration });
-            });
-          }
+        if (otherUserId) {
+          const otherSockets = connectionManager.getUserSockets(otherUserId);
+          otherSockets.forEach(sid => {
+            io.to(sid).emit('call:ended', { callId, duration });
+          });
+          io.to(`user:${otherUserId}`).emit('call:ended', { callId, duration });
         }
       } catch (error) {
         console.error('Call end error:', error);
@@ -523,50 +511,62 @@ export const setupSocket = (io) => {
     // WebRTC signaling
     socket.on('call:offer', ({ to, offer, callId }) => {
       const targetId = to?.toString();
+      if (!targetId) return;
       const targetSockets = connectionManager.getUserSockets(targetId);
       targetSockets.forEach(sid => {
         io.to(sid).emit('call:offer', { from: userId, offer, callId });
       });
+      io.to(`user:${targetId}`).emit('call:offer', { from: userId, offer, callId });
     });
 
     socket.on('call:answer', ({ to, answer, callId }) => {
       const targetId = to?.toString();
+      if (!targetId) return;
       const targetSockets = connectionManager.getUserSockets(targetId);
       targetSockets.forEach(sid => {
         io.to(sid).emit('call:answer', { from: userId, answer, callId });
       });
+      io.to(`user:${targetId}`).emit('call:answer', { from: userId, answer, callId });
     });
 
     socket.on('call:ice-candidate', ({ to, candidate, callId }) => {
       const targetId = to?.toString();
+      if (!targetId) return;
       const targetSockets = connectionManager.getUserSockets(targetId);
       targetSockets.forEach(sid => {
         io.to(sid).emit('call:ice-candidate', { from: userId, candidate, callId });
       });
+      io.to(`user:${targetId}`).emit('call:ice-candidate', { from: userId, candidate, callId });
     });
 
     socket.on('call:ice-restart', ({ to, callId }) => {
       const targetId = to?.toString();
+      if (!targetId) return;
       const targetSockets = connectionManager.getUserSockets(targetId);
       targetSockets.forEach(sid => {
         io.to(sid).emit('call:ice-restart', { from: userId, callId });
       });
+      io.to(`user:${targetId}`).emit('call:ice-restart', { from: userId, callId });
     });
 
     socket.on('call:renegotiate', ({ to, offer, callId }) => {
       const targetId = to?.toString();
+      if (!targetId) return;
       const targetSockets = connectionManager.getUserSockets(targetId);
       targetSockets.forEach(sid => {
         io.to(sid).emit('call:renegotiate', { from: userId, offer, callId });
       });
+      io.to(`user:${targetId}`).emit('call:renegotiate', { from: userId, offer, callId });
     });
 
     socket.on('call:screen-share', ({ to, enabled, callId }) => {
       const targetId = to?.toString();
+      if (!targetId) return;
       const targetSockets = connectionManager.getUserSockets(targetId);
       targetSockets.forEach(sid => {
         io.to(sid).emit('call:screen-share', { from: userId, enabled, callId });
       });
+      io.to(`user:${targetId}`).emit('call:screen-share', { from: userId, enabled, callId });
     });
 
     // ====== DISCONNECT ======
