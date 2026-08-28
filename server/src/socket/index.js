@@ -508,64 +508,40 @@ export const setupSocket = (io) => {
       }
     });
 
-    // WebRTC signaling
+    // WebRTC signaling (clean single dispatch per user room)
     socket.on('call:offer', ({ to, offer, callId }) => {
       const targetId = to?.toString();
       if (!targetId) return;
-      const targetSockets = connectionManager.getUserSockets(targetId);
-      targetSockets.forEach(sid => {
-        io.to(sid).emit('call:offer', { from: userId, offer, callId });
-      });
       io.to(`user:${targetId}`).emit('call:offer', { from: userId, offer, callId });
     });
 
     socket.on('call:answer', ({ to, answer, callId }) => {
       const targetId = to?.toString();
       if (!targetId) return;
-      const targetSockets = connectionManager.getUserSockets(targetId);
-      targetSockets.forEach(sid => {
-        io.to(sid).emit('call:answer', { from: userId, answer, callId });
-      });
       io.to(`user:${targetId}`).emit('call:answer', { from: userId, answer, callId });
     });
 
     socket.on('call:ice-candidate', ({ to, candidate, callId }) => {
       const targetId = to?.toString();
       if (!targetId) return;
-      const targetSockets = connectionManager.getUserSockets(targetId);
-      targetSockets.forEach(sid => {
-        io.to(sid).emit('call:ice-candidate', { from: userId, candidate, callId });
-      });
       io.to(`user:${targetId}`).emit('call:ice-candidate', { from: userId, candidate, callId });
     });
 
     socket.on('call:ice-restart', ({ to, callId }) => {
       const targetId = to?.toString();
       if (!targetId) return;
-      const targetSockets = connectionManager.getUserSockets(targetId);
-      targetSockets.forEach(sid => {
-        io.to(sid).emit('call:ice-restart', { from: userId, callId });
-      });
       io.to(`user:${targetId}`).emit('call:ice-restart', { from: userId, callId });
     });
 
     socket.on('call:renegotiate', ({ to, offer, callId }) => {
       const targetId = to?.toString();
       if (!targetId) return;
-      const targetSockets = connectionManager.getUserSockets(targetId);
-      targetSockets.forEach(sid => {
-        io.to(sid).emit('call:renegotiate', { from: userId, offer, callId });
-      });
       io.to(`user:${targetId}`).emit('call:renegotiate', { from: userId, offer, callId });
     });
 
     socket.on('call:screen-share', ({ to, enabled, callId }) => {
       const targetId = to?.toString();
       if (!targetId) return;
-      const targetSockets = connectionManager.getUserSockets(targetId);
-      targetSockets.forEach(sid => {
-        io.to(sid).emit('call:screen-share', { from: userId, enabled, callId });
-      });
       io.to(`user:${targetId}`).emit('call:screen-share', { from: userId, enabled, callId });
     });
 

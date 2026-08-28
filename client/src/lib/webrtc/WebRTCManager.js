@@ -342,6 +342,7 @@ export class WebRTCManager {
    */
   async handleOffer(offer) {
     if (!this.pc) await this.initializePeerConnection();
+    if (!offer || !this.pc) return;
 
     try {
       const readyForOffer =
@@ -358,15 +359,17 @@ export class WebRTCManager {
       await this.pc.setRemoteDescription(new RTCSessionDescription(offer));
       await this.drainCandidateQueue();
 
-      const answer = await this.pc.createAnswer();
-      answer.sdp = this.tuneAudioSDP(answer.sdp);
-      await this.pc.setLocalDescription(answer);
+      if (this.pc.remoteDescription?.type === 'offer' && this.pc.signalingState === 'have-remote-offer') {
+        const answer = await this.pc.createAnswer();
+        answer.sdp = this.tuneAudioSDP(answer.sdp);
+        await this.pc.setLocalDescription(answer);
 
-      this.socket.emit('call:answer', {
-        to: this.targetUserId,
-        answer,
-        callId: this.callId,
-      });
+        this.socket.emit('call:answer', {
+          to: this.targetUserId,
+          answer,
+          callId: this.callId,
+        });
+      }
     } catch (err) {
       console.error('Error handling offer:', err);
     }
@@ -376,15 +379,20 @@ export class WebRTCManager {
    * Handle incoming Answer
    */
   async handleAnswer(answer) {
-    if (!this.pc) return;
+    if (!this.pc || !answer) return;
 
     try {
+      if (this.pc.signalingState !== 'have-local-offer') {
+        console.warn('Ignoring answer in state:', this.pc.signalingState);
+        return;
+      }
       this.isSettingRemoteAnswerPending = true;
       await this.pc.setRemoteDescription(new RTCSessionDescription(answer));
-      this.isSettingRemoteAnswerPending = false;
       await this.drainCandidateQueue();
     } catch (err) {
       console.error('Error setting remote answer:', err);
+    } finally {
+      this.isSettingRemoteAnswerPending = false;
     }
   }
 
@@ -395,7 +403,7 @@ export class WebRTCManager {
     if (!candidate) return;
 
     try {
-      if (this.pc && this.pc.remoteDescription?.type) {
+      if (this.pc && this.pc.remoteDescription?.type && this.pc.signalingState !== 'closed') {
         await this.pc.addIceCandidate(new RTCIceCandidate(candidate));
       } else {
         this.candidateQueue.push(candidate);
