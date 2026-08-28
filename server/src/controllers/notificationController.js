@@ -73,6 +73,13 @@ export const unsubscribePush = async (req, res) => {
       $pull: { pushSubscriptions: { endpoint } },
     });
 
+    res.json({ message: 'Unsubscribed successfully' });
+  } catch (error) {
+    console.error('Unsubscribe push error:', error);
+    res.status(500).json({ error: 'Failed to unsubscribe' });
+  }
+};
+
 // GET IN-APP NOTIFICATIONS
 export const getNotifications = async (req, res) => {
   try {
