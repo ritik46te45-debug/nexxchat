@@ -8,15 +8,21 @@ import { onlineUsers } from '../socket/index.js';
 
 // Helper: Broadcast event to a conversation and all its participants reliably
 export const emitToConversationParticipants = (io, conversation, event, data) => {
-  if (!io || !conversation) return;
+  if (!io || !conversation) {
+    console.warn(`[RT-EMIT-WARN] Cannot emit ${event} — io (${Boolean(io)}) or conversation (${Boolean(conversation)}) missing`);
+    return;
+  }
   const convId = conversation._id?.toString() || conversation.toString();
   const convRoom = `conv:${convId}`;
+  const participants = conversation.participants || [];
+
+  console.log(`[RT-EMIT-001] emitToConversationParticipants ENTERED -> event: ${event} | convId: ${convId} | participants: ${participants.length}`);
 
   // 1. Emit to conversation rooms
   io.to(convRoom).to(convId).emit(event, data);
 
   // 2. Emit to each participant via user rooms AND direct socket IDs
-  (conversation.participants || []).forEach(p => {
+  participants.forEach(p => {
     const pUserId = (p.user?._id || p.user || p)?.toString();
     if (pUserId) {
       const userRoom = `user:${pUserId}`;
@@ -24,6 +30,9 @@ export const emitToConversationParticipants = (io, conversation, event, data) =>
 
       // Direct emit to active sockets in onlineUsers Map
       const sockets = onlineUsers.get(pUserId);
+      const socketIds = sockets ? Array.from(sockets) : [];
+      console.log(`[RT-EMIT-002] Target user: ${pUserId} | SocketIds: [${socketIds.join(', ')}] | Count: ${socketIds.length}`);
+
       if (sockets && sockets.size > 0) {
         sockets.forEach(sid => {
           io.to(sid).emit(event, data);
@@ -31,6 +40,7 @@ export const emitToConversationParticipants = (io, conversation, event, data) =>
       }
     }
   });
+  console.log(`[RT-EMIT-003] Emitted ${event} successfully to all targets for conv: ${convId}`);
 };
 
 // SEND MESSAGE
@@ -42,6 +52,8 @@ export const sendMessage = async (req, res) => {
       clientId, location, contact, poll, linkPreview, attachments,
     } = req.body;
 
+    console.log(`[MSG-1] SEND_MESSAGE_REQUEST -> senderId: ${req.userId} | convId: ${conversationId} | clientId: ${clientId} | type: ${type}`);
+
     // Verify conversation exists and user is a participant
     const conversation = await Conversation.findOne({
       _id: conversationId,
@@ -49,6 +61,7 @@ export const sendMessage = async (req, res) => {
     });
 
     if (!conversation) {
+      console.error(`[MSG-ERR] Conversation not found or user not participant: ${conversationId}`);
       return res.status(404).json({ error: 'Conversation not found' });
     }
 
@@ -75,6 +88,7 @@ export const sendMessage = async (req, res) => {
     if (clientId) {
       const existing = await Message.findOne({ clientId, sender: req.userId });
       if (existing) {
+        console.log(`[MSG-DEDUP] Returning existing message for clientId: ${clientId}`);
         return res.json({ message: existing });
       }
     }
@@ -103,6 +117,7 @@ export const sendMessage = async (req, res) => {
     }
 
     const message = await Message.create(messageData);
+    console.log(`[MSG-2] MESSAGE_SAVED -> messageId: ${message._id} | convId: ${conversationId} | senderId: ${req.userId}`);
 
     // Update conversation
     conversation.lastMessage = message._id;
@@ -134,13 +149,28 @@ export const sendMessage = async (req, res) => {
         populate: { path: 'sender', select: 'username displayName' },
       });
 
+    // Recipients resolution
+    const recipientIds = conversation.participants
+      .filter(p => (p.user?._id || p.user)?.toString() !== req.userId.toString())
+      .map(p => (p.user?._id || p.user)?.toString());
+    console.log(`[MSG-3] RECIPIENT_RESOLUTION -> recipientIds: [${recipientIds.join(', ')}]`);
+
+    recipientIds.forEach(rId => {
+      const sIds = onlineUsers.get(rId) ? Array.from(onlineUsers.get(rId)) : [];
+      console.log(`[MSG-4] RECIPIENT_SOCKET_RESOLUTION -> recipientUserId: ${rId} | socketIds: [${sIds.join(', ')}] | count: ${sIds.length}`);
+    });
+
     // Emit socket event to conversation room & participant rooms
     const io = req.app.get('io');
     if (io) {
+      console.log(`[MSG-5] ABOUT_TO_EMIT -> event: message:new | messageId: ${message._id}`);
       emitToConversationParticipants(io, conversation, 'message:new', {
         message: populatedMessage,
         conversationId,
       });
+      console.log(`[MSG-6] MESSAGE_NEW_EMITTED -> messageId: ${message._id} | target: conv:${conversationId} & user rooms`);
+    } else {
+      console.error(`[MSG-ERR] req.app.get('io') returned null/undefined!`);
     }
 
     // Create in-app Notification records for other participants
