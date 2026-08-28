@@ -4,7 +4,7 @@ import User from '../models/User.js';
 import Notification from '../models/Notification.js';
 import cloudinary from '../config/cloudinary.js';
 import { sendPushNotification } from '../config/webPush.js';
-import { onlineUsers } from '../socket/index.js';
+import connectionManager from '../socket/connectionManager.js';
 
 // Helper: Broadcast event to a conversation and all its participants reliably
 export const emitToConversationParticipants = (io, conversation, event, data) => {
@@ -18,28 +18,23 @@ export const emitToConversationParticipants = (io, conversation, event, data) =>
 
   console.log(`[RT-EMIT-001] emitToConversationParticipants ENTERED -> event: ${event} | convId: ${convId} | participants: ${participants.length}`);
 
-  // 1. Emit to conversation rooms
-  io.to(convRoom).to(convId).emit(event, data);
-
-  // 2. Emit to each participant via user rooms AND direct socket IDs
+  // 1. Emit to each participant via direct socket IDs AND persistent user room
   participants.forEach(p => {
     const pUserId = (p.user?._id || p.user || p)?.toString();
     if (pUserId) {
-      const userRoom = `user:${pUserId}`;
-      io.to(userRoom).to(pUserId).emit(event, data);
-
-      // Direct emit to active sockets in onlineUsers Map
-      const sockets = onlineUsers.get(pUserId);
-      const socketIds = sockets ? Array.from(sockets) : [];
+      const socketIds = connectionManager.getUserSockets(pUserId);
       console.log(`[RT-EMIT-002] Target user: ${pUserId} | SocketIds: [${socketIds.join(', ')}] | Count: ${socketIds.length}`);
 
-      if (sockets && sockets.size > 0) {
-        sockets.forEach(sid => {
-          io.to(sid).emit(event, data);
-        });
-      }
+      socketIds.forEach(sid => {
+        io.to(sid).emit(event, data);
+      });
+
+      io.to(`user:${pUserId}`).emit(event, data);
     }
   });
+
+  // 2. Emit to conversation room
+  io.to(convRoom).emit(event, data);
   console.log(`[RT-EMIT-003] Emitted ${event} successfully to all targets for conv: ${convId}`);
 };
 
