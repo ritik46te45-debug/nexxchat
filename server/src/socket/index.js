@@ -118,12 +118,15 @@ export const setupSocket = (io) => {
     // ====== REAL-TIME MESSAGE SEND (SOCKET DIRECT) ======
     socket.on('message:send', async ({ conversationId, content, type = 'text', clientId, replyTo, attachments, isViewOnce }, callback) => {
       try {
-        console.log(`[SOCKET RT] message:send received -> User: ${userId} | Conv: ${conversationId} | ClientId: ${clientId}`);
+        console.log(`[RT-SERVER-RECEIVED] event=message:send socketId=${socket.id} authenticatedUserId=${userId} conversationId=${conversationId} clientId=${clientId}`);
+
         const conversation = await Conversation.findOne({
           _id: conversationId,
           'participants.user': userId,
         });
+
         if (!conversation) {
+          console.warn(`[RT-SERVER-WARN] Conversation ${conversationId} not found or user ${userId} is not a participant`);
           if (typeof callback === 'function') callback({ error: 'Conversation not found' });
           return;
         }
@@ -169,24 +172,35 @@ export const setupSocket = (io) => {
           conversationId: conversationId.toString(),
         };
 
-        // Broadcast to ALL participants (including all sender sockets for multi-device sync)
+        // 1. Direct active socket dispatch for every participant
         conversation.participants.forEach(p => {
           const pUserId = (p.user?._id || p.user || p)?.toString();
-          const sockets = onlineUsers.get(pUserId);
-          if (sockets) {
-            sockets.forEach(sid => {
-              io.to(sid).emit('message:new', payload);
-            });
-          }
-          io.to(`user:${pUserId}`).to(pUserId).emit('message:new', payload);
-        });
-        io.to(`conv:${conversationId}`).to(conversationId.toString()).emit('message:new', payload);
+          if (pUserId) {
+            const sockets = onlineUsers.get(pUserId);
+            const socketIds = sockets ? Array.from(sockets) : [];
+            console.log(`[RT-ONLINEUSERS] senderUserId=${userId} recipientUserId=${pUserId} mapHasRecipient=${onlineUsers.has(pUserId)} recipientSocketCount=${socketIds.length} recipientSocketIds=[${socketIds.join(', ')}]`);
 
+            if (sockets && sockets.size > 0) {
+              sockets.forEach(sid => {
+                console.log(`[RT-EMIT] targetSocketId=${sid} event=message:new messageId=${message._id}`);
+                io.to(sid).emit('message:new', payload);
+              });
+            }
+
+            // Also emit to persistent user room
+            io.to(`user:${pUserId}`).emit('message:new', payload);
+          }
+        });
+
+        // 2. Also emit to conversation room
+        io.to(`conv:${conversationId}`).emit('message:new', payload);
+
+        // Acknowledge back to sender socket
         if (typeof callback === 'function') {
           callback({ success: true, message: populatedMessage });
         }
       } catch (err) {
-        console.error('[SOCKET RT] message:send error:', err);
+        console.error('[RT-SERVER-ERR] message:send error:', err);
         if (typeof callback === 'function') callback({ error: err.message });
       }
     });
