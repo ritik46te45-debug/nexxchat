@@ -335,16 +335,11 @@ export const setupSocket = (io) => {
     });
 
     // ====== CALLS & SIGNALING ======
-    // Helper to reliably deliver signaling to target user across rooms and direct socket IDs
+    // Helper to reliably deliver signaling to target user across rooms without duplicate events
     const emitToUser = (targetId, event, data) => {
       const tid = targetId?.toString();
       if (!tid) return;
-      io.to(`user:${tid}`).emit(event, data);
-      io.to(tid).emit(event, data);
-      const userSockets = connectionManager.getUserSockets(tid);
-      userSockets.forEach((sid) => {
-        io.to(sid).emit(event, data);
-      });
+      io.to(`user:${tid}`).to(tid).emit(event, data);
     };
 
     socket.on('call:initiate', async ({ conversationId, receiverId, to, type = 'voice', isGroup = false }) => {

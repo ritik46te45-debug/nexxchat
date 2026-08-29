@@ -107,25 +107,28 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
     callIdRef.current = callData.callId;
   }, [callData.callId]);
 
-  // Persistent Stream Re-binder (Guarantees video is active on resize, orientation change, PiP)
+  // Persistent Stream Re-binder (Guarantees video is active on resize, orientation change, PiP, swap)
   useEffect(() => {
     const rebindStreams = () => {
-      const rStream = remoteStreamRef.current;
-      if (rStream) {
-        if (remoteVideoRef.current && remoteVideoRef.current.srcObject !== rStream) {
+      const rStream = remoteStreamRef.current || remoteStream;
+      const lStream = webrtcManagerRef.current?.localStream;
+
+      if (remoteVideoRef.current && rStream) {
+        if (remoteVideoRef.current.srcObject !== rStream) {
           remoteVideoRef.current.srcObject = rStream;
         }
         remoteVideoRef.current?.play?.().catch(() => {});
+      }
 
-        if (remoteAudioRef.current && remoteAudioRef.current.srcObject !== rStream) {
+      if (remoteAudioRef.current && rStream) {
+        if (remoteAudioRef.current.srcObject !== rStream) {
           remoteAudioRef.current.srcObject = rStream;
         }
         remoteAudioRef.current?.play?.().catch(() => {});
       }
 
-      const lStream = webrtcManagerRef.current?.localStream;
-      if (lStream) {
-        if (localVideoRef.current && localVideoRef.current.srcObject !== lStream) {
+      if (localVideoRef.current && lStream) {
+        if (localVideoRef.current.srcObject !== lStream) {
           localVideoRef.current.srcObject = lStream;
         }
         localVideoRef.current?.play?.().catch(() => {});
@@ -133,13 +136,15 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
     };
 
     rebindStreams();
+    const timeout = setTimeout(rebindStreams, 300);
     window.addEventListener('resize', rebindStreams);
     window.addEventListener('orientationchange', rebindStreams);
     return () => {
+      clearTimeout(timeout);
       window.removeEventListener('resize', rebindStreams);
       window.removeEventListener('orientationchange', rebindStreams);
     };
-  }, [remoteStream, isFloatingPiP, isVideoOff, isVideoCall, callStatus]);
+  }, [remoteStream, isFloatingPiP, isVideoOff, isVideoCall, callStatus, isSwappedVideo]);
 
   // Load available devices
   const loadDevices = useCallback(async () => {

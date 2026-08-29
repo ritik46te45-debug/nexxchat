@@ -258,72 +258,36 @@ export class WebRTCManager {
     };
 
     // Add local tracks to PeerConnection
-    if (this.localStream) {
-      this.localStream.getTracks().forEach((track) => {
-        const sender = pc.addTrack(track, this.localStream);
-        if (track.kind === 'video' && sender.setParameters) {
-          const params = sender.getParameters();
-          if (!params.encodings) params.encodings = [{}];
-          params.encodings[0].maxBitrate = 900000;
-          params.encodings[0].maxFramerate = 24;
-          sender.setParameters(params).catch(() => {});
-        }
-      });
-    }
-
-    // Set Codec Preferences (Opus for Audio, VP9/VP8/H264 for Video)
-    this.optimizeCodecPreferences();
+    this.addLocalTracksToPeerConnection();
 
     return pc;
   }
 
   /**
-   * Codec Optimization: Prioritize Opus and VP9/VP8/H.264
+   * Helper to ensure all local media tracks are attached to RTCPeerConnection
    */
-  optimizeCodecPreferences() {
-    if (!this.pc) return;
-
-    try {
-      const transceivers = this.pc.getTransceivers ? this.pc.getTransceivers() : [];
-      transceivers.forEach((transceiver) => {
-        if (transceiver.setCodecPreferences && RTCRtpSender.getCapabilities) {
-          const kind = transceiver.sender?.track?.kind || transceiver.receiver?.track?.kind;
-          if (kind === 'audio') {
-            const caps = RTCRtpSender.getCapabilities('audio');
-            if (caps?.codecs) {
-              const opus = caps.codecs.filter((c) => c.mimeType.toLowerCase() === 'audio/opus');
-              const others = caps.codecs.filter((c) => c.mimeType.toLowerCase() !== 'audio/opus');
-              transceiver.setCodecPreferences([...opus, ...others]);
-            }
-          } else if (kind === 'video') {
-            const caps = RTCRtpSender.getCapabilities('video');
-            if (caps?.codecs) {
-              const vp9 = caps.codecs.filter((c) => c.mimeType.toLowerCase() === 'video/vp9');
-              const vp8 = caps.codecs.filter((c) => c.mimeType.toLowerCase() === 'video/vp8');
-              const h264 = caps.codecs.filter((c) => c.mimeType.toLowerCase() === 'video/h264');
-              const others = caps.codecs.filter(
-                (c) => !['video/vp9', 'video/vp8', 'video/h264'].includes(c.mimeType.toLowerCase())
-              );
-              transceiver.setCodecPreferences([...vp9, ...vp8, ...h264, ...others]);
-            }
+  addLocalTracksToPeerConnection() {
+    if (!this.pc || !this.localStream) return;
+    const currentSenders = this.pc.getSenders ? this.pc.getSenders() : [];
+    this.localStream.getTracks().forEach((track) => {
+      const alreadyAdded = currentSenders.some(
+        (s) => s.track === track || (s.track && s.track.id === track.id)
+      );
+      if (!alreadyAdded) {
+        try {
+          const sender = this.pc.addTrack(track, this.localStream);
+          if (track.kind === 'video' && sender.setParameters) {
+            const params = sender.getParameters();
+            if (!params.encodings) params.encodings = [{}];
+            params.encodings[0].maxBitrate = 1200000;
+            params.encodings[0].maxFramerate = 30;
+            sender.setParameters(params).catch(() => {});
           }
+        } catch (e) {
+          console.warn('Track add note:', e.message);
         }
-      });
-    } catch (e) {
-      console.warn('Codec optimization note:', e.message);
-    }
-  }
-
-  /**
-   * Tune Opus parameters in SDP
-   */
-  tuneAudioSDP(sdp) {
-    if (!sdp) return sdp;
-    // Optimize Opus for high speech clarity, in-band FEC, and 48kHz
-    return sdp.replace(
-      /a=fmtp:(\d+) minptime=\d+/g,
-      'a=fmtp:$1 minptime=10;useinbandfec=1;maxaveragebitrate=64000;stereo=0'
-    );
+      }
+    });
   }
 
   /**
@@ -339,7 +303,9 @@ export class WebRTCManager {
     if (!this.pc) return;
 
     try {
+      this.addLocalTracksToPeerConnection();
       this.makingOffer = true;
+
       const offerOptions = {
         offerToReceiveAudio: true,
         offerToReceiveVideo: this.isVideo,
@@ -347,7 +313,6 @@ export class WebRTCManager {
       };
 
       const offer = await this.pc.createOffer(offerOptions);
-      offer.sdp = this.tuneAudioSDP(offer.sdp);
       await this.pc.setLocalDescription(offer);
 
       const eventName = isIceRestart ? 'call:renegotiate' : 'call:offer';
@@ -376,6 +341,8 @@ export class WebRTCManager {
     if (!offer || !this.pc) return;
 
     try {
+      this.addLocalTracksToPeerConnection();
+
       const readyForOffer =
         !this.makingOffer &&
         (this.pc.signalingState === 'stable' || this.isSettingRemoteAnswerPending);
@@ -392,7 +359,6 @@ export class WebRTCManager {
 
       if (this.pc.remoteDescription?.type === 'offer' && this.pc.signalingState === 'have-remote-offer') {
         const answer = await this.pc.createAnswer();
-        answer.sdp = this.tuneAudioSDP(answer.sdp);
         await this.pc.setLocalDescription(answer);
 
         this.socket.emit('call:answer', {
