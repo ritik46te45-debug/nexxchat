@@ -595,17 +595,30 @@ export class WebRTCManager {
     if (facingMode) this.activeFacingMode = facingMode;
 
     try {
+      // 1. Stop existing video track first to release hardware lock on mobile/laptops
+      const oldTrack = this.localStream?.getVideoTracks()[0];
+      if (oldTrack) {
+        oldTrack.stop();
+        if (this.localStream) this.localStream.removeTrack(oldTrack);
+      }
+
       const videoConstraints = {
         width: { ideal: 1280, max: 1920 },
         height: { ideal: 720, max: 1080 },
         frameRate: { ideal: 30, max: 30 },
-        facingMode: this.activeFacingMode,
+        facingMode: this.activeFacingMode ? { ideal: this.activeFacingMode } : undefined,
         deviceId: deviceId ? { exact: deviceId } : undefined,
       };
 
       const newStream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints });
       const newVideoTrack = newStream.getVideoTracks()[0];
-      if (!newVideoTrack) return false;
+      if (!newVideoTrack) return null;
+
+      if (this.localStream) {
+        this.localStream.addTrack(newVideoTrack);
+      } else {
+        this.localStream = newStream;
+      }
 
       if (this.pc && !this.isScreenSharing) {
         const videoSender = this.pc.getSenders().find((s) => s.track?.kind === 'video');
@@ -614,27 +627,52 @@ export class WebRTCManager {
         }
       }
 
-      const oldTrack = this.localStream?.getVideoTracks()[0];
-      if (oldTrack) oldTrack.stop();
-
-      if (this.localStream) {
-        if (oldTrack) this.localStream.removeTrack(oldTrack);
-        this.localStream.addTrack(newVideoTrack);
-      }
-
       return newVideoTrack;
     } catch (err) {
       console.error('Switch camera error:', err);
+      // Automatic fallback recovery
+      try {
+        const fallbackStream = await navigator.mediaDevices.getUserMedia({ video: true });
+        const fallbackTrack = fallbackStream.getVideoTracks()[0];
+        if (fallbackTrack) {
+          if (this.localStream) this.localStream.addTrack(fallbackTrack);
+          if (this.pc && !this.isScreenSharing) {
+            const videoSender = this.pc.getSenders().find((s) => s.track?.kind === 'video');
+            if (videoSender) await videoSender.replaceTrack(fallbackTrack);
+          }
+          return fallbackTrack;
+        }
+      } catch (fallbackErr) {
+        console.error('Camera fallback recovery failed:', fallbackErr);
+      }
       return null;
     }
   }
 
   /**
-   * Flip mobile camera (front <-> rear)
+   * Flip mobile camera (front <-> rear) or cycle laptop webcams
    */
   async flipCamera() {
-    const nextFacing = this.activeFacingMode === 'user' ? 'environment' : 'user';
-    return await this.switchCamera(null, nextFacing);
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = devices.filter((d) => d.kind === 'videoinput');
+
+      let nextDeviceId = null;
+      let nextFacing = this.activeFacingMode === 'user' ? 'environment' : 'user';
+
+      if (videoDevices.length > 1) {
+        const currentIdx = videoDevices.findIndex(
+          (d) => d.deviceId === this.activeVideoDeviceId
+        );
+        const nextIdx = (currentIdx + 1) % videoDevices.length;
+        nextDeviceId = videoDevices[nextIdx].deviceId;
+      }
+
+      return await this.switchCamera(nextDeviceId, nextFacing);
+    } catch (e) {
+      const nextFacing = this.activeFacingMode === 'user' ? 'environment' : 'user';
+      return await this.switchCamera(null, nextFacing);
+    }
   }
 
   /**

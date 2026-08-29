@@ -74,6 +74,7 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [connectionState, setConnectionState] = useState('new');
   const [isSpeakerOn, setIsSpeakerOn] = useState(true);
+  const [isFloatingPiP, setIsFloatingPiP] = useState(false);
   const [stats, setStats] = useState(null);
   const [showStatsModal, setShowStatsModal] = useState(false);
   const [showDeviceMenu, setShowDeviceMenu] = useState(false);
@@ -392,12 +393,35 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
     if (isScreenSharing) {
       await manager.stopScreenShare();
       setIsScreenSharing(false);
+      if (localVideoRef.current && manager.localStream) {
+        localVideoRef.current.srcObject = manager.localStream;
+        localVideoRef.current.play().catch(() => {});
+      }
+      toast('Screen sharing stopped', { icon: '🛑' });
     } else {
-      const screenStream = await manager.startScreenShare(() => {
-        setIsScreenSharing(false);
-      });
-      if (screenStream) {
-        setIsScreenSharing(true);
+      if (!navigator.mediaDevices?.getDisplayMedia) {
+        toast.error('Screen sharing is supported on Laptop / Desktop browsers');
+        return;
+      }
+      try {
+        const screenStream = await manager.startScreenShare(() => {
+          setIsScreenSharing(false);
+          if (localVideoRef.current && manager.localStream) {
+            localVideoRef.current.srcObject = manager.localStream;
+            localVideoRef.current.play().catch(() => {});
+          }
+          toast('Screen sharing stopped', { icon: '🛑' });
+        });
+        if (screenStream) {
+          setIsScreenSharing(true);
+          if (localVideoRef.current) {
+            localVideoRef.current.srcObject = screenStream;
+            localVideoRef.current.play().catch(() => {});
+          }
+          toast.success('Screen sharing active!');
+        }
+      } catch (err) {
+        console.warn('Screen share error:', err);
       }
     }
   };
@@ -405,11 +429,18 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
   const flipCamera = async () => {
     const manager = webrtcManagerRef.current;
     if (!manager) return;
-    const newTrack = await manager.flipCamera();
-    if (newTrack && localVideoRef.current) {
-      localVideoRef.current.srcObject = new MediaStream([newTrack]);
+    try {
+      const newTrack = await manager.flipCamera();
+      if (newTrack && localVideoRef.current && manager.localStream) {
+        localVideoRef.current.srcObject = manager.localStream;
+        localVideoRef.current.play().catch(() => {});
+        toast.success('Camera switched');
+      } else {
+        toast.error('Could not switch camera');
+      }
+    } catch (e) {
+      toast.error('Camera switch failed');
     }
-    toast('Camera flipped', { icon: '🔄' });
   };
 
   const handleSwitchMic = async (deviceId) => {
@@ -426,8 +457,9 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
     const manager = webrtcManagerRef.current;
     if (manager) {
       const newTrack = await manager.switchCamera(deviceId);
-      if (newTrack && localVideoRef.current) {
-        localVideoRef.current.srcObject = new MediaStream([newTrack]);
+      if (newTrack && localVideoRef.current && manager.localStream) {
+        localVideoRef.current.srcObject = manager.localStream;
+        localVideoRef.current.play().catch(() => {});
         toast.success('Camera switched');
       }
     }
@@ -452,15 +484,28 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
   };
 
   const togglePiP = async () => {
-    if (document.pictureInPictureElement) {
-      await document.exitPictureInPicture();
-    } else if (remoteVideoRef.current) {
-      try {
-        await remoteVideoRef.current.requestPictureInPicture();
-      } catch (e) {
-        toast.error('Picture-in-Picture not supported');
+    // 1. Try native HTML5 Picture-in-Picture on active video
+    try {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+        return;
       }
+      const targetVideo = remoteVideoRef.current?.srcObject ? remoteVideoRef.current : localVideoRef.current;
+      if (targetVideo && 'requestPictureInPicture' in targetVideo && targetVideo.readyState >= 2) {
+        await targetVideo.requestPictureInPicture();
+        toast.success('Picture-in-Picture mode enabled');
+        return;
+      }
+    } catch (e) {
+      console.warn('Native PiP notice:', e.message);
     }
+
+    // 2. Seamless In-App Pin-to-Pic (Floating Widget)
+    setIsFloatingPiP((prev) => {
+      const next = !prev;
+      toast(next ? 'Pinned call to corner (Pin-to-Pic)' : 'Expanded call to full view', { icon: '📌' });
+      return next;
+    });
   };
 
   const toggleFullscreen = () => {
@@ -498,6 +543,112 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
   };
 
   const statusBadge = getStatusBadge();
+
+  if (isFloatingPiP) {
+    return (
+      <div
+        ref={containerRef}
+        className="fixed bottom-20 right-3 sm:bottom-6 sm:right-6 w-52 h-72 sm:w-64 sm:h-88 z-[150] bg-dark-card/95 border-2 border-primary-500/80 rounded-3xl shadow-2xl overflow-hidden flex flex-col p-2.5 animate-scale-in select-none backdrop-blur-xl"
+      >
+        {/* Remote Audio Track */}
+        <audio ref={remoteAudioRef} autoPlay playsInline />
+
+        {/* Mini PiP Header */}
+        <div className="flex items-center justify-between pb-1.5 border-b border-dark-border/60">
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-accent-green animate-pulse" />
+            <span className="text-[11px] font-bold text-white font-mono">{formatTimer(callDuration)}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setIsFloatingPiP(false)}
+              className="p-1 rounded-lg bg-dark-hover text-surface-300 hover:text-white hover:bg-primary-500 transition-all cursor-pointer"
+              title="Expand to Full View"
+            >
+              <Maximize2 className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={handleEndCall}
+              className="p-1 rounded-lg bg-accent-red/80 hover:bg-accent-red text-white transition-all cursor-pointer"
+              title="End Call"
+            >
+              <PhoneOff className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Mini PiP Video Body */}
+        <div className="flex-1 relative my-1.5 rounded-2xl bg-black overflow-hidden flex items-center justify-center">
+          {isVideoCall ? (
+            <>
+              <video
+                ref={remoteVideoRef}
+                autoPlay
+                playsInline
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute bottom-1.5 right-1.5 w-14 h-18 rounded-lg overflow-hidden border border-primary-400 bg-black shadow-md">
+                <video
+                  ref={localVideoRef}
+                  autoPlay
+                  muted
+                  playsInline
+                  className={`w-full h-full object-cover ${isVideoOff ? 'hidden' : 'block'}`}
+                />
+              </div>
+            </>
+          ) : (
+            <div className="flex flex-col items-center gap-2 p-2 text-center">
+              <div className="w-14 h-14 rounded-full gradient-primary flex items-center justify-center text-xl font-bold text-white shadow-lg">
+                {callData.displayName?.charAt(0)?.toUpperCase() || '?'}
+              </div>
+              <p className="text-xs font-bold text-white truncate max-w-[140px]">{callData.displayName}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Mini PiP Action Controls */}
+        <div className="flex items-center justify-around pt-1 border-t border-dark-border/60">
+          <button
+            onClick={toggleMute}
+            className={`p-2 rounded-xl text-xs flex items-center justify-center transition-all ${
+              isMuted ? 'bg-accent-red/20 text-accent-red' : 'bg-dark-hover text-surface-200 hover:text-white'
+            }`}
+            title="Mute/Unmute"
+          >
+            {isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+          </button>
+          {isVideoCall && (
+            <button
+              onClick={flipCamera}
+              className="p-2 rounded-xl bg-dark-hover text-surface-200 hover:text-white transition-all"
+              title="Flip Camera"
+            >
+              <Camera className="w-4 h-4" />
+            </button>
+          )}
+          {isVideoCall && (
+            <button
+              onClick={toggleVideo}
+              className={`p-2 rounded-xl text-xs flex items-center justify-center transition-all ${
+                isVideoOff ? 'bg-accent-red/20 text-accent-red' : 'bg-dark-hover text-surface-200 hover:text-white'
+              }`}
+              title="Camera Toggle"
+            >
+              {isVideoOff ? <VideoOff className="w-4 h-4" /> : <VideoIcon className="w-4 h-4" />}
+            </button>
+          )}
+          <button
+            onClick={handleEndCall}
+            className="p-2 rounded-xl bg-accent-red text-white hover:bg-red-600 transition-all cursor-pointer"
+            title="End Call"
+          >
+            <PhoneOff className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
