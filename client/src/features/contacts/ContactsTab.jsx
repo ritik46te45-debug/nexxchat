@@ -177,7 +177,7 @@ export default function ContactsTab({ onStartCall }) {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search by name, @username, or 4-digit code (e.g. #1234)..."
+            placeholder="Enter exact @username or 4-digit code (e.g. #1234)..."
             className="w-full pl-9 pr-4 py-2 bg-dark-input border border-dark-border rounded-xl text-xs text-white placeholder-surface-500 input-focus transition-all"
           />
         </div>
@@ -188,13 +188,19 @@ export default function ContactsTab({ onStartCall }) {
         {/* Search Results Display */}
         {searchQuery.trim().length > 0 ? (
           <div>
-            <p className="text-xs font-semibold text-surface-400 px-2 mb-2">Search Results</p>
+            <div className="flex items-center justify-between px-2 mb-2">
+              <p className="text-xs font-semibold text-surface-400">Strict Match Results</p>
+              <span className="text-[10px] text-surface-500 font-medium">Exact username or #code required</span>
+            </div>
             {isSearching ? (
               <div className="flex justify-center py-6">
                 <Loader2 className="w-5 h-5 text-primary-400 animate-spin" />
               </div>
             ) : searchResults.length === 0 ? (
-              <p className="text-xs text-surface-500 text-center py-6">No users found for &quot;{searchQuery}&quot;</p>
+              <div className="text-center py-6 px-4">
+                <p className="text-xs text-surface-400 font-medium">No user found matching &quot;{searchQuery}&quot;</p>
+                <p className="text-[11px] text-surface-500 mt-1">Please enter their full exact @username (e.g. @john) or unique code (e.g. #4821)</p>
+              </div>
             ) : (
               searchResults.map((user) => (
                 <div

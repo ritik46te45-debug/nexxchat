@@ -92,7 +92,7 @@ export default function NewChatModal({ onClose }) {
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search by name, @username, or 4-digit code (e.g. #1234)..."
+              placeholder="Enter exact @username or 4-digit code (e.g. #1234)..."
               className="w-full pl-10 pr-4 py-2.5 bg-dark-input border border-dark-border rounded-xl text-xs text-white placeholder-surface-500 input-focus"
               autoFocus
             />

@@ -167,7 +167,7 @@ export const updateNotificationSettings = async (req, res) => {
   }
 };
 
-// SEARCH USERS
+// SEARCH USERS (Strict Exact Match for Username or Unique User Code)
 export const searchUsers = async (req, res) => {
   try {
     const { q, page = 1, limit = 20 } = req.query;
@@ -176,33 +176,49 @@ export const searchUsers = async (req, res) => {
       return res.status(400).json({ error: 'Search query is required' });
     }
 
-    const cleanQuery = q.trim();
-    const orConditions = [];
-
-    // Exact or partial 4-digit code search (#1234 or 1234)
-    const codeDigits = cleanQuery.replace(/[^0-9]/g, '');
-    if (codeDigits.length > 0) {
-      orConditions.push({ userCode: codeDigits });
-      orConditions.push({ userCode: { $regex: codeDigits, $options: 'i' } });
+    let cleanQuery = q.trim();
+    if (cleanQuery.startsWith('@')) {
+      cleanQuery = cleanQuery.slice(1).trim();
     }
 
-    // username#1234 format
+    const orConditions = [];
+
+    // 1. username#1234 format (Exact username + exact unique code)
     if (cleanQuery.includes('#')) {
       const [uPart, tagPart] = cleanQuery.split('#');
-      if (uPart && tagPart) {
+      const trimmedUser = uPart?.trim();
+      const trimmedTag = tagPart?.trim().replace(/[^0-9]/g, '');
+      if (trimmedUser && trimmedTag) {
+        const escapedU = trimmedUser.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         orConditions.push({
-          username: { $regex: uPart.trim(), $options: 'i' },
-          userCode: tagPart.trim(),
+          username: new RegExp(`^${escapedU}$`, 'i'),
+          userCode: trimmedTag,
         });
       }
     }
 
-    // Standard text search
-    orConditions.push(
-      { username: { $regex: cleanQuery, $options: 'i' } },
-      { displayName: { $regex: cleanQuery, $options: 'i' } },
-      { email: { $regex: cleanQuery, $options: 'i' } }
-    );
+    // 2. Exact 4-digit unique code search (#1234 or 1234)
+    const codeDigits = cleanQuery.replace(/[^0-9]/g, '');
+    if ((cleanQuery.startsWith('#') && codeDigits.length >= 4) || (codeDigits.length === 4 && cleanQuery.length === 4)) {
+      orConditions.push({ userCode: codeDigits });
+    }
+
+    // 3. Exact full username match (^username$) - strictly prevents partial 3-4 letter discovery
+    const escapedUsername = cleanQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    orConditions.push({
+      username: new RegExp(`^${escapedUsername}$`, 'i'),
+    });
+
+    // 4. Exact full email match (^email$)
+    if (cleanQuery.includes('@') && cleanQuery.includes('.')) {
+      orConditions.push({
+        email: new RegExp(`^${escapedUsername}$`, 'i'),
+      });
+    }
+
+    if (orConditions.length === 0) {
+      return res.json({ users: [] });
+    }
 
     const users = await User.find({
       isBanned: false,
