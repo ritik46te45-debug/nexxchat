@@ -599,6 +599,98 @@ export default function ChatWindow({ onStartCall }) {
           }}
         />
       )}
+
+      {/* User / Contact Details Profile Modal (Bio & Info Viewer) */}
+      {showDetailsPanel && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 animate-fade-in select-none"
+          onClick={() => setShowDetailsPanel(false)}
+        >
+          <div
+            className="w-full max-w-sm bg-dark-card border border-dark-border rounded-3xl shadow-2xl overflow-hidden animate-scale-in flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="p-4 border-b border-dark-border flex items-center justify-between bg-dark-card/95">
+              <h3 className="text-sm font-bold text-white">Contact Info</h3>
+              <button
+                onClick={() => setShowDetailsPanel(false)}
+                className="w-7 h-7 rounded-xl bg-dark-input hover:bg-dark-hover text-surface-400 hover:text-white flex items-center justify-center transition-all cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Profile Content */}
+            <div className="p-5 flex flex-col items-center text-center space-y-4 overflow-y-auto hide-scrollbar max-h-[75vh]">
+              {/* Avatar */}
+              <div className="relative">
+                {avatar ? (
+                  <img src={avatar} alt="" className="w-24 h-24 rounded-full object-cover ring-4 ring-primary-500/40 shadow-xl" />
+                ) : (
+                  <div className="w-24 h-24 rounded-full gradient-primary flex items-center justify-center text-3xl font-bold text-white shadow-xl ring-4 ring-primary-500/40">
+                    {name.charAt(0).toUpperCase()}
+                  </div>
+                )}
+                {isOnline && (
+                  <span className="absolute bottom-1 right-1 w-5 h-5 rounded-full bg-accent-green border-3 border-dark-card shadow-sm" />
+                )}
+              </div>
+
+              {/* Name & Tag */}
+              <div>
+                <h2 className="text-lg font-bold text-white">{name}</h2>
+                {otherUser?.username && (
+                  <p className="text-xs text-primary-400 font-medium mt-0.5">@{otherUser.username}</p>
+                )}
+                {otherUser?.userCode && (
+                  <span className="inline-block mt-1 text-[10px] font-mono font-bold text-surface-300 px-2 py-0.5 rounded-md bg-dark-input border border-dark-border">
+                    #{otherUser.userCode}
+                  </span>
+                )}
+              </div>
+
+              {/* Call Buttons */}
+              <div className="flex items-center gap-3 w-full justify-center">
+                <button
+                  onClick={() => {
+                    setShowDetailsPanel(false);
+                    if (onStartCall && otherUser) onStartCall(otherUser, 'voice');
+                  }}
+                  className="flex-1 py-2 px-3 rounded-xl bg-dark-input hover:bg-dark-hover border border-dark-border text-surface-200 hover:text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <Phone className="w-3.5 h-3.5 text-accent-green" />
+                  <span>Audio</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setShowDetailsPanel(false);
+                    if (onStartCall && otherUser) onStartCall(otherUser, 'video');
+                  }}
+                  className="flex-1 py-2 px-3 rounded-xl bg-dark-input hover:bg-dark-hover border border-dark-border text-surface-200 hover:text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <Video className="w-3.5 h-3.5 text-primary-400" />
+                  <span>Video</span>
+                </button>
+              </div>
+
+              {/* BIO / ABOUT SECTION */}
+              <div className="w-full text-left p-3.5 rounded-2xl bg-dark-input/60 border border-dark-border space-y-1">
+                <p className="text-[10px] font-bold text-surface-400 uppercase tracking-wider">About / Bio</p>
+                <p className="text-xs text-white leading-relaxed whitespace-pre-wrap break-words font-medium">
+                  {otherUser?.about || activeConversation?.groupDescription || 'Hey there! I am using NexChat.'}
+                </p>
+              </div>
+
+              {/* Encryption Notice */}
+              <div className="w-full text-left p-3 rounded-2xl bg-primary-500/10 border border-primary-500/20 text-[11px] text-primary-300 flex items-center gap-2">
+                <span className="text-base">🔒</span>
+                <span>Messages and calls are end-to-end encrypted.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

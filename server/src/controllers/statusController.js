@@ -79,6 +79,7 @@ export const getFeedStatuses = async (req, res) => {
     })
       .populate('user', 'username displayName avatar isOnline lastSeen')
       .populate('viewers.user', 'username displayName avatar')
+      .populate('reactions.user', 'username displayName avatar')
       .sort({ createdAt: -1 });
 
     // Group statuses by user
@@ -131,9 +132,8 @@ export const viewStatus = async (req, res) => {
 
         // Notify status owner
         const io = req.app.get('io');
-        const owner = await User.findById(status.user);
-        (owner?.socketIds || []).forEach(sid => {
-          io.to(sid).emit('status:viewed', {
+        if (io) {
+          io.to(statusOwnerId).to(`user:${statusOwnerId}`).emit('status:viewed', {
             statusId: status._id,
             viewer: {
               _id: req.user._id,
@@ -142,7 +142,7 @@ export const viewStatus = async (req, res) => {
               viewedAt: new Date()
             }
           });
-        });
+        }
       }
     }
 
@@ -168,25 +168,46 @@ export const reactToStatus = async (req, res) => {
       return res.status(404).json({ error: 'Status not found' });
     }
 
-    status.reactions.push({
-      user: req.userId,
-      emoji,
-      createdAt: new Date()
-    });
+    const currentUserId = req.userId.toString();
+
+    // Update existing reaction from this user or push new one
+    const existingIdx = status.reactions.findIndex(
+      r => (r.user?._id || r.user || r).toString() === currentUserId
+    );
+
+    if (existingIdx >= 0) {
+      status.reactions[existingIdx].emoji = emoji;
+      status.reactions[existingIdx].createdAt = new Date();
+    } else {
+      status.reactions.push({
+        user: req.userId,
+        emoji,
+        createdAt: new Date(),
+      });
+    }
+
     await status.save();
 
-    const io = req.app.get('io');
-    io.to(status.user.toString()).emit('status:reaction', {
-      statusId: status._id,
-      user: {
-        _id: req.user._id,
-        displayName: req.user.displayName,
-        avatar: req.user.avatar
-      },
-      emoji
-    });
+    const populated = await Status.findById(statusId)
+      .populate('reactions.user', 'username displayName avatar')
+      .populate('viewers.user', 'username displayName avatar');
 
-    res.json({ message: 'Reaction added', reactions: status.reactions });
+    const io = req.app.get('io');
+    if (io) {
+      const ownerId = status.user.toString();
+      io.to(ownerId).to(`user:${ownerId}`).emit('status:reaction', {
+        statusId: status._id,
+        user: {
+          _id: req.user._id,
+          displayName: req.user.displayName,
+          avatar: req.user.avatar,
+        },
+        emoji,
+        reactions: populated.reactions,
+      });
+    }
+
+    res.json({ message: 'Reaction added', reactions: populated.reactions });
   } catch (error) {
     console.error('React status error:', error);
     res.status(500).json({ error: 'Failed to react to status' });

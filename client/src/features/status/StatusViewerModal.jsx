@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, ChevronLeft, ChevronRight, Eye, Trash2, Heart, Smile } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Eye, Trash2, Heart, Smile, Sparkles } from 'lucide-react';
 import api from '../../lib/api';
+import { getSocket } from '../../lib/socket';
 import toast from 'react-hot-toast';
 
 export default function StatusViewerModal({ feed, onClose, onStatusDeleted }) {
@@ -8,6 +9,8 @@ export default function StatusViewerModal({ feed, onClose, onStatusDeleted }) {
   const [progress, setProgress] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const [showViewers, setShowViewers] = useState(false);
+  const [viewersTab, setViewersTab] = useState('all'); // 'all', 'reactions', 'views'
+  const [liveReactions, setLiveReactions] = useState({});
   const progressTimerRef = useRef(null);
 
   const currentStatus = feed.statuses[currentIndex];
@@ -19,6 +22,25 @@ export default function StatusViewerModal({ feed, onClose, onStatusDeleted }) {
       api.post(`/status/${currentStatus._id}/view`).catch(console.error);
     }
   }, [currentIndex, currentStatus]);
+
+  // Real-time socket listener for incoming reactions
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+
+    const onReaction = ({ statusId, user, emoji, reactions }) => {
+      setLiveReactions((prev) => ({
+        ...prev,
+        [statusId]: reactions || [
+          ...(prev[statusId] || []),
+          { user, emoji, createdAt: new Date() },
+        ],
+      }));
+    };
+
+    socket.on('status:reaction', onReaction);
+    return () => socket.off('status:reaction', onReaction);
+  }, []);
 
   useEffect(() => {
     if (isPaused) {
@@ -81,15 +103,18 @@ export default function StatusViewerModal({ feed, onClose, onStatusDeleted }) {
 
   if (!currentStatus) return null;
 
+  // Active status reactions (either live updated or from database)
+  const activeReactions = liveReactions[currentStatus._id] || currentStatus.reactions || [];
+
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-4 select-none animate-fade-in"
+      className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-3 sm:p-4 select-none animate-fade-in"
       onMouseDown={() => setIsPaused(true)}
       onMouseUp={() => setIsPaused(false)}
       onTouchStart={() => setIsPaused(true)}
       onTouchEnd={() => setIsPaused(false)}
     >
-      <div className="relative w-full max-w-md h-[85vh] rounded-3xl overflow-hidden shadow-2xl flex flex-col justify-between bg-dark-card border border-dark-border/50">
+      <div className="relative w-full max-w-md h-[88vh] rounded-3xl overflow-hidden shadow-2xl flex flex-col justify-between bg-dark-card border border-dark-border/50">
         {/* Progress bars on top */}
         <div className="absolute top-3 left-3 right-3 flex items-center gap-1.5 z-30">
           {feed.statuses.map((s, idx) => (
@@ -144,6 +169,21 @@ export default function StatusViewerModal({ feed, onClose, onStatusDeleted }) {
             </button>
           </div>
         </div>
+
+        {/* Floating Live Reactions Pill (Top Right below header) */}
+        {activeReactions.length > 0 && (
+          <div className="absolute top-18 right-4 z-30 flex items-center gap-1 bg-black/60 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10 shadow-lg animate-bounce-soft">
+            <span className="text-xs">❤️</span>
+            <span className="text-xs font-bold text-white">{activeReactions.length}</span>
+            <div className="flex -space-x-1.5 ml-1">
+              {activeReactions.slice(-3).map((r, i) => (
+                <span key={i} className="text-sm transform hover:scale-125 transition-transform">
+                  {r.emoji}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Story Body */}
         <div className="flex-1 flex items-center justify-center overflow-hidden">
@@ -206,13 +246,13 @@ export default function StatusViewerModal({ feed, onClose, onStatusDeleted }) {
         </button>
 
         {/* Bottom Reaction & Viewers Bar */}
-        <div className="p-4 z-30 flex items-center justify-between bg-gradient-to-t from-black/80 to-transparent">
+        <div className="p-4 z-30 flex items-center justify-between bg-gradient-to-t from-black/85 via-black/50 to-transparent">
           {feed.isSelf ? (
-            <div className="relative">
+            <div className="relative w-full">
               {(() => {
                 const viewersList = Array.isArray(currentStatus.viewers) ? currentStatus.viewers : [];
                 const uniqueMap = new Map();
-                viewersList.forEach(v => {
+                viewersList.forEach((v) => {
                   if (!v) return;
                   const uId = (v.user?._id || v.user || v)?.toString();
                   if (uId && !uniqueMap.has(uId)) {
@@ -222,40 +262,119 @@ export default function StatusViewerModal({ feed, onClose, onStatusDeleted }) {
                 const uniqueViewers = Array.from(uniqueMap.values());
 
                 return (
-                  <div>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setShowViewers(!showViewers);
-                      }}
-                      className="flex items-center gap-2 text-white text-xs bg-black/50 hover:bg-black/80 px-3 py-1.5 rounded-full border border-white/10 transition-all cursor-pointer"
-                    >
-                      <Eye className="w-4 h-4 text-primary-400" />
-                      <span className="font-medium">{uniqueViewers.length} {uniqueViewers.length === 1 ? 'view' : 'views'}</span>
-                    </button>
-
-                    {/* Viewers Dropdown List */}
-                    {showViewers && (
-                      <div className="absolute bottom-full mb-2 left-0 w-64 max-h-48 overflow-y-auto bg-dark-card border border-dark-border rounded-2xl p-2.5 shadow-2xl z-40 animate-scale-in">
-                        <p className="text-[11px] font-semibold text-surface-400 mb-2 px-1">Viewed by ({uniqueViewers.length})</p>
-                        {uniqueViewers.length === 0 ? (
-                          <p className="text-xs text-surface-500 text-center py-2">No views yet</p>
-                        ) : (
-                          uniqueViewers.map((vw, i) => {
-                            const u = vw.user || vw;
-                            return (
-                              <div key={i} className="flex items-center gap-2 py-1 px-1.5 rounded-lg hover:bg-dark-hover">
-                                <div className="w-7 h-7 rounded-full gradient-primary flex items-center justify-center text-[10px] font-bold text-white">
-                                  {u?.displayName?.charAt(0) || '?'}
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                  <p className="text-xs font-medium text-white truncate">{u?.displayName || 'User'}</p>
-                                  <p className="text-[9px] text-surface-500">{vw.viewedAt ? new Date(vw.viewedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</p>
-                                </div>
-                              </div>
-                            );
-                          })
+                  <div className="flex items-center justify-between w-full">
+                    {/* Viewers & Reactions Popup Trigger */}
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowViewers(!showViewers);
+                          setViewersTab('all');
+                        }}
+                        className="flex items-center gap-2 text-white text-xs bg-black/60 hover:bg-black/90 px-3.5 py-2 rounded-full border border-white/20 transition-all cursor-pointer shadow-lg"
+                      >
+                        <Eye className="w-4 h-4 text-primary-400" />
+                        <span className="font-semibold">
+                          {uniqueViewers.length} {uniqueViewers.length === 1 ? 'view' : 'views'}
+                        </span>
+                        {activeReactions.length > 0 && (
+                          <span className="flex items-center gap-1 pl-1.5 border-l border-white/20 text-accent-green font-bold">
+                            <span>❤️</span> {activeReactions.length}
+                          </span>
                         )}
+                      </button>
+                    </div>
+
+                    {/* Popover List for Viewers AND Reactions */}
+                    {showViewers && (
+                      <div
+                        onClick={(e) => e.stopPropagation()}
+                        className="absolute bottom-full mb-3 left-0 right-0 bg-dark-card border border-dark-border rounded-3xl p-3 shadow-2xl z-50 animate-scale-in max-h-64 flex flex-col"
+                      >
+                        {/* Tabs: All / Reactions / Views */}
+                        <div className="flex items-center justify-between border-b border-dark-border pb-2 mb-2">
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => setViewersTab('all')}
+                              className={`text-xs font-bold px-2 py-0.5 rounded-lg transition-all ${
+                                viewersTab === 'all' ? 'bg-primary-500 text-white' : 'text-surface-400 hover:text-white'
+                              }`}
+                            >
+                              All ({uniqueViewers.length})
+                            </button>
+                            <button
+                              onClick={() => setViewersTab('reactions')}
+                              className={`text-xs font-bold px-2 py-0.5 rounded-lg transition-all ${
+                                viewersTab === 'reactions' ? 'bg-primary-500 text-white' : 'text-surface-400 hover:text-white'
+                              }`}
+                            >
+                              Reactions ({activeReactions.length})
+                            </button>
+                          </div>
+                          <button onClick={() => setShowViewers(false)} className="text-surface-400 hover:text-white text-xs">
+                            ✕
+                          </button>
+                        </div>
+
+                        {/* Scrollable Viewers & Reactions List */}
+                        <div className="overflow-y-auto hide-scrollbar space-y-1.5 flex-1">
+                          {viewersTab === 'reactions' ? (
+                            activeReactions.length === 0 ? (
+                              <p className="text-xs text-surface-500 text-center py-4">No reactions yet</p>
+                            ) : (
+                              activeReactions.map((r, i) => {
+                                const u = r.user || {};
+                                return (
+                                  <div key={i} className="flex items-center justify-between p-2 rounded-xl bg-dark-input/50">
+                                    <div className="flex items-center gap-2.5 min-w-0">
+                                      <div className="w-8 h-8 rounded-full gradient-primary flex items-center justify-center font-bold text-white text-xs">
+                                        {u.displayName?.charAt(0) || '?'}
+                                      </div>
+                                      <div className="min-w-0">
+                                        <p className="text-xs font-semibold text-white truncate">{u.displayName || 'User'}</p>
+                                        <p className="text-[10px] text-surface-400">
+                                          {r.createdAt ? new Date(r.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                                        </p>
+                                      </div>
+                                    </div>
+                                    <span className="text-xl animate-bounce-soft">{r.emoji}</span>
+                                  </div>
+                                );
+                              })
+                            )
+                          ) : (
+                            uniqueViewers.length === 0 ? (
+                              <p className="text-xs text-surface-500 text-center py-4">No views yet</p>
+                            ) : (
+                              uniqueViewers.map((vw, i) => {
+                                const u = vw.user || vw;
+                                const uId = (u._id || u).toString();
+                                const reaction = activeReactions.find((r) => (r.user?._id || r.user || r).toString() === uId);
+
+                                return (
+                                  <div key={i} className="flex items-center justify-between p-2 rounded-xl hover:bg-dark-hover">
+                                    <div className="flex items-center gap-2.5 min-w-0">
+                                      <div className="w-8 h-8 rounded-full gradient-primary flex items-center justify-center font-bold text-white text-xs">
+                                        {u.displayName?.charAt(0) || '?'}
+                                      </div>
+                                      <div className="min-w-0">
+                                        <p className="text-xs font-semibold text-white truncate">{u.displayName || 'User'}</p>
+                                        <p className="text-[10px] text-surface-500">
+                                          {vw.viewedAt ? new Date(vw.viewedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                                        </p>
+                                      </div>
+                                    </div>
+                                    {reaction && (
+                                      <span className="text-lg bg-dark-input px-2 py-0.5 rounded-full border border-dark-border">
+                                        {reaction.emoji}
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })
+                            )
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -263,15 +382,15 @@ export default function StatusViewerModal({ feed, onClose, onStatusDeleted }) {
               })()}
             </div>
           ) : (
-            <div className="flex items-center gap-2 w-full justify-center">
-              {['❤️', '😂', '😮', '👏', '🔥'].map((emoji) => (
+            <div className="flex items-center gap-2.5 w-full justify-center">
+              {['❤️', '😂', '😮', '👏', '🔥', '🎉'].map((emoji) => (
                 <button
                   key={emoji}
                   onClick={(e) => {
                     e.stopPropagation();
                     handleReact(emoji);
                   }}
-                  className="w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 hover:scale-125 text-xl flex items-center justify-center transition-all cursor-pointer"
+                  className="w-11 h-11 rounded-full bg-black/60 hover:bg-black/90 hover:scale-125 text-2xl flex items-center justify-center transition-all cursor-pointer border border-white/10 shadow-lg"
                 >
                   {emoji}
                 </button>

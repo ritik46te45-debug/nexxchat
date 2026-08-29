@@ -93,6 +93,8 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const remoteAudioRef = useRef(null);
+  const remoteStreamRef = useRef(null);
+  const [remoteStream, setRemoteStream] = useState(null);
   const containerRef = useRef(null);
   const timerRef = useRef(null);
   const webrtcManagerRef = useRef(null);
@@ -104,53 +106,99 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
     callIdRef.current = callData.callId;
   }, [callData.callId]);
 
+  // Persistent Stream Re-binder (Guarantees video is active on resize, orientation change, PiP)
+  useEffect(() => {
+    const rebindStreams = () => {
+      const rStream = remoteStreamRef.current;
+      if (rStream) {
+        if (remoteVideoRef.current && remoteVideoRef.current.srcObject !== rStream) {
+          remoteVideoRef.current.srcObject = rStream;
+        }
+        remoteVideoRef.current?.play?.().catch(() => {});
+
+        if (remoteAudioRef.current && remoteAudioRef.current.srcObject !== rStream) {
+          remoteAudioRef.current.srcObject = rStream;
+        }
+        remoteAudioRef.current?.play?.().catch(() => {});
+      }
+
+      const lStream = webrtcManagerRef.current?.localStream;
+      if (lStream) {
+        if (localVideoRef.current && localVideoRef.current.srcObject !== lStream) {
+          localVideoRef.current.srcObject = lStream;
+        }
+        localVideoRef.current?.play?.().catch(() => {});
+      }
+    };
+
+    rebindStreams();
+    window.addEventListener('resize', rebindStreams);
+    window.addEventListener('orientationchange', rebindStreams);
+    return () => {
+      window.removeEventListener('resize', rebindStreams);
+      window.removeEventListener('orientationchange', rebindStreams);
+    };
+  }, [remoteStream, isFloatingPiP, isVideoOff, isVideoCall, callStatus]);
+
   // Load available devices
   const loadDevices = useCallback(async () => {
     try {
       if (!navigator.mediaDevices?.enumerateDevices) return;
       const deviceList = await navigator.mediaDevices.enumerateDevices();
-      setDevices({
-        audioInputs: deviceList.filter((d) => d.kind === 'audioinput'),
-        videoInputs: deviceList.filter((d) => d.kind === 'videoinput'),
-        audioOutputs: deviceList.filter((d) => d.kind === 'audiooutput'),
-      });
-    } catch (e) {
-      console.warn('Enumerate devices note:', e.message);
+      const audioInputs = deviceList.filter((d) => d.kind === 'audioinput');
+      const videoInputs = deviceList.filter((d) => d.kind === 'videoinput');
+      const audioOutputs = deviceList.filter((d) => d.kind === 'audiooutput');
+
+      setDevices({ audioInputs, videoInputs, audioOutputs });
+
+      if (audioInputs.length > 0 && !selectedAudioId) setSelectedAudioId(audioInputs[0].deviceId);
+      if (videoInputs.length > 0 && !selectedVideoId) setSelectedVideoId(videoInputs[0].deviceId);
+      if (audioOutputs.length > 0 && !selectedSpeakerId) setSelectedSpeakerId(audioOutputs[0].deviceId);
+    } catch (err) {
+      console.warn('Device enumeration note:', err);
     }
-  }, []);
+  }, [selectedAudioId, selectedVideoId, selectedSpeakerId]);
 
   useEffect(() => {
     loadDevices();
-    navigator.mediaDevices?.addEventListener('devicechange', loadDevices);
+    navigator.mediaDevices?.addEventListener?.('devicechange', loadDevices);
     return () => {
-      navigator.mediaDevices?.removeEventListener('devicechange', loadDevices);
+      navigator.mediaDevices?.removeEventListener?.('devicechange', loadDevices);
     };
   }, [loadDevices]);
 
-  // Ringtone synthesizer
-  useEffect(() => {
-    let stopRingtone = () => {};
-    if (callStatus === 'incoming') {
-      stopRingtone = startRingtoneAudio('incoming');
-    } else if (callStatus === 'calling' || callStatus === 'ringing') {
-      stopRingtone = startRingtoneAudio('outgoing');
-    }
-    return () => stopRingtone();
-  }, [callStatus]);
-
-  // Timer
-  const startTimer = useCallback(() => {
-    if (timerRef.current) return;
+  // Timer logic
+  const startTimer = () => {
+    if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = setInterval(() => {
       setCallDuration((prev) => prev + 1);
     }, 1000);
-  }, []);
+  };
 
-  const cleanupAndExit = useCallback(() => {
+  const stopTimer = () => {
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
+  };
+
+  // Ringtone handling
+  useEffect(() => {
+    let stopAudio = null;
+
+    if (callStatus === 'incoming') {
+      stopAudio = startRingtoneAudio('incoming');
+    } else if (callStatus === 'calling' || callStatus === 'ringing') {
+      stopAudio = startRingtoneAudio('outgoing');
+    }
+
+    return () => {
+      if (stopAudio) stopAudio();
+    };
+  }, [callStatus]);
+
+  const cleanupAndExit = useCallback(() => {
+    stopTimer();
     if (webrtcManagerRef.current) {
       webrtcManagerRef.current.destroy();
       webrtcManagerRef.current = null;
@@ -170,6 +218,8 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
       isCaller: !isIncoming,
       isVideo: isVideoCall,
       onRemoteStream: (stream, track) => {
+        remoteStreamRef.current = stream;
+        setRemoteStream(stream);
         if (track.kind === 'video' && remoteVideoRef.current) {
           remoteVideoRef.current.srcObject = stream;
           remoteVideoRef.current.play().catch(() => {});

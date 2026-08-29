@@ -246,7 +246,7 @@ export const searchUsers = async (req, res) => {
 export const getUserProfile = async (req, res) => {
   try {
     const { userId } = req.params;
-    const user = await User.findById(userId).select('username displayName userCode avatar isOnline lastSeen about privacy');
+    const user = await User.findById(userId).select('username displayName userCode avatar isOnline lastSeen about phone privacy');
 
     if (!user || user.isBanned) {
       return res.status(404).json({ error: 'User not found' });
@@ -254,10 +254,13 @@ export const getUserProfile = async (req, res) => {
 
     const profile = user.toObject();
 
-    // Apply privacy settings
-    const isFriend = req.user?.friends?.includes(userId);
+    // Apply privacy settings (Defaults to 'everyone' if undefined)
+    const isSelf = req.userId.toString() === userId.toString();
+    const isFriend = req.user?.friends?.some(f => (f._id || f).toString() === userId.toString());
+
     const canSee = (setting) => {
-      if (setting === 'everyone') return true;
+      if (isSelf) return true;
+      if (!setting || setting === 'everyone') return true;
       if (setting === 'friends' && isFriend) return true;
       return false;
     };
@@ -267,6 +270,12 @@ export const getUserProfile = async (req, res) => {
     }
     if (!canSee(profile.privacy?.online)) {
       delete profile.isOnline;
+    }
+    if (!canSee(profile.privacy?.about)) {
+      profile.about = '';
+    }
+    if (!canSee(profile.privacy?.profilePhoto)) {
+      profile.avatar = { url: '', publicId: '' };
     }
 
     delete profile.privacy;
