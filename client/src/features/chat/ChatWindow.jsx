@@ -80,30 +80,22 @@ export default function ChatWindow({ onStartCall }) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showDisappearingMenu]);
 
-  const [viewportHeight, setViewportHeight] = useState('100%');
-
-  // Lock mobile viewport so the upper bar never scrolls off-screen in typing mode
+  // Ensure document window scroll is permanently locked at 0 in mobile typing mode
   useEffect(() => {
-    const handleViewport = () => {
-      if (window.visualViewport) {
-        setViewportHeight(`${window.visualViewport.height}px`);
-      }
+    const handleScrollReset = () => {
       window.scrollTo(0, 0);
       document.body.scrollTop = 0;
       document.documentElement.scrollTop = 0;
     };
+    window.addEventListener('scroll', handleScrollReset);
     if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', handleViewport);
-      window.visualViewport.addEventListener('scroll', handleViewport);
-      handleViewport();
+      window.visualViewport.addEventListener('scroll', handleScrollReset);
     }
-    window.addEventListener('scroll', handleViewport);
     return () => {
+      window.removeEventListener('scroll', handleScrollReset);
       if (window.visualViewport) {
-        window.visualViewport.removeEventListener('resize', handleViewport);
-        window.visualViewport.removeEventListener('scroll', handleViewport);
+        window.visualViewport.removeEventListener('scroll', handleScrollReset);
       }
-      window.removeEventListener('scroll', handleViewport);
     };
   }, []);
 
@@ -305,8 +297,7 @@ export default function ChatWindow({ onStartCall }) {
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      style={isMobile ? { height: viewportHeight } : {}}
-      className={`flex-1 flex ${isMobile ? 'fixed inset-0 z-40' : 'h-full'} ${wallpaperClass} relative overflow-hidden select-none`}
+      className={`flex-1 flex flex-col w-full h-full min-h-0 min-w-0 ${wallpaperClass} relative overflow-hidden select-none`}
     >
       {/* Drag & Drop Fullscreen Dropzone Overlay */}
       {isDraggingOver && (
@@ -318,9 +309,9 @@ export default function ChatWindow({ onStartCall }) {
       )}
 
       {/* Main Chat Column */}
-      <div className="flex-1 flex flex-col h-full min-h-0 min-w-0 relative overflow-hidden">
-        {/* Chat Top Header - WhatsApp Sticky Top Bar */}
-        <div className="sticky top-0 h-16 px-3 sm:px-4 border-b border-dark-border flex items-center gap-2.5 sm:gap-3 bg-dark-card/90 backdrop-blur-xl flex-shrink-0 z-30 shadow-sm">
+      <div className="flex-1 flex flex-col w-full h-full min-h-0 min-w-0 relative overflow-hidden">
+        {/* Chat Top Header - Permanent Fixed Top Bar */}
+        <div className="h-14 sm:h-16 px-3 sm:px-4 border-b border-dark-border flex items-center gap-2.5 sm:gap-3 bg-dark-card/95 backdrop-blur-xl flex-shrink-0 z-30 shadow-sm w-full">
           {/* Mobile back */}
           {isMobile && (
             <button

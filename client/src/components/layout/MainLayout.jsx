@@ -164,7 +164,7 @@ export default function MainLayout() {
   const showRightPanel = isMobile ? showChatOnMobile : true;
 
   return (
-    <div className="h-[100dvh] w-full flex flex-col md:flex-row overflow-hidden bg-dark-bg relative">
+    <div className="h-full w-full flex flex-col md:flex-row overflow-hidden bg-dark-bg relative">
       {/* Offline banner */}
       {(!isOnline || isReconnecting) && (
         <div className="absolute top-0 left-0 right-0 z-50 bg-yellow-600/90 text-white text-center py-1.5 text-xs font-medium animate-slide-down">
@@ -177,7 +177,7 @@ export default function MainLayout() {
 
       {/* Main Content Area */}
       {isMobile && showChatOnMobile && activeConversation ? (
-        <div className="flex-1 h-full overflow-hidden">
+        <div className="flex-1 flex flex-col w-full h-full min-h-0 overflow-hidden">
           <ChatWindow onStartCall={(targetUser, type) => handleStartCall(targetUser, type)} />
         </div>
       ) : sidebarView === 'home' ? (
