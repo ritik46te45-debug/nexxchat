@@ -11,21 +11,21 @@ import api from '../api';
 
 const DEFAULT_ICE_CONFIG = {
   iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: [
+      'stun:stun.l.google.com:19302',
+      'stun:stun1.l.google.com:19302',
+      'stun:stun2.l.google.com:19302',
+      'stun:stun3.l.google.com:19302',
+      'stun:stun4.l.google.com:19302'
+    ] },
     { urls: 'stun:stun.cloudflare.com:3478' },
+    { urls: 'stun:global.stun.twilio.com:3478' },
     {
-      urls: 'turn:openrelay.metered.ca:80',
-      username: 'openrelayproject',
-      credential: 'openrelayproject',
-    },
-    {
-      urls: 'turn:openrelay.metered.ca:443',
-      username: 'openrelayproject',
-      credential: 'openrelayproject',
-    },
-    {
-      urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+      urls: [
+        'turn:openrelay.metered.ca:80',
+        'turn:openrelay.metered.ca:443',
+        'turn:openrelay.metered.ca:443?transport=tcp'
+      ],
       username: 'openrelayproject',
       credential: 'openrelayproject',
     },
@@ -312,6 +312,12 @@ export class WebRTCManager {
    * Initiate Call Offer (Caller)
    */
   async createAndSendOffer(isIceRestart = false) {
+    if (!this.localStream) {
+      await this.setupLocalMedia();
+    }
+    if (!this.pc) {
+      await this.initializePeerConnection();
+    }
     if (!this.pc) return;
 
     try {
@@ -343,7 +349,12 @@ export class WebRTCManager {
    * Handle incoming Offer (Receiver or Renegotiation)
    */
   async handleOffer(offer) {
-    if (!this.pc) await this.initializePeerConnection();
+    if (!this.localStream) {
+      await this.setupLocalMedia();
+    }
+    if (!this.pc) {
+      await this.initializePeerConnection();
+    }
     if (!offer || !this.pc) return;
 
     try {

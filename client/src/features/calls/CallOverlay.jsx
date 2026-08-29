@@ -365,7 +365,7 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
     };
   }, [callData.targetUserId, isIncoming, isVideoCall, onCallIdUpdate, startTimer, cleanupAndExit]);
 
-  // Answer call (Receiver) - Emits accept immediately so peer negotiation starts with 0ms delay
+  // Answer call (Receiver) - Sets up local media & peer connection first, then sends accept to caller
   const handleAccept = async () => {
     const socket = getSocket();
     if (!socket || !webrtcManagerRef.current) return;
@@ -373,15 +373,14 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
     setCallStatus('connecting');
     const manager = webrtcManagerRef.current;
 
-    // Send accept notification immediately in parallel to media setup
-    socket.emit('call:accept', { callId: callIdRef.current });
-
     const stream = await manager.setupLocalMedia();
     if (stream && localVideoRef.current && isVideoCall) {
       localVideoRef.current.srcObject = stream;
+      localVideoRef.current.play().catch(() => {});
     }
 
     await manager.initializePeerConnection();
+    socket.emit('call:accept', { callId: callIdRef.current });
   };
 
   const handleReject = () => {
@@ -850,6 +849,9 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
           </button>
         </div>
       </div>
+
+      {/* Hidden Audio Output (Guarantees crystal-clear live audio in voice and video calls) */}
+      <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
 
       {/* Main Display Area */}
       <div className="relative w-full flex-1 flex items-center justify-center my-2 sm:my-3 overflow-hidden rounded-3xl border border-dark-border bg-dark-card/40 min-h-0">

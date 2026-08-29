@@ -508,41 +508,41 @@ export const setupSocket = (io) => {
       }
     });
 
-    // WebRTC signaling (clean single dispatch per user room)
+    // Helper to reliably deliver signaling to target user across rooms and direct socket IDs
+    const emitToUser = (targetId, event, data) => {
+      const tid = targetId?.toString();
+      if (!tid) return;
+      io.to(`user:${tid}`).emit(event, data);
+      io.to(tid).emit(event, data);
+      const userSockets = connectionManager.getUserSockets(tid);
+      userSockets.forEach((sid) => {
+        io.to(sid).emit(event, data);
+      });
+    };
+
+    // WebRTC signaling
     socket.on('call:offer', ({ to, offer, callId }) => {
-      const targetId = to?.toString();
-      if (!targetId) return;
-      io.to(`user:${targetId}`).emit('call:offer', { from: userId, offer, callId });
+      emitToUser(to, 'call:offer', { from: userId, offer, callId });
     });
 
     socket.on('call:answer', ({ to, answer, callId }) => {
-      const targetId = to?.toString();
-      if (!targetId) return;
-      io.to(`user:${targetId}`).emit('call:answer', { from: userId, answer, callId });
+      emitToUser(to, 'call:answer', { from: userId, answer, callId });
     });
 
     socket.on('call:ice-candidate', ({ to, candidate, callId }) => {
-      const targetId = to?.toString();
-      if (!targetId) return;
-      io.to(`user:${targetId}`).emit('call:ice-candidate', { from: userId, candidate, callId });
+      emitToUser(to, 'call:ice-candidate', { from: userId, candidate, callId });
     });
 
     socket.on('call:ice-restart', ({ to, callId }) => {
-      const targetId = to?.toString();
-      if (!targetId) return;
-      io.to(`user:${targetId}`).emit('call:ice-restart', { from: userId, callId });
+      emitToUser(to, 'call:ice-restart', { from: userId, callId });
     });
 
     socket.on('call:renegotiate', ({ to, offer, callId }) => {
-      const targetId = to?.toString();
-      if (!targetId) return;
-      io.to(`user:${targetId}`).emit('call:renegotiate', { from: userId, offer, callId });
+      emitToUser(to, 'call:renegotiate', { from: userId, offer, callId });
     });
 
     socket.on('call:screen-share', ({ to, enabled, callId }) => {
-      const targetId = to?.toString();
-      if (!targetId) return;
-      io.to(`user:${targetId}`).emit('call:screen-share', { from: userId, enabled, callId });
+      emitToUser(to, 'call:screen-share', { from: userId, enabled, callId });
     });
 
     // ====== DISCONNECT ======
