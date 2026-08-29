@@ -160,6 +160,14 @@ export default function MainLayout() {
     });
   }, [activeConversation]);
 
+  const handleEndCall = useCallback(() => {
+    setActiveCall(null);
+  }, []);
+
+  const handleCallIdUpdate = useCallback((newCallId) => {
+    setActiveCall((prev) => (prev ? { ...prev, callId: newCallId } : null));
+  }, []);
+
   // View logic: On mobile, show either the left panel (tab views) or the right panel (chat window)
   const showLeftPanel = isMobile ? !showChatOnMobile : true;
   const showRightPanel = isMobile ? showChatOnMobile : true;
@@ -262,8 +270,6 @@ export default function MainLayout() {
         />
       )}
 
-
-
       {/* New DM Modal */}
       {showNewChat && (
         <NewChatModal onClose={() => setShowNewChat(false)} />
@@ -279,10 +285,8 @@ export default function MainLayout() {
         <CallOverlay
           callData={activeCall}
           isIncoming={activeCall.isIncoming}
-          onEndCall={() => setActiveCall(null)}
-          onCallIdUpdate={(newCallId) => {
-            setActiveCall(prev => prev ? { ...prev, callId: newCallId } : null);
-          }}
+          onEndCall={handleEndCall}
+          onCallIdUpdate={handleCallIdUpdate}
         />
       )}
 

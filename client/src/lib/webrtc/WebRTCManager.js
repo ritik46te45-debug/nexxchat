@@ -107,7 +107,13 @@ export class WebRTCManager {
    * Initialize Local Media Stream
    */
   async setupLocalMedia() {
-    if (this.localStream) return this.localStream;
+    if (this.localStream && this.localStream.active) {
+      const audioActive = this.localStream.getAudioTracks().some((t) => t.readyState === 'live');
+      const videoActive = !this.isVideo || this.localStream.getVideoTracks().some((t) => t.readyState === 'live');
+      if (audioActive && videoActive) {
+        return this.localStream;
+      }
+    }
 
     const audioConstraints = {
       echoCancellation: true,

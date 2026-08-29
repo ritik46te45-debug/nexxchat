@@ -203,16 +203,24 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
     };
   }, [callStatus]);
 
+  const onEndCallRef = useRef(onEndCall);
+  onEndCallRef.current = onEndCall;
+
+  const onCallIdUpdateRef = useRef(onCallIdUpdate);
+  onCallIdUpdateRef.current = onCallIdUpdate;
+
   const cleanupAndExit = useCallback(() => {
     stopTimer();
     if (webrtcManagerRef.current) {
       webrtcManagerRef.current.destroy();
       webrtcManagerRef.current = null;
     }
-    onEndCall();
-  }, [onEndCall]);
+    if (onEndCallRef.current) {
+      onEndCallRef.current();
+    }
+  }, []);
 
-  // Initialize WebRTC Manager & Socket Signaling
+  // Initialize WebRTC Manager & Socket Signaling (Runs ONCE per call lifecycle)
   useEffect(() => {
     const socket = getSocket();
     if (!socket) return;
@@ -271,10 +279,10 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
 
     // Socket listeners
     const onRinging = ({ callId }) => {
-      if (callId && onCallIdUpdate) {
+      if (callId && onCallIdUpdateRef.current) {
         callIdRef.current = callId;
         manager.callId = callId;
-        onCallIdUpdate(callId);
+        onCallIdUpdateRef.current(callId);
       }
       setCallStatus((prev) => (prev === 'connecting' || prev === 'ongoing' ? prev : 'ringing'));
     };
@@ -394,7 +402,7 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
       socket.off('call:error', onError);
       manager.destroy();
     };
-  }, [callData.targetUserId, isIncoming, isVideoCall, onCallIdUpdate, startTimer, cleanupAndExit]);
+  }, []); // Run once on mount and teardown once on unmount
 
   // Keep local video stream bound and playing whenever streams or swap state change
   useEffect(() => {
