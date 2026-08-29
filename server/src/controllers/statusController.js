@@ -153,7 +153,7 @@ export const viewStatus = async (req, res) => {
   }
 };
 
-// React to a status
+// React to a status (Strictly 1 reaction per user, toggle on/off or replace)
 export const reactToStatus = async (req, res) => {
   try {
     const { statusId } = req.params;
@@ -170,21 +170,21 @@ export const reactToStatus = async (req, res) => {
 
     const currentUserId = req.userId.toString();
 
-    // Enforce 1 reaction per user: toggle off if same emoji, replace if new emoji
-    const existingIdx = status.reactions.findIndex(
-      r => (r.user?._id || r.user || r).toString() === currentUserId
+    // Enforce strict 1 reaction per user:
+    const existingReaction = status.reactions.find(
+      (r) => (r.user?._id || r.user || r).toString() === currentUserId
     );
 
-    let isToggledOff = false;
-    if (existingIdx >= 0) {
-      if (status.reactions[existingIdx].emoji === emoji) {
-        status.reactions.splice(existingIdx, 1);
-        isToggledOff = true;
-      } else {
-        status.reactions[existingIdx].emoji = emoji;
-        status.reactions[existingIdx].createdAt = new Date();
-      }
+    if (existingReaction && existingReaction.emoji === emoji) {
+      // Tapping same emoji removes reaction
+      status.reactions = status.reactions.filter(
+        (r) => (r.user?._id || r.user || r).toString() !== currentUserId
+      );
     } else {
+      // Tapping new or different emoji replaces any previous reaction
+      status.reactions = status.reactions.filter(
+        (r) => (r.user?._id || r.user || r).toString() !== currentUserId
+      );
       status.reactions.push({
         user: req.userId,
         emoji,
@@ -213,7 +213,7 @@ export const reactToStatus = async (req, res) => {
       });
     }
 
-    res.json({ message: 'Reaction added', reactions: populated.reactions });
+    res.json({ message: 'Reaction updated', reactions: populated.reactions });
   } catch (error) {
     console.error('React status error:', error);
     res.status(500).json({ error: 'Failed to react to status' });

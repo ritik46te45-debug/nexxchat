@@ -20,7 +20,18 @@ export default function StatusTab() {
     setIsLoading(true);
     try {
       const { data } = await api.get('/status/feed');
-      setFeeds(data.feeds || []);
+      const loadedFeeds = data.feeds || [];
+      setFeeds(loadedFeeds);
+
+      // Preload images into browser memory cache for 0ms delay on click
+      loadedFeeds.forEach((feed) => {
+        feed.statuses?.forEach((st) => {
+          if (st.type === 'image' && st.media?.url) {
+            const img = new Image();
+            img.src = st.media.url;
+          }
+        });
+      });
     } catch (err) {
       console.error('Load status error:', err);
     } finally {

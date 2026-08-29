@@ -23,6 +23,21 @@ export default function StatusViewerModal({ feed, onClose, onStatusDeleted }) {
   const currentStatus = feed.statuses[currentIndex];
   const duration = 5000; // 5 seconds per story
 
+  // Preload all media in current feed for instant 0ms transition delay
+  useEffect(() => {
+    if (!feed?.statuses) return;
+    feed.statuses.forEach((st) => {
+      if (st.type === 'image' && st.media?.url) {
+        const img = new Image();
+        img.src = st.media.url;
+      } else if (st.type === 'video' && st.media?.url) {
+        const video = document.createElement('video');
+        video.preload = 'auto';
+        video.src = st.media.url;
+      }
+    });
+  }, [feed]);
+
   useEffect(() => {
     // Record view on backend
     if (currentStatus) {
