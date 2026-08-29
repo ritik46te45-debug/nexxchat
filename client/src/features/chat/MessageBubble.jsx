@@ -13,7 +13,7 @@ import AudioWaveformPlayer from './AudioWaveformPlayer';
 import CustomVideoPlayer from './CustomVideoPlayer';
 import toast from 'react-hot-toast';
 
-const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '😡', '🔥', '🎉', '👏'];
+const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', '🎉', '👏', '💯', '🚀'];
 
 export default function MessageBubble({
   message,
@@ -41,6 +41,24 @@ export default function MessageBubble({
 
   const longPressTimer = useRef(null);
   const contextMenuRef = useRef(null);
+
+  // Auto-dismiss reaction/context menu on outside tap or click anywhere on screen
+  useEffect(() => {
+    if (!showContextMenu) return;
+
+    const handleDismiss = (e) => {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target)) {
+        setShowContextMenu(false);
+      }
+    };
+
+    document.addEventListener('pointerdown', handleDismiss);
+    document.addEventListener('touchstart', handleDismiss);
+    return () => {
+      document.removeEventListener('pointerdown', handleDismiss);
+      document.removeEventListener('touchstart', handleDismiss);
+    };
+  }, [showContextMenu]);
 
   const {
     reactToMessage, deleteMessage, toggleStarMessage,
@@ -569,26 +587,41 @@ export default function MessageBubble({
           </div>
         )}
 
-        {/* Context Menu Modal / Popover */}
+        {/* Context Menu Modal / Popover & Floating Reactions */}
         {showContextMenu && (
-          <div
-            ref={contextMenuRef}
-            className={`absolute z-50 bottom-full mb-2 w-52 bg-dark-card border border-dark-border rounded-3xl p-2 shadow-2xl animate-scale-in text-xs ${
-              isOwn ? 'right-0' : 'left-0'
-            }`}
-          >
-            {/* Quick Reactions Bar */}
-            <div className="flex items-center justify-between px-1 py-1 mb-1.5 border-b border-dark-border overflow-x-auto hide-scrollbar">
-              {REACTION_EMOJIS.map((emoji) => (
-                <button
-                  key={emoji}
-                  onClick={() => handleReaction(emoji)}
-                  className="w-7 h-7 rounded-xl hover:bg-dark-hover flex items-center justify-center text-base hover:scale-125 active:scale-95 transition-all cursor-pointer"
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
+          <>
+            {/* Invisible Global Screen Backdrop (Dismiss on tap anywhere) */}
+            <div
+              className="fixed inset-0 z-40 bg-transparent"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowContextMenu(false);
+              }}
+              onTouchStart={(e) => {
+                e.stopPropagation();
+                setShowContextMenu(false);
+              }}
+            />
+
+            <div
+              ref={contextMenuRef}
+              className={`absolute z-50 bottom-full mb-2 w-64 bg-dark-card/95 backdrop-blur-2xl border border-dark-border/80 rounded-3xl p-2.5 shadow-2xl animate-scale-in text-xs ${
+                isOwn ? 'right-0' : 'left-0'
+              }`}
+            >
+              {/* WhatsApp-Style Floating Quick Reactions Bar */}
+              <div className="flex items-center justify-between px-1 py-1.5 mb-2 border-b border-dark-border/70 overflow-x-auto hide-scrollbar gap-1">
+                {REACTION_EMOJIS.map((emoji) => (
+                  <button
+                    key={emoji}
+                    onClick={() => handleReaction(emoji)}
+                    className="w-8 h-8 rounded-xl hover:bg-dark-hover flex items-center justify-center text-lg hover:scale-135 active:scale-95 transition-all cursor-pointer flex-shrink-0"
+                    title={`React ${emoji}`}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
 
             {/* Menu Items */}
             <div className="space-y-0.5">
@@ -695,7 +728,8 @@ export default function MessageBubble({
               </div>
             </div>
           </div>
-        )}
+        </>
+      )}
       </div>
 
       {/* View Once Modal */}

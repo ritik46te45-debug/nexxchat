@@ -79,6 +79,7 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
   const [showStatsModal, setShowStatsModal] = useState(false);
   const [showDeviceMenu, setShowDeviceMenu] = useState(false);
   const [qualityMode, setQualityMode] = useState('auto'); // 'auto' | 'saver' | 'high'
+  const [isSwappedVideo, setIsSwappedVideo] = useState(false); // Swap full screen and thumbnail video
 
   // Device lists
   const [devices, setDevices] = useState({ audioInputs: [], videoInputs: [], audioOutputs: [] });
@@ -364,21 +365,23 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
     };
   }, [callData.targetUserId, isIncoming, isVideoCall, onCallIdUpdate, startTimer, cleanupAndExit]);
 
-  // Answer call (Receiver)
+  // Answer call (Receiver) - Emits accept immediately so peer negotiation starts with 0ms delay
   const handleAccept = async () => {
     const socket = getSocket();
     if (!socket || !webrtcManagerRef.current) return;
 
     setCallStatus('connecting');
     const manager = webrtcManagerRef.current;
-    const stream = await manager.setupLocalMedia();
 
+    // Send accept notification immediately in parallel to media setup
+    socket.emit('call:accept', { callId: callIdRef.current });
+
+    const stream = await manager.setupLocalMedia();
     if (stream && localVideoRef.current && isVideoCall) {
       localVideoRef.current.srcObject = stream;
     }
 
     await manager.initializePeerConnection();
-    socket.emit('call:accept', { callId: callIdRef.current });
   };
 
   const handleReject = () => {
@@ -852,29 +855,75 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
       <div className="relative w-full flex-1 flex items-center justify-center my-2 sm:my-3 overflow-hidden rounded-3xl border border-dark-border bg-dark-card/40 min-h-0">
         {isVideoCall ? (
           <>
-            {/* Remote Video Stream */}
-            <video
-              ref={remoteVideoRef}
-              autoPlay
-              playsInline
-              className={`w-full h-full ${isRemoteScreenSharing ? 'object-contain' : 'object-cover'} rounded-3xl bg-black`}
-            />
-
-            {/* Local Video Picture-in-Picture Thumbnail */}
-            <div className="absolute bottom-3 right-3 sm:bottom-5 sm:right-5 w-28 h-36 sm:w-40 sm:h-52 rounded-2xl overflow-hidden border-2 border-primary-500/70 shadow-2xl bg-black z-20 transition-all">
-              <video
-                ref={localVideoRef}
-                autoPlay
-                muted
-                playsInline
-                className={`w-full h-full object-cover ${isVideoOff ? 'hidden' : 'block'}`}
-              />
-              {isVideoOff && (
-                <div className="w-full h-full flex flex-col items-center justify-center bg-dark-card text-surface-400 text-xs">
-                  <VideoOff className="w-5 h-5 mb-1 text-accent-red" />
-                  Camera off
-                </div>
+            {/* Main Full-Screen Video (Remote or Local depending on isSwappedVideo) */}
+            <div className="w-full h-full relative flex items-center justify-center bg-black">
+              {isSwappedVideo ? (
+                <>
+                  <video
+                    ref={localVideoRef}
+                    autoPlay
+                    muted
+                    playsInline
+                    className={`w-full h-full object-cover rounded-3xl ${isVideoOff ? 'hidden' : 'block'}`}
+                  />
+                  {isVideoOff && (
+                    <div className="w-full h-full flex flex-col items-center justify-center bg-dark-card text-surface-400 text-sm">
+                      <VideoOff className="w-8 h-8 mb-2 text-accent-red" />
+                      Your camera is turned off
+                    </div>
+                  )}
+                </>
+              ) : (
+                <video
+                  ref={remoteVideoRef}
+                  autoPlay
+                  playsInline
+                  className={`w-full h-full ${isRemoteScreenSharing ? 'object-contain' : 'object-cover'} rounded-3xl bg-black`}
+                />
               )}
+            </div>
+
+            {/* Corner Picture-in-Picture Thumbnail (Click to Swap to Full Screen) */}
+            <div
+              onClick={() => {
+                setIsSwappedVideo((prev) => !prev);
+                toast.success(isSwappedVideo ? 'Showing caller full screen' : 'Showing your video full screen', {
+                  duration: 1500,
+                  icon: '🔄',
+                });
+              }}
+              className="absolute bottom-3 right-3 sm:bottom-5 sm:right-5 w-28 h-36 sm:w-40 sm:h-52 rounded-2xl overflow-hidden border-2 border-primary-500/80 shadow-2xl bg-black z-20 transition-transform hover:scale-105 cursor-pointer group"
+              title="Click to view full screen"
+            >
+              {isSwappedVideo ? (
+                <video
+                  ref={remoteVideoRef}
+                  autoPlay
+                  playsInline
+                  className={`w-full h-full ${isRemoteScreenSharing ? 'object-contain' : 'object-cover'}`}
+                />
+              ) : (
+                <>
+                  <video
+                    ref={localVideoRef}
+                    autoPlay
+                    muted
+                    playsInline
+                    className={`w-full h-full object-cover ${isVideoOff ? 'hidden' : 'block'}`}
+                  />
+                  {isVideoOff && (
+                    <div className="w-full h-full flex flex-col items-center justify-center bg-dark-card text-surface-400 text-xs">
+                      <VideoOff className="w-5 h-5 mb-1 text-accent-red" />
+                      Camera off
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Tap to swap badge */}
+              <div className="absolute top-1 right-1 bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded-md text-[9px] text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                <span>🔄 Swap</span>
+              </div>
             </div>
           </>
         ) : (

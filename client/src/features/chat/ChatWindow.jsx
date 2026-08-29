@@ -43,7 +43,8 @@ export default function ChatWindow({ onStartCall }) {
   const [unreadNewCount, setUnreadNewCount] = useState(0);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [showDisappearingMenu, setShowDisappearingMenu] = useState(false);
-  const [showDetailsPanel, setShowDetailsPanel] = useState(false);
+  const [showDetailsPanel, setShowDetailsPanel] = useState(false); // Gallery / Media Panel
+  const [showBioModal, setShowBioModal] = useState(false); // User Full Bio Profile Modal
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [showStarredModal, setShowStarredModal] = useState(false);
   const [forwardingMessage, setForwardingMessage] = useState(null);
@@ -322,8 +323,15 @@ export default function ChatWindow({ onStartCall }) {
             </button>
           )}
 
-          {/* Recipient Avatar */}
-          <div className="relative flex-shrink-0 cursor-pointer" onClick={() => setShowDetailsPanel(!showDetailsPanel)}>
+          {/* Recipient Avatar (Clicks to view User Full Bio Details) */}
+          <div
+            className="relative flex-shrink-0 cursor-pointer hover:opacity-90 transition-opacity"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowBioModal(true);
+            }}
+            title="View Profile & Bio"
+          >
             {avatar ? (
               <img src={avatar} alt="" className="w-10 h-10 rounded-full object-cover shadow-sm" />
             ) : (
@@ -336,8 +344,15 @@ export default function ChatWindow({ onStartCall }) {
             )}
           </div>
 
-          {/* Name & Live Status Info */}
-          <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setShowDetailsPanel(!showDetailsPanel)}>
+          {/* Name & Live Status Info (Clicks to view Gallery, Media, & Docs) */}
+          <div
+            className="flex-1 min-w-0 cursor-pointer hover:opacity-90 transition-opacity"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowDetailsPanel(true);
+            }}
+            title="Open Gallery & Media"
+          >
             <div className="flex items-center gap-1.5">
               <h2 className="font-bold text-white text-sm sm:text-base truncate leading-tight">{name}</h2>
               {activeConversation.disappearingMessages?.enabled && (
@@ -600,11 +615,21 @@ export default function ChatWindow({ onStartCall }) {
         />
       )}
 
-      {/* User / Contact Details Profile Modal (Bio & Info Viewer) */}
+      {/* Shared Media Gallery / Details Drawer */}
       {showDetailsPanel && (
+        <ChatDetailsPanel
+          conversation={activeConversation}
+          messages={messages}
+          onClose={() => setShowDetailsPanel(false)}
+          onOpenImageViewer={(img) => setImageViewerData({ images: [img], initialIndex: 0 })}
+        />
+      )}
+
+      {/* User / Contact Details Profile Modal (Bio & Info Viewer when clicking DP) */}
+      {showBioModal && (
         <div
           className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 animate-fade-in select-none"
-          onClick={() => setShowDetailsPanel(false)}
+          onClick={() => setShowBioModal(false)}
         >
           <div
             className="w-full max-w-sm bg-dark-card border border-dark-border rounded-3xl shadow-2xl overflow-hidden animate-scale-in flex flex-col"
@@ -614,7 +639,7 @@ export default function ChatWindow({ onStartCall }) {
             <div className="p-4 border-b border-dark-border flex items-center justify-between bg-dark-card/95">
               <h3 className="text-sm font-bold text-white">Contact Info</h3>
               <button
-                onClick={() => setShowDetailsPanel(false)}
+                onClick={() => setShowBioModal(false)}
                 className="w-7 h-7 rounded-xl bg-dark-input hover:bg-dark-hover text-surface-400 hover:text-white flex items-center justify-center transition-all cursor-pointer"
               >
                 ✕
@@ -654,7 +679,7 @@ export default function ChatWindow({ onStartCall }) {
               <div className="flex items-center gap-3 w-full justify-center">
                 <button
                   onClick={() => {
-                    setShowDetailsPanel(false);
+                    setShowBioModal(false);
                     if (onStartCall && otherUser) onStartCall(otherUser, 'voice');
                   }}
                   className="flex-1 py-2 px-3 rounded-xl bg-dark-input hover:bg-dark-hover border border-dark-border text-surface-200 hover:text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
@@ -664,7 +689,7 @@ export default function ChatWindow({ onStartCall }) {
                 </button>
                 <button
                   onClick={() => {
-                    setShowDetailsPanel(false);
+                    setShowBioModal(false);
                     if (onStartCall && otherUser) onStartCall(otherUser, 'video');
                   }}
                   className="flex-1 py-2 px-3 rounded-xl bg-dark-input hover:bg-dark-hover border border-dark-border text-surface-200 hover:text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
@@ -681,6 +706,17 @@ export default function ChatWindow({ onStartCall }) {
                   {otherUser?.about || activeConversation?.groupDescription || 'Hey there! I am using NexChat.'}
                 </p>
               </div>
+
+              {/* View Shared Media Button */}
+              <button
+                onClick={() => {
+                  setShowBioModal(false);
+                  setShowDetailsPanel(true);
+                }}
+                className="w-full py-2.5 px-4 rounded-2xl bg-primary-500/20 hover:bg-primary-500/30 text-primary-300 text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer border border-primary-500/30"
+              >
+                <span>View Shared Gallery & Media</span>
+              </button>
 
               {/* Encryption Notice */}
               <div className="w-full text-left p-3 rounded-2xl bg-primary-500/10 border border-primary-500/20 text-[11px] text-primary-300 flex items-center gap-2">

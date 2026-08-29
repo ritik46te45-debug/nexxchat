@@ -87,17 +87,19 @@ export class WebRTCManager {
   }
 
   /**
-   * Fetch latest authenticated ICE servers from backend
+   * Fetch latest authenticated ICE servers from backend (Instant 0ms with non-blocking refresh)
    */
   async getIceConfiguration() {
-    try {
-      const { data } = await api.get('/calls/ice-servers');
-      if (data?.config?.iceServers?.length > 0) {
-        return data.config;
-      }
-    } catch (e) {
-      console.warn('Using default ICE fallback servers:', e.message);
+    if (WebRTCManager.cachedIceConfig) {
+      return WebRTCManager.cachedIceConfig;
     }
+    // Asynchronously cache for next calls without blocking current call setup
+    api.get('/calls/ice-servers').then(({ data }) => {
+      if (data?.config?.iceServers?.length > 0) {
+        WebRTCManager.cachedIceConfig = data.config;
+      }
+    }).catch(() => {});
+
     return DEFAULT_ICE_CONFIG;
   }
 
