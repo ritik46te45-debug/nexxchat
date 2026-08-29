@@ -913,11 +913,47 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
       {/* Main Display Area */}
       <div className="relative w-full flex-1 flex items-center justify-center my-2 sm:my-3 overflow-hidden rounded-3xl border border-dark-border bg-dark-card/40 min-h-0">
         {isVideoCall ? (
-          <>
-            {/* Main Full-Screen Video (Remote or Local depending on isSwappedVideo) */}
-            <div className="w-full h-full relative flex items-center justify-center bg-black">
-              {isSwappedVideo ? (
-                <>
+          <div className="w-full h-full relative flex items-center justify-center bg-black">
+            {callStatus !== 'ongoing' || !remoteStream ? (
+              /* Before connection: Full-screen self preview with caller details (WhatsApp / FaceTime style) */
+              <div className="relative w-full h-full flex items-center justify-center bg-black">
+                <video
+                  ref={localVideoRef}
+                  autoPlay
+                  muted
+                  playsInline
+                  className={`w-full h-full object-cover rounded-3xl ${isVideoOff ? 'hidden' : 'block'}`}
+                />
+                {isVideoOff && (
+                  <div className="w-full h-full flex flex-col items-center justify-center bg-dark-card text-surface-400 text-sm">
+                    <VideoOff className="w-8 h-8 mb-2 text-accent-red" />
+                    Camera is turned off
+                  </div>
+                )}
+                {/* Overlay Header Banner */}
+                <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-transparent to-black/70 flex flex-col items-center justify-between p-6 pointer-events-none">
+                  <div className="flex flex-col items-center gap-2.5 pt-4">
+                    {callData.avatar?.url ? (
+                      <img src={callData.avatar.url} alt="" className="w-20 h-20 sm:w-24 sm:h-24 rounded-full ring-4 ring-primary-500/50 shadow-2xl object-cover" />
+                    ) : (
+                      <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full gradient-primary flex items-center justify-center text-3xl font-bold text-white shadow-2xl">
+                        {callData.displayName?.charAt(0)?.toUpperCase() || '?'}
+                      </div>
+                    )}
+                    <h3 className="text-xl sm:text-2xl font-bold text-white drop-shadow-lg">{callData.displayName}</h3>
+                    <span className="text-xs sm:text-sm text-primary-300 font-medium px-3.5 py-1 rounded-full bg-black/60 backdrop-blur-md border border-primary-500/30 shadow-lg">
+                      {callStatus === 'incoming' && 'Incoming Video Call...'}
+                      {callStatus === 'calling' && 'Calling...'}
+                      {callStatus === 'ringing' && 'Ringing...'}
+                      {callStatus === 'connecting' && 'Connecting WebRTC...'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* Connected Ongoing Call: Full remote video with Picture-in-Picture swap */
+              <>
+                {isSwappedVideo ? (
                   <video
                     ref={localVideoRef}
                     autoPlay
@@ -925,66 +961,52 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
                     playsInline
                     className={`w-full h-full object-cover rounded-3xl ${isVideoOff ? 'hidden' : 'block'}`}
                   />
-                  {isVideoOff && (
-                    <div className="w-full h-full flex flex-col items-center justify-center bg-dark-card text-surface-400 text-sm">
-                      <VideoOff className="w-8 h-8 mb-2 text-accent-red" />
-                      Your camera is turned off
-                    </div>
-                  )}
-                </>
-              ) : (
-                <video
-                  ref={remoteVideoRef}
-                  autoPlay
-                  playsInline
-                  className={`w-full h-full ${isRemoteScreenSharing ? 'object-contain' : 'object-cover'} rounded-3xl bg-black`}
-                />
-              )}
-            </div>
-
-            {/* Corner Picture-in-Picture Thumbnail (Click to Swap to Full Screen) */}
-            <div
-              onClick={() => {
-                setIsSwappedVideo((prev) => !prev);
-                toast.success(isSwappedVideo ? 'Showing caller full screen' : 'Showing your video full screen', {
-                  duration: 1500,
-                  icon: '🔄',
-                });
-              }}
-              className="absolute bottom-3 right-3 sm:bottom-5 sm:right-5 w-28 h-36 sm:w-40 sm:h-52 rounded-2xl overflow-hidden border-2 border-primary-500/80 shadow-2xl bg-black z-20 transition-transform hover:scale-105 cursor-pointer group"
-              title="Click to view full screen"
-            >
-              {isSwappedVideo ? (
-                <video
-                  ref={remoteVideoRef}
-                  autoPlay
-                  playsInline
-                  className={`w-full h-full ${isRemoteScreenSharing ? 'object-contain' : 'object-cover'}`}
-                />
-              ) : (
-                <>
+                ) : (
                   <video
-                    ref={localVideoRef}
+                    ref={remoteVideoRef}
                     autoPlay
-                    muted
                     playsInline
-                    className={`w-full h-full object-cover ${isVideoOff ? 'hidden' : 'block'}`}
+                    className={`w-full h-full ${isRemoteScreenSharing ? 'object-contain' : 'object-cover'} rounded-3xl bg-black`}
                   />
-                  {isVideoOff && (
-                    <div className="w-full h-full flex flex-col items-center justify-center bg-dark-card text-surface-400 text-xs">
-                      <VideoOff className="w-5 h-5 mb-1 text-accent-red" />
-                      Camera off
-                    </div>
-                  )}
-                </>
-              )}
+                )}
 
-              {/* Tap to swap badge */}
-              <div className="absolute top-1 right-1 bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded-md text-[9px] text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
-                <span>🔄 Swap</span>
-              </div>
-            </div>
-          </>
+                {/* Corner Picture-in-Picture Thumbnail */}
+                <div
+                  onClick={() => setIsSwappedVideo((prev) => !prev)}
+                  className="absolute bottom-3 right-3 sm:bottom-5 sm:right-5 w-28 h-36 sm:w-40 sm:h-52 rounded-2xl overflow-hidden border-2 border-primary-500/80 shadow-2xl bg-black z-20 transition-transform hover:scale-105 cursor-pointer group"
+                  title="Click to swap full screen"
+                >
+                  {isSwappedVideo ? (
+                    <video
+                      ref={remoteVideoRef}
+                      autoPlay
+                      playsInline
+                      className={`w-full h-full ${isRemoteScreenSharing ? 'object-contain' : 'object-cover'}`}
+                    />
+                  ) : (
+                    <>
+                      <video
+                        ref={localVideoRef}
+                        autoPlay
+                        muted
+                        playsInline
+                        className={`w-full h-full object-cover ${isVideoOff ? 'hidden' : 'block'}`}
+                      />
+                      {isVideoOff && (
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-dark-card text-surface-400 text-xs">
+                          <VideoOff className="w-5 h-5 mb-1 text-accent-red" />
+                          Camera off
+                        </div>
+                      )}
+                    </>
+                  )}
+                  <div className="absolute top-1 right-1 bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded-md text-[9px] text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                    <span>🔄 Swap</span>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
         ) : (
           /* Voice Call Center Avatar with Live Speaking Glow */
           <div className="flex flex-col items-center gap-4 sm:gap-6 animate-scale-in px-4">
