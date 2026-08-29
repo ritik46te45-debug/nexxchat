@@ -390,14 +390,20 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
     setCallStatus('connecting');
     const manager = webrtcManagerRef.current;
 
-    const stream = await manager.setupLocalMedia();
-    if (stream && localVideoRef.current && isVideoCall) {
-      localVideoRef.current.srcObject = stream;
-      localVideoRef.current.play().catch(() => {});
-    }
+    try {
+      const stream = await manager.setupLocalMedia();
+      if (stream && localVideoRef.current && isVideoCall) {
+        localVideoRef.current.srcObject = stream;
+        localVideoRef.current.play().catch(() => {});
+      }
 
-    await manager.initializePeerConnection();
-    socket.emit('call:accept', { callId: callIdRef.current });
+      await manager.initializePeerConnection();
+      socket.emit('call:accept', { callId: callIdRef.current });
+    } catch (err) {
+      console.error('Accept call error:', err);
+      toast.error('Could not access camera/microphone — check permissions');
+      handleReject();
+    }
   };
 
   const handleReject = () => {
