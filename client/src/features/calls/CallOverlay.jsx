@@ -271,7 +271,7 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
         manager.callId = callId;
         onCallIdUpdate(callId);
       }
-      setCallStatus('ringing');
+      setCallStatus((prev) => (prev === 'connecting' || prev === 'ongoing' ? prev : 'ringing'));
     };
 
     const onAccepted = async ({ callId }) => {
