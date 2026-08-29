@@ -170,14 +170,20 @@ export const reactToStatus = async (req, res) => {
 
     const currentUserId = req.userId.toString();
 
-    // Update existing reaction from this user or push new one
+    // Enforce 1 reaction per user: toggle off if same emoji, replace if new emoji
     const existingIdx = status.reactions.findIndex(
       r => (r.user?._id || r.user || r).toString() === currentUserId
     );
 
+    let isToggledOff = false;
     if (existingIdx >= 0) {
-      status.reactions[existingIdx].emoji = emoji;
-      status.reactions[existingIdx].createdAt = new Date();
+      if (status.reactions[existingIdx].emoji === emoji) {
+        status.reactions.splice(existingIdx, 1);
+        isToggledOff = true;
+      } else {
+        status.reactions[existingIdx].emoji = emoji;
+        status.reactions[existingIdx].createdAt = new Date();
+      }
     } else {
       status.reactions.push({
         user: req.userId,
