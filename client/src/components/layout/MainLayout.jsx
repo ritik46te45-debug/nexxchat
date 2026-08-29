@@ -21,6 +21,7 @@ import GlobalSearchModal from '../../features/search/GlobalSearchModal';
 import CommandPalette from '../../features/command/CommandPalette';
 import NewChatModal from '../../features/chat/NewChatModal';
 import NewGroupModal from '../../features/groups/NewGroupModal';
+import ErrorBoundary from '../common/ErrorBoundary';
 
 export default function MainLayout() {
   const {
@@ -178,7 +179,9 @@ export default function MainLayout() {
       {/* Main Content Area */}
       {isMobile && showChatOnMobile && activeConversation ? (
         <div className="flex-1 flex flex-col w-full h-full min-h-0 overflow-hidden">
-          <ChatWindow onStartCall={(targetUser, type) => handleStartCall(targetUser, type)} />
+          <ErrorBoundary>
+            <ChatWindow onStartCall={(targetUser, type) => handleStartCall(targetUser, type)} />
+          </ErrorBoundary>
         </div>
       ) : sidebarView === 'home' ? (
         <div className={`flex-1 h-full overflow-hidden ${isMobile && !showChatOnMobile ? 'pb-[56px]' : ''}`}>
@@ -221,7 +224,9 @@ export default function MainLayout() {
           `}
           >
             {activeConversation ? (
-              <ChatWindow onStartCall={(targetUser, type) => handleStartCall(targetUser, type)} />
+              <ErrorBoundary>
+                <ChatWindow onStartCall={(targetUser, type) => handleStartCall(targetUser, type)} />
+              </ErrorBoundary>
             ) : (
               !isMobile && <EmptyChat />
             )}

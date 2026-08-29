@@ -15,6 +15,17 @@ import toast from 'react-hot-toast';
 
 const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', '🎉', '👏', '💯', '🚀'];
 
+const safeFormatTime = (dateStr) => {
+  try {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return '';
+    return format(d, 'h:mm a');
+  } catch {
+    return '';
+  }
+};
+
 export default function MessageBubble({
   message,
   isOwn,
@@ -237,7 +248,7 @@ export default function MessageBubble({
             <div className="flex items-center gap-2 mt-1.5 px-3 py-1 rounded-full bg-dark-card/80 border border-dark-border text-[10px] text-surface-400">
               <span>🎥 Video Note</span>
               <span>•</span>
-              <span>{message.createdAt ? format(new Date(message.createdAt), 'h:mm a') : ''}</span>
+              <span>{safeFormatTime(message.createdAt)}</span>
               <StatusIcon />
             </div>
           </div>
@@ -297,7 +308,7 @@ export default function MessageBubble({
           <div className="mt-3 pt-2.5 border-t border-dark-border/60 flex items-center justify-between text-[10px] text-surface-400">
             <span>{message.poll.isAnonymous ? '🔒 Anonymous' : '👥 Public'} • {message.poll.isMultipleChoice ? 'Multiple choice' : 'Single choice'}</span>
             <div className="flex items-center gap-1">
-              <span>{message.createdAt ? format(new Date(message.createdAt), 'h:mm a') : ''}</span>
+              <span>{safeFormatTime(message.createdAt)}</span>
               <StatusIcon />
             </div>
           </div>
@@ -529,7 +540,7 @@ export default function MessageBubble({
             {isPinned && <Pin className="w-3 h-3 text-primary-400 rotate-45" />}
             {isStarred && <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />}
             {message.isEdited && <span className="italic">edited</span>}
-            <span>{message.createdAt ? format(new Date(message.createdAt), 'h:mm a') : ''}</span>
+            <span>{safeFormatTime(message.createdAt)}</span>
             <StatusIcon />
           </div>
         </div>

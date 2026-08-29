@@ -265,12 +265,30 @@ export default function ChatWindow({ onStartCall }) {
     }
   };
 
+  // Safe Date Formatting Helpers
+  const safeFormat = (dateStr, fmtStr) => {
+    try {
+      if (!dateStr) return '';
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return '';
+      return format(d, fmtStr);
+    } catch {
+      return '';
+    }
+  };
+
   // Smart Date Separator Helper
   const formatDateSeparator = (dateStr) => {
-    const d = new Date(dateStr);
-    if (isToday(d)) return 'TODAY';
-    if (isYesterday(d)) return 'YESTERDAY';
-    return format(d, 'd MMMM yyyy').toUpperCase();
+    try {
+      if (!dateStr) return '';
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return '';
+      if (isToday(d)) return 'TODAY';
+      if (isYesterday(d)) return 'YESTERDAY';
+      return format(d, 'd MMMM yyyy').toUpperCase();
+    } catch {
+      return '';
+    }
   };
 
   // Wallpaper styling
@@ -379,8 +397,8 @@ export default function ChatWindow({ onStartCall }) {
                   ? `${activeConversation.participants?.length || 0} members`
                   : isOnline
                   ? 'Online'
-                  : otherUser?.lastSeen && canSeeLastSeen
-                  ? `Last seen ${format(new Date(otherUser.lastSeen), 'MMM d, h:mm a')}`
+                  : otherUser?.lastSeen && canSeeLastSeen && safeFormat(otherUser.lastSeen, 'MMM d, h:mm a')
+                  ? `Last seen ${safeFormat(otherUser.lastSeen, 'MMM d, h:mm a')}`
                   : 'Encrypted chat'}
               </p>
             )}
@@ -452,20 +470,21 @@ export default function ChatWindow({ onStartCall }) {
           )}
 
           {/* Render Messages with Smart Grouping and Date Separators */}
-          {messages.map((msg, index) => {
+          {(messages || []).map((msg, index) => {
+            if (!msg) return null;
             const prevMsg = messages[index - 1];
             const nextMsg = messages[index + 1];
 
             // Date separator check
-            const currentDate = msg.createdAt ? format(new Date(msg.createdAt), 'yyyy-MM-dd') : null;
-            const prevDate = prevMsg?.createdAt ? format(new Date(prevMsg.createdAt), 'yyyy-MM-dd') : null;
-            const showDateHeader = currentDate && currentDate !== prevDate;
+            const currentDate = safeFormat(msg.createdAt, 'yyyy-MM-dd');
+            const prevDate = safeFormat(prevMsg?.createdAt, 'yyyy-MM-dd');
+            const showDateHeader = Boolean(currentDate && currentDate !== prevDate);
 
             // 5-minute consecutive sender grouping
             const isOwn = (msg.sender?._id || msg.sender)?.toString() === myId;
             const prevSenderId = (prevMsg?.sender?._id || prevMsg?.sender)?.toString();
             const currSenderId = (msg.sender?._id || msg.sender)?.toString();
-            const timeDiffMins = prevMsg?.createdAt && msg.createdAt
+            const timeDiffMins = prevMsg?.createdAt && msg.createdAt && !isNaN(new Date(msg.createdAt).getTime()) && !isNaN(new Date(prevMsg.createdAt).getTime())
               ? Math.abs(new Date(msg.createdAt) - new Date(prevMsg.createdAt)) / 60000
               : 999;
 
@@ -474,11 +493,11 @@ export default function ChatWindow({ onStartCall }) {
             const showName = isGroupStart && (activeConversation.type === 'group' || activeConversation.type === 'channel');
             const showAvatar = isGroupStart;
 
-            const isPinned = pinnedList.some((p) => (p.message?._id || p.message)?.toString() === msg._id?.toString());
-            const isSelected = selectedMessageIds.includes(msg._id);
+            const isPinned = Array.isArray(pinnedList) && pinnedList.some((p) => (p.message?._id || p.message)?.toString() === msg._id?.toString());
+            const isSelected = Array.isArray(selectedMessageIds) && selectedMessageIds.includes(msg._id);
 
             return (
-              <div key={msg._id || index}>
+              <div key={msg._id || msg.clientId || index}>
                 {/* Date Badge Separator */}
                 {showDateHeader && (
                   <div className="flex justify-center my-3">
@@ -568,16 +587,7 @@ export default function ChatWindow({ onStartCall }) {
         <MessageComposer />
       </div>
 
-      {/* Right-side Details & Media Gallery Sidebar */}
-      {showDetailsPanel && (
-        <ChatDetailsPanel
-          conversation={activeConversation}
-          messages={messages}
-          onClose={() => setShowDetailsPanel(false)}
-          onJumpToMessage={handleJumpToMessage}
-          onOpenImageViewer={(imgs, idx) => setImageViewerData({ images: imgs, initialIndex: idx })}
-        />
-      )}
+
 
       {/* In-Chat Search Modal */}
       {showSearchModal && (
