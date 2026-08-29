@@ -80,6 +80,27 @@ export default function ChatWindow({ onStartCall }) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showDisappearingMenu]);
 
+  // Lock mobile viewport so the upper bar never scrolls off-screen in typing mode
+  useEffect(() => {
+    const handleViewport = () => {
+      window.scrollTo(0, 0);
+      document.body.scrollTop = 0;
+      document.documentElement.scrollTop = 0;
+    };
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', handleViewport);
+      window.visualViewport.addEventListener('scroll', handleViewport);
+    }
+    window.addEventListener('scroll', handleViewport);
+    return () => {
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', handleViewport);
+        window.visualViewport.removeEventListener('scroll', handleViewport);
+      }
+      window.removeEventListener('scroll', handleViewport);
+    };
+  }, []);
+
   // Get other user info
   const otherParticipant = activeConversation?.type === 'private'
     ? activeConversation.participants?.find((p) => {

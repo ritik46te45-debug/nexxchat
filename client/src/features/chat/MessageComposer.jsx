@@ -626,13 +626,17 @@ export default function MessageComposer() {
               onChange={handleTextChange}
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
+              onFocus={() => {
+                window.scrollTo(0, 0);
+                document.body.scrollTop = 0;
+              }}
               placeholder={editingMessage ? 'Edit your message...' : 'Message...'}
               rows={1}
               className="flex-1 bg-transparent text-white text-xs sm:text-sm resize-none focus:outline-none placeholder:text-surface-500 py-2 px-1 max-h-36 hide-scrollbar leading-relaxed"
             />
           </div>
 
-          {/* Dynamic Action Button: Voice Recorder vs Send Button */}
+          {/* Dynamic Action Button: Voice Recorder / Video Note vs Send Button */}
           {editingMessage ? (
             <button
               onClick={handleSaveEdit}
@@ -651,13 +655,22 @@ export default function MessageComposer() {
               {isUploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5 ml-0.5" />}
             </button>
           ) : (
-            <button
-              onClick={() => setIsVoiceRecording(true)}
-              className="w-10 h-10 rounded-2xl bg-dark-input hover:bg-primary-500/20 text-surface-300 hover:text-primary-400 border border-dark-border flex items-center justify-center transition-all flex-shrink-0 cursor-pointer"
-              title="Record Voice Note"
-            >
-              <Mic className="w-5 h-5" />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setShowVideoNoteRecorder(true)}
+                className="w-10 h-10 rounded-2xl bg-dark-input hover:bg-primary-500/20 text-surface-300 hover:text-primary-400 border border-dark-border flex items-center justify-center transition-all flex-shrink-0 cursor-pointer"
+                title="Circular Video Note"
+              >
+                <Video className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => setIsVoiceRecording(true)}
+                className="w-10 h-10 rounded-2xl bg-dark-input hover:bg-primary-500/20 text-surface-300 hover:text-primary-400 border border-dark-border flex items-center justify-center transition-all flex-shrink-0 cursor-pointer"
+                title="Record Voice Note"
+              >
+                <Mic className="w-5 h-5" />
+              </button>
+            </div>
           )}
         </div>
       )}
