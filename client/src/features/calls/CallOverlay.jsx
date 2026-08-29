@@ -289,19 +289,38 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
       await manager.createAndSendOffer();
     };
 
-    const onOffer = async ({ offer, callId }) => {
+    const onOffer = async ({ offer, callId, from }) => {
       if (callId) {
         callIdRef.current = callId;
         manager.callId = callId;
       }
+      if (from) {
+        manager.targetUserId = from.toString();
+      }
       await manager.handleOffer(offer);
+      setCallStatus('ongoing');
+      startTimer();
     };
 
-    const onAnswer = async ({ answer }) => {
+    const onAnswer = async ({ answer, from }) => {
+      if (from) {
+        manager.targetUserId = from.toString();
+      }
       await manager.handleAnswer(answer);
+      setCallStatus('ongoing');
+      startTimer();
+      socket.emit('call:connected', { to: manager.targetUserId, callId: manager.callId });
     };
 
-    const onIceCandidate = async ({ candidate }) => {
+    const onConnected = () => {
+      setCallStatus('ongoing');
+      startTimer();
+    };
+
+    const onIceCandidate = async ({ candidate, from }) => {
+      if (from) {
+        manager.targetUserId = from.toString();
+      }
       await manager.handleIceCandidate(candidate);
     };
 
@@ -347,6 +366,7 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
     socket.on('call:accepted', onAccepted);
     socket.on('call:offer', onOffer);
     socket.on('call:answer', onAnswer);
+    socket.on('call:connected', onConnected);
     socket.on('call:ice-candidate', onIceCandidate);
     socket.on('call:renegotiate', onRenegotiate);
     socket.on('call:ice-restart', onIceRestart);
@@ -362,6 +382,7 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
       socket.off('call:accepted', onAccepted);
       socket.off('call:offer', onOffer);
       socket.off('call:answer', onAnswer);
+      socket.off('call:connected', onConnected);
       socket.off('call:ice-candidate', onIceCandidate);
       socket.off('call:renegotiate', onRenegotiate);
       socket.off('call:ice-restart', onIceRestart);

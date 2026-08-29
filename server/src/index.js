@@ -27,6 +27,9 @@ import notificationRoutes from './routes/notifications.js';
 const app = express();
 const httpServer = createServer(app);
 
+// Enable trust proxy for Render / Cloudflare / reverse proxy rate limiting
+app.set('trust proxy', 1);
+
 // Socket.IO
 const io = new Server(httpServer, {
   cors: {

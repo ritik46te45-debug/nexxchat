@@ -500,6 +500,10 @@ export const setupSocket = (io) => {
       emitToUser(to, 'call:answer', { from: userId, answer, callId });
     });
 
+    socket.on('call:connected', ({ to, callId }) => {
+      emitToUser(to, 'call:connected', { from: userId, callId });
+    });
+
     socket.on('call:ice-candidate', ({ to, candidate, callId }) => {
       emitToUser(to, 'call:ice-candidate', { from: userId, candidate, callId });
     });
