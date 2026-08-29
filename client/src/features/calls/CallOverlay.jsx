@@ -221,6 +221,8 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
       onRemoteStream: (stream, track) => {
         remoteStreamRef.current = stream;
         setRemoteStream(stream);
+        setCallStatus('ongoing');
+        startTimer();
         if (track.kind === 'video' && remoteVideoRef.current) {
           remoteVideoRef.current.srcObject = stream;
           remoteVideoRef.current.play().catch(() => {});

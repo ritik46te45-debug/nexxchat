@@ -334,7 +334,19 @@ export const setupSocket = (io) => {
       }
     });
 
-    // ====== CALLS ======
+    // ====== CALLS & SIGNALING ======
+    // Helper to reliably deliver signaling to target user across rooms and direct socket IDs
+    const emitToUser = (targetId, event, data) => {
+      const tid = targetId?.toString();
+      if (!tid) return;
+      io.to(`user:${tid}`).emit(event, data);
+      io.to(tid).emit(event, data);
+      const userSockets = connectionManager.getUserSockets(tid);
+      userSockets.forEach((sid) => {
+        io.to(sid).emit(event, data);
+      });
+    };
+
     socket.on('call:initiate', async ({ conversationId, receiverId, to, type = 'voice', isGroup = false }) => {
       try {
         const targetReceiver = (receiverId || to)?.toString();
@@ -392,18 +404,7 @@ export const setupSocket = (io) => {
             conversationId: convId,
           });
         } else if (targetReceiver) {
-          const receiverSockets = connectionManager.getUserSockets(targetReceiver);
-          console.log(`[CALL] Emitting call:incoming to receiver ${targetReceiver} (active sockets: ${receiverSockets.length})`);
-          receiverSockets.forEach(sid => {
-            io.to(sid).emit('call:incoming', {
-              call: populatedCall,
-              callId: call._id.toString(),
-              from: populatedCall.caller,
-              type,
-              conversationId: convId,
-            });
-          });
-          io.to(`user:${targetReceiver}`).emit('call:incoming', {
+          emitToUser(targetReceiver, 'call:incoming', {
             call: populatedCall,
             callId: call._id.toString(),
             from: populatedCall.caller,
@@ -442,12 +443,7 @@ export const setupSocket = (io) => {
 
         const callerId = (call.caller?._id || call.caller)?.toString();
         if (callerId) {
-          const callerSockets = connectionManager.getUserSockets(callerId);
-          console.log(`[CALL] Emitting call:accepted to caller ${callerId} (active sockets: ${callerSockets.length})`);
-          callerSockets.forEach(sid => {
-            io.to(sid).emit('call:accepted', { call: populatedCall, callId, userId });
-          });
-          io.to(`user:${callerId}`).emit('call:accepted', { call: populatedCall, callId, userId });
+          emitToUser(callerId, 'call:accepted', { call: populatedCall, callId, userId });
         }
       } catch (error) {
         console.error('Call accept error:', error);
@@ -468,11 +464,7 @@ export const setupSocket = (io) => {
 
         const callerId = (call.caller?._id || call.caller)?.toString();
         if (callerId) {
-          const callerSockets = connectionManager.getUserSockets(callerId);
-          callerSockets.forEach(sid => {
-            io.to(sid).emit('call:rejected', { callId, reason, userId });
-          });
-          io.to(`user:${callerId}`).emit('call:rejected', { callId, reason, userId });
+          emitToUser(callerId, 'call:rejected', { callId, reason, userId });
         }
       } catch (error) {
         console.error('Call reject error:', error);
@@ -497,28 +489,12 @@ export const setupSocket = (io) => {
         const otherUserId = callerId === userId ? receiverId : callerId;
 
         if (otherUserId) {
-          const otherSockets = connectionManager.getUserSockets(otherUserId);
-          otherSockets.forEach(sid => {
-            io.to(sid).emit('call:ended', { callId, duration });
-          });
-          io.to(`user:${otherUserId}`).emit('call:ended', { callId, duration });
+          emitToUser(otherUserId, 'call:ended', { callId, duration });
         }
       } catch (error) {
         console.error('Call end error:', error);
       }
     });
-
-    // Helper to reliably deliver signaling to target user across rooms and direct socket IDs
-    const emitToUser = (targetId, event, data) => {
-      const tid = targetId?.toString();
-      if (!tid) return;
-      io.to(`user:${tid}`).emit(event, data);
-      io.to(tid).emit(event, data);
-      const userSockets = connectionManager.getUserSockets(tid);
-      userSockets.forEach((sid) => {
-        io.to(sid).emit(event, data);
-      });
-    };
 
     // WebRTC signaling
     socket.on('call:offer', ({ to, offer, callId }) => {

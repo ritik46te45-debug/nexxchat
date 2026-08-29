@@ -192,32 +192,39 @@ export class WebRTCManager {
     // Attach Quality Controller
     this.qualityController = new CallQualityController(pc, this.onStatsUpdate);
 
-    // 1. Monitor Connection State
-    pc.onconnectionstatechange = () => {
-      const state = pc.connectionState;
-      if (this.onConnectionStateChange) {
-        this.onConnectionStateChange(state);
-      }
+    // 1. Monitor Connection & ICE State (dual check for immediate connection detection)
+    const checkConnectedState = () => {
+      const connState = pc.connectionState;
+      const iceState = pc.iceConnectionState;
 
-      if (state === 'connected') {
+      if (connState === 'connected' || iceState === 'connected' || iceState === 'completed') {
+        if (this.onConnectionStateChange) {
+          this.onConnectionStateChange('connected');
+        }
         this.qualityController.start(1500);
-      } else if (state === 'failed') {
+      } else if (connState === 'failed' || iceState === 'failed') {
+        if (this.onConnectionStateChange) {
+          this.onConnectionStateChange('failed');
+        }
         this.attemptIceRestart();
-      } else if (state === 'disconnected') {
-        // Wait briefly for auto-recovery before triggering ICE restart
+      } else if (connState === 'disconnected' || iceState === 'disconnected') {
+        if (this.onConnectionStateChange) {
+          this.onConnectionStateChange('disconnected');
+        }
         setTimeout(() => {
-          if (this.pc && (this.pc.connectionState === 'disconnected' || this.pc.connectionState === 'failed')) {
+          if (this.pc && (this.pc.connectionState === 'disconnected' || this.pc.iceConnectionState === 'disconnected')) {
             this.attemptIceRestart();
           }
         }, 3000);
+      } else if (connState === 'connecting' || iceState === 'checking') {
+        if (this.onConnectionStateChange) {
+          this.onConnectionStateChange('connecting');
+        }
       }
     };
 
-    pc.oniceconnectionstatechange = () => {
-      if (pc.iceConnectionState === 'failed') {
-        this.attemptIceRestart();
-      }
-    };
+    pc.onconnectionstatechange = checkConnectedState;
+    pc.oniceconnectionstatechange = checkConnectedState;
 
     // 2. ICE Candidates Dispatch
     pc.onicecandidate = ({ candidate }) => {
@@ -239,6 +246,10 @@ export class WebRTCManager {
         stream = this.remoteStream;
       } else {
         this.remoteStream = stream;
+      }
+
+      if (this.onConnectionStateChange) {
+        this.onConnectionStateChange('connected');
       }
 
       if (this.onRemoteStream) {
