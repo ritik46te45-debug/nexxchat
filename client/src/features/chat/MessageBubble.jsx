@@ -439,32 +439,53 @@ export default function MessageBubble({
             </div>
           )}
 
-          {/* LOCATION CARD */}
+          {/* LOCATION CARD (WhatsApp-Style Live / Static GPS Location) */}
           {message.type === 'location' && message.location && (
-            <div className="my-1 rounded-xl overflow-hidden bg-dark-bg border border-dark-border max-w-xs">
-              <div className="h-28 w-full bg-dark-input relative overflow-hidden">
-                <iframe
-                  title="Location Map"
-                  width="100%"
-                  height="100%"
-                  frameBorder="0"
-                  scrolling="no"
-                  src={`https://www.openstreetmap.org/export/embed.html?bbox=${message.location.longitude - 0.005}%2C${message.location.latitude - 0.005}%2C${message.location.longitude + 0.005}%2C${message.location.latitude + 0.005}&layer=mapnik&marker=${message.location.latitude}%2C${message.location.longitude}`}
-                  className="w-full h-full filter invert hue-rotate-180 brightness-90 contrast-125 pointer-events-none"
-                />
-              </div>
-              <div className="p-2.5 flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-xs font-bold text-white truncate">{message.location.name || 'Shared Location'}</p>
-                  <p className="text-[10px] text-surface-400 truncate">{message.location.address || 'GPS Coordinates'}</p>
+            <div className="my-1.5 rounded-2xl overflow-hidden bg-gradient-to-b from-[#0a192f] to-[#030d1a] border border-dark-border/80 shadow-md max-w-xs select-none">
+              {/* Radar Preview Header */}
+              <div className="h-28 w-full relative overflow-hidden flex flex-col items-center justify-center p-3 text-center border-b border-dark-border/50">
+                <div className="absolute inset-0 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:12px_12px] opacity-40" />
+
+                {/* Animated Pulsing Beacon */}
+                <div className="relative flex items-center justify-center mb-1">
+                  <div className="w-14 h-14 rounded-full bg-accent-green/20 animate-ping absolute" />
+                  <div className="w-10 h-10 rounded-full bg-primary-500/30 animate-pulse absolute" />
+                  <div className="w-8 h-8 rounded-full gradient-primary text-white flex items-center justify-center shadow-lg shadow-primary-500/50 z-10">
+                    <MapPin className="w-4 h-4 text-white" />
+                  </div>
                 </div>
+
+                <div className="relative z-10 flex items-center gap-1.5 mt-1">
+                  <span className="w-2 h-2 rounded-full bg-accent-green animate-pulse" />
+                  <span className="text-[11px] font-bold text-accent-green">
+                    {message.location.isLive ? 'Live GPS Sharing' : 'GPS Location Pin'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Location Details & Actions */}
+              <div className="p-3 flex items-center justify-between gap-2.5 bg-dark-card/60">
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold text-white truncate">
+                    {message.location.name || 'Shared Location'}
+                  </p>
+                  <p className="text-[10px] text-surface-400 truncate mt-0.5">
+                    {message.location.address || `${message.location.latitude?.toFixed(4)}, ${message.location.longitude?.toFixed(4)}`}
+                  </p>
+                  <p className="text-[9px] text-surface-500 font-mono mt-0.5">
+                    {message.location.latitude?.toFixed(4)}° N, {message.location.longitude?.toFixed(4)}° E
+                  </p>
+                </div>
+
                 <a
                   href={`https://www.google.com/maps?q=${message.location.latitude},${message.location.longitude}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="p-1.5 rounded-lg gradient-primary text-white text-xs font-semibold flex items-center gap-1 shadow-sm flex-shrink-0"
+                  className="px-2.5 py-1.5 rounded-xl gradient-primary text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-primary-500/20 hover:opacity-90 active:scale-95 transition-all flex-shrink-0"
+                  title="View on Google Maps"
                 >
-                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Maps</span>
+                  <ExternalLink className="w-3 h-3" />
                 </a>
               </div>
             </div>

@@ -37,11 +37,11 @@ export default function Sidebar({ onOpenProfile }) {
     if (showChatOnMobile) return null;
 
     const mobileNavItems = [
-      { id: 'home', icon: Home, label: 'Home' },
       { id: 'chats', icon: MessageSquare, label: 'Chats', badge: unreadTotal },
-      { id: 'contacts', icon: Users, label: 'Friends' },
+      { id: 'status', icon: Sparkles, label: 'Status' },
       { id: 'calls', icon: Phone, label: 'Calls' },
-      { id: 'settings', icon: Settings, label: 'Settings' },
+      { id: 'contacts', icon: Users, label: 'Friends' },
+      { id: 'home', icon: Home, label: 'Home' },
     ];
 
     return (
