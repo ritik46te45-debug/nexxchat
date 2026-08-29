@@ -80,9 +80,14 @@ export default function ChatWindow({ onStartCall }) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showDisappearingMenu]);
 
+  const [viewportHeight, setViewportHeight] = useState('100%');
+
   // Lock mobile viewport so the upper bar never scrolls off-screen in typing mode
   useEffect(() => {
     const handleViewport = () => {
+      if (window.visualViewport) {
+        setViewportHeight(`${window.visualViewport.height}px`);
+      }
       window.scrollTo(0, 0);
       document.body.scrollTop = 0;
       document.documentElement.scrollTop = 0;
@@ -90,6 +95,7 @@ export default function ChatWindow({ onStartCall }) {
     if (window.visualViewport) {
       window.visualViewport.addEventListener('resize', handleViewport);
       window.visualViewport.addEventListener('scroll', handleViewport);
+      handleViewport();
     }
     window.addEventListener('scroll', handleViewport);
     return () => {
@@ -299,7 +305,8 @@ export default function ChatWindow({ onStartCall }) {
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className={`flex-1 flex h-full ${wallpaperClass} relative overflow-hidden select-none`}
+      style={isMobile ? { height: viewportHeight } : {}}
+      className={`flex-1 flex ${isMobile ? 'fixed inset-0 z-40' : 'h-full'} ${wallpaperClass} relative overflow-hidden select-none`}
     >
       {/* Drag & Drop Fullscreen Dropzone Overlay */}
       {isDraggingOver && (

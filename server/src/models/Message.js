@@ -33,7 +33,7 @@ const messageSchema = new mongoose.Schema({
   type: {
     type: String,
     enum: [
-      'text', 'image', 'video', 'audio', 'voice',
+      'text', 'image', 'video', 'video_note', 'audio', 'voice',
       'document', 'file', 'gif', 'sticker',
       'location', 'contact', 'poll', 'link',
       'system', 'call', 'forwarded',

@@ -747,12 +747,12 @@ export const votePoll = async (req, res) => {
       return res.status(404).json({ error: 'Poll not found' });
     }
 
-    if (message.poll.expiresAt && new Date(message.poll.expiresAt) < new Date()) {
+    if (message.poll?.expiresAt && new Date(message.poll.expiresAt) < new Date()) {
       return res.status(400).json({ error: 'Poll has expired' });
     }
 
-    if (!message.poll.isMultipleChoice) {
-      // Remove existing votes
+    if (!message.poll?.isMultipleChoice) {
+      // Remove existing votes from all options
       message.poll.options.forEach(opt => {
         opt.votes = opt.votes.filter(v => v.toString() !== req.userId.toString());
       });
@@ -760,7 +760,7 @@ export const votePoll = async (req, res) => {
 
     if (optionIndex >= 0 && optionIndex < message.poll.options.length) {
       const option = message.poll.options[optionIndex];
-      const alreadyVoted = option.votes.includes(req.userId);
+      const alreadyVoted = option.votes.some(v => v.toString() === req.userId.toString());
 
       if (alreadyVoted) {
         option.votes = option.votes.filter(v => v.toString() !== req.userId.toString());
@@ -774,22 +774,14 @@ export const votePoll = async (req, res) => {
     // Emit update directly to room and participants
     const io = req.app.get('io');
     if (io) {
-      io.to(message.conversation.toString()).to(`conv:${message.conversation.toString()}`).emit('poll:updated', {
-        messageId,
-        conversationId: message.conversation,
-        poll: message.poll,
-      });
-
-      conversation.participants.forEach((p) => {
-        const pUserId = (p.user?._id || p.user)?.toString();
-        if (pUserId) {
-          io.to(pUserId).to(`user:${pUserId}`).emit('poll:updated', {
-            messageId,
-            conversationId: message.conversation,
-            poll: message.poll,
-          });
-        }
-      });
+      const conversation = await Conversation.findById(message.conversation);
+      if (conversation) {
+        emitToConversationParticipants(io, conversation, 'poll:updated', {
+          messageId,
+          conversationId: message.conversation,
+          poll: message.poll,
+        });
+      }
     }
 
     res.json({ poll: message.poll });
