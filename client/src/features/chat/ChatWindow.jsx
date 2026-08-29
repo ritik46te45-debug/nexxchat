@@ -130,10 +130,12 @@ export default function ChatWindow({ onStartCall }) {
     ? activeConversation.groupAvatar?.url
     : (canSeeProfilePhoto ? otherUser?.avatar?.url : null);
 
-  const isOnline = otherUser && canSeeOnline ? (otherUser.isOnline || onlineUsers.has(otherUser._id?.toString())) : false;
+  const isOnline = otherUser && canSeeOnline
+    ? Boolean(otherUser.isOnline || (onlineUsers && typeof onlineUsers.has === 'function' && onlineUsers.has(otherUser._id?.toString())))
+    : false;
 
   // Typing & Recording indicator text
-  const convTyping = (activeConversation?._id && typingUsers[activeConversation._id]) || {};
+  const convTyping = (activeConversation?._id && typingUsers?.[activeConversation._id]) || {};
   const typingNames = Object.values(convTyping);
   const convRecording = (activeConversation?._id && recordingUsers?.[activeConversation._id]) || {};
   const recordingNames = Object.values(convRecording);
@@ -617,12 +619,22 @@ export default function ChatWindow({ onStartCall }) {
 
       {/* Shared Media Gallery / Details Drawer */}
       {showDetailsPanel && (
-        <ChatDetailsPanel
-          conversation={activeConversation}
-          messages={messages}
-          onClose={() => setShowDetailsPanel(false)}
-          onOpenImageViewer={(img) => setImageViewerData({ images: [img], initialIndex: 0 })}
-        />
+        <div
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-end animate-fade-in select-none"
+          onClick={() => setShowDetailsPanel(false)}
+        >
+          <div
+            className="w-full sm:w-96 h-full bg-dark-card border-l border-dark-border shadow-2xl flex flex-col overflow-hidden animate-slide-left"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <ChatDetailsPanel
+              conversation={activeConversation}
+              messages={messages || []}
+              onClose={() => setShowDetailsPanel(false)}
+              onOpenImageViewer={(imgs, idx) => setImageViewerData({ images: Array.isArray(imgs) ? imgs : [imgs], initialIndex: idx || 0 })}
+            />
+          </div>
+        </div>
       )}
 
       {/* User / Contact Details Profile Modal (Bio & Info Viewer when clicking DP) */}
