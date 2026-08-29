@@ -15,13 +15,36 @@ export default function StatusViewerModal({ feed, onClose, onStatusDeleted }) {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [viewersTab, setViewersTab] = useState('all'); // 'all', 'reactions', 'views'
   const [liveReactions, setLiveReactions] = useState({});
+  const [floatingParticles, setFloatingParticles] = useState([]);
   const progressTimerRef = useRef(null);
 
   const { user } = useAuthStore();
   const myId = (user?._id || user)?.toString();
 
   const currentStatus = feed.statuses[currentIndex];
+  const currentStatusRef = useRef(currentStatus);
+  currentStatusRef.current = currentStatus;
   const duration = 5000; // 5 seconds per story
+
+  // Trigger floating animated reaction particles
+  const triggerFloatingReaction = (emoji) => {
+    if (!emoji) return;
+    const batchId = `${Date.now()}_${Math.random()}`;
+    const newParticles = Array.from({ length: 8 }).map((_, i) => ({
+      id: `${batchId}_${i}`,
+      emoji,
+      left: 15 + Math.random() * 70, // 15% to 85% horizontal spread
+      delay: i * 60,
+      scale: 0.8 + Math.random() * 0.7,
+      rotate: (Math.random() - 0.5) * 50,
+    }));
+
+    setFloatingParticles((prev) => [...prev, ...newParticles]);
+
+    setTimeout(() => {
+      setFloatingParticles((prev) => prev.filter((p) => !p.id.startsWith(batchId)));
+    }, 2500);
+  };
 
   // Preload all media in current feed for instant 0ms transition delay
   useEffect(() => {
@@ -50,19 +73,29 @@ export default function StatusViewerModal({ feed, onClose, onStatusDeleted }) {
     const socket = getSocket();
     if (!socket) return;
 
-    const onReaction = ({ statusId, user, emoji, reactions }) => {
+    const onReaction = ({ statusId, user: sender, emoji, reactions }) => {
+      if (currentStatusRef.current?._id?.toString() === statusId?.toString()) {
+        triggerFloatingReaction(emoji);
+        if (feed.isSelf) {
+          toast(`${sender?.displayName || 'Friend'} reacted with ${emoji}`, {
+            icon: emoji,
+            duration: 2500,
+          });
+        }
+      }
+
       setLiveReactions((prev) => ({
         ...prev,
         [statusId]: reactions || [
           ...(prev[statusId] || []),
-          { user, emoji, createdAt: new Date() },
+          { user: sender, emoji, createdAt: new Date() },
         ],
       }));
     };
 
     socket.on('status:reaction', onReaction);
     return () => socket.off('status:reaction', onReaction);
-  }, []);
+  }, [feed.isSelf]);
 
   useEffect(() => {
     if (isPaused || showEmojiPicker || showViewers) {
@@ -132,6 +165,7 @@ export default function StatusViewerModal({ feed, onClose, onStatusDeleted }) {
         toast('Reaction removed', { icon: '↩️' });
       } else {
         // Optimistic add/replace (strictly 1 reaction per user)
+        triggerFloatingReaction(emoji);
         const updatedList = activeReactions.filter(
           (r) => (r.user?._id || r.user || r.userId)?.toString() !== myId
         );
@@ -176,6 +210,23 @@ export default function StatusViewerModal({ feed, onClose, onStatusDeleted }) {
       onTouchEnd={() => setIsPaused(false)}
     >
       <div className="relative w-full max-w-md h-full sm:h-[88vh] rounded-none sm:rounded-3xl overflow-hidden shadow-2xl flex flex-col justify-between bg-dark-card border-0 sm:border border-dark-border/50">
+        {/* Floating Animated Emojis Particle Burst Layer */}
+        <div className="absolute inset-0 pointer-events-none z-40 overflow-hidden">
+          {floatingParticles.map((particle) => (
+            <span
+              key={particle.id}
+              className="absolute bottom-20 text-3xl sm:text-4xl animate-float-up select-none drop-shadow-lg"
+              style={{
+                left: `${particle.left}%`,
+                animationDelay: `${particle.delay}ms`,
+                transform: `scale(${particle.scale}) rotate(${particle.rotate}deg)`,
+              }}
+            >
+              {particle.emoji}
+            </span>
+          ))}
+        </div>
+
         {/* Progress bars on top */}
         <div className="absolute top-3 left-3 right-3 flex items-center gap-1.5 z-30">
           {feed.statuses.map((s, idx) => (

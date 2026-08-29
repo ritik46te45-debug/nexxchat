@@ -213,3 +213,27 @@
     overflow: hidden;
   }
 }
+
+/* Floating reaction animation */
+@keyframes float-up {
+  0% {
+    opacity: 0;
+    transform: translateY(20px) scale(0.6) rotate(0deg);
+  }
+  15% {
+    opacity: 1;
+    transform: translateY(-40px) scale(1.2) rotate(-10deg);
+  }
+  75% {
+    opacity: 0.9;
+    transform: translateY(-220px) scale(1.4) rotate(10deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-340px) scale(1.7) rotate(-5deg);
+  }
+}
+
+.animate-float-up {
+  animation: float-up 2.2s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}

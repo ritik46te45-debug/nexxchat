@@ -1,5 +1,6 @@
 import Status from '../models/Status.js';
 import User from '../models/User.js';
+import connectionManager from '../socket/connectionManager.js';
 
 // Create new status (text, image, video)
 export const createStatus = async (req, res) => {
@@ -201,8 +202,8 @@ export const reactToStatus = async (req, res) => {
     const io = req.app.get('io');
     if (io) {
       const ownerId = status.user.toString();
-      io.to(ownerId).to(`user:${ownerId}`).emit('status:reaction', {
-        statusId: status._id,
+      const payload = {
+        statusId: status._id.toString(),
         user: {
           _id: req.user._id,
           displayName: req.user.displayName,
@@ -210,6 +211,12 @@ export const reactToStatus = async (req, res) => {
         },
         emoji,
         reactions: populated.reactions,
+      };
+
+      io.to(ownerId).to(`user:${ownerId}`).emit('status:reaction', payload);
+      const userSockets = connectionManager.getUserSockets(ownerId);
+      userSockets.forEach((sid) => {
+        io.to(sid).emit('status:reaction', payload);
       });
     }
 
