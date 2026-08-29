@@ -119,8 +119,8 @@ export default function MainLayout() {
       userObj = typeof otherParticipant?.user === 'object' ? otherParticipant.user : { _id: otherParticipant?.user };
     }
 
-    // Handle if targetUser is conversation object
-    if (userObj?.participants && !userObj._id?.match(/^[0-9a-fA-F]{24}$/)) {
+    // Handle if targetUser is a conversation object (has participants array)
+    if (userObj?.participants && Array.isArray(userObj.participants)) {
       const myId = (useAuthStore.getState().user?._id || useAuthStore.getState().user)?.toString();
       const otherParticipant = userObj.participants.find(
         (p) => (p.user?._id || p.user)?.toString() !== myId
@@ -128,8 +128,8 @@ export default function MainLayout() {
       userObj = typeof otherParticipant?.user === 'object' ? otherParticipant.user : { _id: otherParticipant?.user };
     }
 
-    const targetUserId = (userObj?._id || userObj)?.toString();
-    if (!targetUserId || targetUserId === 'voice' || targetUserId === 'video') {
+    const targetUserId = (userObj?._id || userObj?.id || userObj)?.toString();
+    if (!targetUserId || targetUserId === 'voice' || targetUserId === 'video' || targetUserId === '[object Object]') {
       toast.error('Cannot reach target user for call');
       return;
     }

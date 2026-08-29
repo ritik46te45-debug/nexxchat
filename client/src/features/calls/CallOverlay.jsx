@@ -253,8 +253,11 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
     // Caller initiates media preparation immediately
     if (!isIncoming) {
       manager.setupLocalMedia().then((stream) => {
-        if (stream && localVideoRef.current && isVideoCall) {
-          localVideoRef.current.srcObject = stream;
+        if (stream && isVideoCall) {
+          if (localVideoRef.current) {
+            localVideoRef.current.srcObject = stream;
+            localVideoRef.current.play().catch(() => {});
+          }
         }
       });
     }
@@ -364,6 +367,18 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
       manager.destroy();
     };
   }, [callData.targetUserId, isIncoming, isVideoCall, onCallIdUpdate, startTimer, cleanupAndExit]);
+
+  // Keep local video stream bound and playing whenever streams or swap state change
+  useEffect(() => {
+    if (!isVideoCall) return;
+    const manager = webrtcManagerRef.current;
+    if (manager?.localStream && localVideoRef.current) {
+      if (localVideoRef.current.srcObject !== manager.localStream) {
+        localVideoRef.current.srcObject = manager.localStream;
+      }
+      localVideoRef.current.play().catch(() => {});
+    }
+  }, [isVideoCall, callStatus, isSwappedVideo, isVideoOff]);
 
   // Answer call (Receiver) - Sets up local media & peer connection first, then sends accept to caller
   const handleAccept = async () => {

@@ -125,7 +125,7 @@ export class WebRTCManager {
         width: { ideal: 1280, max: 1920 },
         height: { ideal: 720, max: 1080 },
         frameRate: { ideal: 30, max: 30 },
-        facingMode: this.activeFacingMode,
+        facingMode: this.activeFacingMode ? { ideal: this.activeFacingMode } : { ideal: 'user' },
         deviceId: this.activeVideoDeviceId ? { exact: this.activeVideoDeviceId } : undefined,
       };
 
@@ -135,19 +135,26 @@ export class WebRTCManager {
           video: videoConstraints,
         });
       } catch (err) {
-        // Fallback to basic video/audio if ideal HD fails
+        // Fallback to basic user-facing video if HD constraints fail
         try {
           stream = await navigator.mediaDevices.getUserMedia({
             audio: audioConstraints,
-            video: true,
+            video: { facingMode: 'user' },
           });
         } catch (videoErr) {
-          // Audio only fallback
-          stream = await navigator.mediaDevices.getUserMedia({
-            audio: audioConstraints,
-            video: false,
-          });
-          this.isVideo = false;
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              audio: audioConstraints,
+              video: true,
+            });
+          } catch (e) {
+            // Audio only fallback if camera unavailable
+            stream = await navigator.mediaDevices.getUserMedia({
+              audio: audioConstraints,
+              video: false,
+            });
+            this.isVideo = false;
+          }
         }
       }
     } else {
@@ -515,7 +522,7 @@ export class WebRTCManager {
               width: { ideal: 1280, max: 1920 },
               height: { ideal: 720, max: 1080 },
               frameRate: { ideal: 30, max: 30 },
-              facingMode: this.activeFacingMode,
+              facingMode: this.activeFacingMode ? { ideal: this.activeFacingMode } : { ideal: 'user' },
             },
           });
           const newVTrack = vStream.getVideoTracks()[0];
