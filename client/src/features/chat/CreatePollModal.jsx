@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Plus, Trash2, BarChart2, Check, Clock } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -55,8 +56,8 @@ export default function CreatePollModal({ onCreatePoll, onClose }) {
     onClose();
   };
 
-  return (
-    <div className="fixed inset-0 z-[120] bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 select-none animate-fade-in">
+  return createPortal(
+    <div className="fixed inset-0 z-[99999] bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 select-none animate-fade-in">
       <div className="w-full max-w-md bg-dark-card border border-dark-border rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-scale-in">
         {/* Header */}
         <div className="px-5 py-4 border-b border-dark-border flex items-center justify-between flex-shrink-0">
@@ -71,7 +72,7 @@ export default function CreatePollModal({ onCreatePoll, onClose }) {
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-xl bg-dark-input hover:bg-dark-hover text-surface-400 hover:text-white flex items-center justify-center transition-all border border-dark-border"
+            className="w-8 h-8 rounded-xl bg-dark-input hover:bg-dark-hover text-surface-400 hover:text-white flex items-center justify-center transition-all border border-dark-border cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -100,23 +101,25 @@ export default function CreatePollModal({ onCreatePoll, onClose }) {
               Options
             </label>
             <div className="space-y-2">
-              {options.map((opt, idx) => (
-                <div key={idx} className="flex items-center gap-2">
-                  <span className="w-5 text-center text-surface-500 font-mono text-[11px]">{idx + 1}.</span>
+              {options.map((option, index) => (
+                <div key={index} className="flex items-center gap-2">
+                  <div className="w-6 text-center font-bold text-surface-400 text-xs">
+                    {index + 1}.
+                  </div>
                   <input
                     type="text"
-                    value={opt}
-                    onChange={(e) => handleOptionChange(idx, e.target.value)}
-                    placeholder={`Option ${idx + 1}`}
-                    className="flex-1 px-3 py-2 bg-dark-input text-white rounded-xl border border-dark-border focus:border-primary-500 focus:outline-none placeholder:text-surface-500 text-xs"
+                    value={option}
+                    onChange={(e) => handleOptionChange(index, e.target.value)}
+                    placeholder={`Option ${index + 1}`}
+                    className="flex-1 px-3 py-2 bg-dark-input text-white rounded-xl border border-dark-border focus:border-primary-500 focus:outline-none placeholder:text-surface-500"
                   />
                   {options.length > 2 && (
                     <button
-                      onClick={() => handleRemoveOption(idx)}
-                      className="w-8 h-8 rounded-lg hover:bg-accent-red/20 text-surface-400 hover:text-accent-red flex items-center justify-center transition-all"
+                      onClick={() => handleRemoveOption(index)}
+                      className="p-2 text-surface-400 hover:text-accent-red transition-colors cursor-pointer"
                       title="Remove option"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <Trash2 className="w-4 h-4" />
                     </button>
                   )}
                 </div>
@@ -126,20 +129,20 @@ export default function CreatePollModal({ onCreatePoll, onClose }) {
             {options.length < 10 && (
               <button
                 onClick={handleAddOption}
-                className="mt-2.5 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary-500/10 hover:bg-primary-500/20 text-primary-300 border border-primary-500/30 text-xs font-semibold transition-all cursor-pointer"
+                className="mt-2.5 px-3 py-1.5 rounded-xl bg-dark-input hover:bg-dark-hover border border-dark-border text-primary-400 flex items-center gap-1.5 text-xs font-semibold transition-all cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" /> Add Option
               </button>
             )}
           </div>
 
-          {/* Settings Toggles */}
-          <div className="p-3.5 rounded-2xl bg-dark-input/60 border border-dark-border space-y-3">
+          {/* Poll Settings */}
+          <div className="space-y-2.5 pt-2 border-t border-dark-border">
             {/* Multiple Choice Toggle */}
             <label className="flex items-center justify-between cursor-pointer">
               <div>
-                <p className="text-white font-semibold">Allow Multiple Answers</p>
-                <p className="text-[10px] text-surface-400">Voters can select more than one option</p>
+                <p className="text-white font-semibold">Multiple Answers</p>
+                <p className="text-[10px] text-surface-400">Allow voters to select more than one option</p>
               </div>
               <input
                 type="checkbox"
@@ -194,6 +197,7 @@ export default function CreatePollModal({ onCreatePoll, onClose }) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

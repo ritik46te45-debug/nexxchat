@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Send, RotateCcw, Camera } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -145,13 +146,13 @@ export default function CircularVideoRecorder({ onSendVideoNote, onClose }) {
 
   const progressPct = (recordDuration / MAX_DURATION) * 100;
 
-  return (
-    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex flex-col items-center justify-center p-4 animate-fade-in">
+  return createPortal(
+    <div className="fixed inset-0 z-[99999] bg-black/85 backdrop-blur-md flex flex-col items-center justify-center p-4 select-none animate-fade-in">
       {/* Top close */}
-      <div className="absolute top-6 right-6">
+      <div className="absolute top-6 right-6 z-10">
         <button
           onClick={onClose}
-          className="w-10 h-10 rounded-full bg-dark-card/80 border border-dark-border text-surface-400 hover:text-white flex items-center justify-center transition-all"
+          className="w-10 h-10 rounded-full bg-dark-card/90 border border-dark-border text-surface-400 hover:text-white flex items-center justify-center transition-all shadow-lg hover:scale-105 cursor-pointer"
         >
           <X className="w-5 h-5" />
         </button>
@@ -166,7 +167,7 @@ export default function CircularVideoRecorder({ onSendVideoNote, onClose }) {
         </div>
 
         {/* Circular Video Preview Frame */}
-        <div className="relative w-64 h-64 sm:w-72 sm:h-72 rounded-full overflow-hidden border-4 border-primary-500/60 shadow-2xl bg-black flex items-center justify-center">
+        <div className="relative w-64 h-64 sm:w-72 sm:h-72 rounded-full overflow-hidden border-4 border-primary-500 shadow-2xl bg-black flex items-center justify-center">
           {previewUrl ? (
             <video
               src={previewUrl}
@@ -217,13 +218,13 @@ export default function CircularVideoRecorder({ onSendVideoNote, onClose }) {
             <>
               <button
                 onClick={handleRetake}
-                className="px-4 py-2.5 rounded-xl bg-dark-card border border-dark-border text-surface-300 hover:text-white flex items-center gap-2 text-xs font-semibold transition-all hover:bg-dark-hover"
+                className="px-4 py-2.5 rounded-xl bg-dark-card border border-dark-border text-surface-300 hover:text-white flex items-center gap-2 text-xs font-semibold transition-all hover:bg-dark-hover cursor-pointer"
               >
                 <RotateCcw className="w-4 h-4" /> Retake
               </button>
               <button
                 onClick={handleSend}
-                className="px-6 py-2.5 rounded-xl gradient-primary text-white flex items-center gap-2 text-xs font-bold shadow-lg shadow-primary-500/30 hover:opacity-95 active:scale-95 transition-all"
+                className="px-6 py-2.5 rounded-xl gradient-primary text-white flex items-center gap-2 text-xs font-bold shadow-lg shadow-primary-500/30 hover:opacity-95 active:scale-95 transition-all cursor-pointer"
               >
                 <Send className="w-4 h-4" /> Send Note
               </button>
@@ -231,7 +232,7 @@ export default function CircularVideoRecorder({ onSendVideoNote, onClose }) {
           ) : isRecording ? (
             <button
               onClick={stopRecording}
-              className="w-16 h-16 rounded-full bg-accent-red text-white flex items-center justify-center shadow-xl shadow-red-500/40 hover:scale-105 active:scale-95 transition-all animate-pulse"
+              className="w-16 h-16 rounded-full bg-accent-red text-white flex items-center justify-center shadow-xl shadow-red-500/40 hover:scale-105 active:scale-95 transition-all animate-pulse cursor-pointer"
               title="Stop Recording"
             >
               <div className="w-6 h-6 rounded-md bg-white" />
@@ -239,7 +240,7 @@ export default function CircularVideoRecorder({ onSendVideoNote, onClose }) {
           ) : (
             <button
               onClick={startRecording}
-              className="w-16 h-16 rounded-full gradient-primary text-white flex items-center justify-center shadow-xl shadow-primary-500/40 hover:scale-105 active:scale-95 transition-all"
+              className="w-16 h-16 rounded-full gradient-primary text-white flex items-center justify-center shadow-xl shadow-primary-500/40 hover:scale-105 active:scale-95 transition-all cursor-pointer"
               title="Start Recording"
             >
               <Camera className="w-7 h-7" />
@@ -247,6 +248,7 @@ export default function CircularVideoRecorder({ onSendVideoNote, onClose }) {
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

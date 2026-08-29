@@ -636,7 +636,7 @@ export default function MessageComposer() {
             />
           </div>
 
-          {/* Dynamic Action Button: Voice Recorder / Video Note vs Send Button */}
+          {/* Dynamic Action Button: Voice Recorder vs Send Button */}
           {editingMessage ? (
             <button
               onClick={handleSaveEdit}
@@ -655,22 +655,13 @@ export default function MessageComposer() {
               {isUploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5 ml-0.5" />}
             </button>
           ) : (
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => setShowVideoNoteRecorder(true)}
-                className="w-10 h-10 rounded-2xl bg-dark-input hover:bg-primary-500/20 text-surface-300 hover:text-primary-400 border border-dark-border flex items-center justify-center transition-all flex-shrink-0 cursor-pointer"
-                title="Circular Video Note"
-              >
-                <Video className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => setIsVoiceRecording(true)}
-                className="w-10 h-10 rounded-2xl bg-dark-input hover:bg-primary-500/20 text-surface-300 hover:text-primary-400 border border-dark-border flex items-center justify-center transition-all flex-shrink-0 cursor-pointer"
-                title="Record Voice Note"
-              >
-                <Mic className="w-5 h-5" />
-              </button>
-            </div>
+            <button
+              onClick={() => setIsVoiceRecording(true)}
+              className="w-10 h-10 rounded-2xl bg-dark-input hover:bg-primary-500/20 text-surface-300 hover:text-primary-400 border border-dark-border flex items-center justify-center transition-all flex-shrink-0 cursor-pointer"
+              title="Record Voice Note"
+            >
+              <Mic className="w-5 h-5" />
+            </button>
           )}
         </div>
       )}

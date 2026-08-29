@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { MapPin, Navigation, X, Send, Loader2, Search, Compass, Zap } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -139,8 +140,8 @@ export default function LocationPickerModal({ onSendLocation, onClose }) {
     onClose();
   };
 
-  return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 animate-fade-in select-none">
+  return createPortal(
+    <div className="fixed inset-0 z-[99999] bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 animate-fade-in select-none">
       <div className="w-full max-w-md max-h-[92vh] bg-dark-card border border-dark-border rounded-3xl shadow-2xl overflow-hidden flex flex-col animate-scale-in">
         {/* Header */}
         <div className="px-4 sm:px-5 py-3 border-b border-dark-border flex items-center justify-between flex-shrink-0 bg-dark-card">
