@@ -159,9 +159,10 @@ export default function MessageComposer() {
     }
   };
 
-  // Send message
-  const handleSend = async () => {
-    if (!text.trim() && files.length === 0) return;
+  // Send message — Instant zero-latency like WhatsApp
+  const handleSend = () => {
+    const trimmedText = text.trim();
+    if (!trimmedText && files.length === 0) return;
     if (!conversationId) return;
 
     const socket = getSocket();
@@ -171,57 +172,67 @@ export default function MessageComposer() {
     if (files.length > 0) {
       setIsUploading(true);
       const toastId = toast.loading(`Uploading ${files.length} attachment${files.length > 1 ? 's' : ''}...`);
-      try {
-        for (const file of files) {
-          const formData = new FormData();
-          formData.append('file', file);
-          const { data } = await api.post('/upload/single', formData);
+      (async () => {
+        try {
+          for (const file of files) {
+            const formData = new FormData();
+            formData.append('file', file);
+            const { data } = await api.post('/upload/single', formData);
 
-          const attachment = data.file;
-          const msgType = ['image', 'video', 'audio', 'voice', 'document', 'file'].includes(attachment?.type)
-            ? attachment.type
-            : 'document';
+            const attachment = data.file;
+            const msgType = ['image', 'video', 'audio', 'voice', 'document', 'file'].includes(attachment?.type)
+              ? attachment.type
+              : 'document';
 
-          await sendMessage(conversationId, {
-            type: msgType,
-            content: text.trim() || '',
-            attachments: [attachment],
-            replyTo: replyingMessage?._id,
-            isViewOnce: isViewOnce && (msgType === 'image' || msgType === 'video'),
-            isSilent,
-          });
+            await sendMessage(conversationId, {
+              type: msgType,
+              content: trimmedText || '',
+              attachments: [attachment],
+              replyTo: replyingMessage?._id,
+              isViewOnce: isViewOnce && (msgType === 'image' || msgType === 'video'),
+              isSilent,
+            });
+          }
+          if (!isSilent) playSentMessageSound();
+          toast.success('Sent successfully!', { id: toastId });
+          setFiles([]);
+          setIsViewOnce(false);
+          setText('');
+          setReplyingMessage(null);
+          if (conversationId) saveDraft(conversationId, '');
+        } catch (error) {
+          toast.error('Failed to upload file', { id: toastId });
+        } finally {
+          setIsUploading(false);
         }
-        if (!isSilent) playSentMessageSound();
-        toast.success('Sent successfully!', { id: toastId });
-        setFiles([]);
-        setIsViewOnce(false);
-        setText('');
-      } catch (error) {
-        toast.error('Failed to upload file', { id: toastId });
-      } finally {
-        setIsUploading(false);
-      }
+      })();
+      return;
     }
 
-    // 2. Send text-only message
-    if (text.trim() && files.length === 0) {
-      try {
-        await sendMessage(conversationId, {
-          type: 'text',
-          content: text.trim(),
-          replyTo: replyingMessage?._id,
-          isSilent,
-        });
-        if (!isSilent) playSentMessageSound();
-      } catch {
+    // 2. Text-only message: INSTANT ZERO-LATENCY (0ms)
+    if (trimmedText && files.length === 0) {
+      const msgContent = trimmedText;
+      const replyId = replyingMessage?._id;
+      const silent = isSilent;
+
+      // Clear input, play audio, and retain focus immediately
+      setText('');
+      setReplyingMessage(null);
+      if (conversationId) saveDraft(conversationId, '');
+      if (!silent) playSentMessageSound();
+      textareaRef.current?.focus();
+
+      // Trigger optimistic render & background HTTP post
+      sendMessage(conversationId, {
+        type: 'text',
+        content: msgContent,
+        replyTo: replyId,
+        isSilent: silent,
+      }).catch((err) => {
+        console.error('Send message error:', err);
         toast.error('Failed to send message');
-      }
+      });
     }
-
-    setText('');
-    setReplyingMessage(null);
-    if (conversationId) saveDraft(conversationId, '');
-    textareaRef.current?.focus();
   };
 
   // Send Voice Message

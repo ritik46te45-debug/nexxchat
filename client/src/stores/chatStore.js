@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import api from '../lib/api';
 import { getSocket } from '../lib/socket';
+import useAuthStore from './authStore';
 
 const useChatStore = create((set, get) => ({
   conversations: [],
@@ -89,15 +90,16 @@ const useChatStore = create((set, get) => ({
   sendMessage: async (conversationId, messageData) => {
     try {
       const clientId = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const currentUser = useAuthStore.getState().user;
 
-      // Optimistic update
+      // Optimistic update — 0ms instant display in DOM like WhatsApp
       const optimisticMsg = {
         _id: clientId,
         ...messageData,
         clientId,
         status: 'sending',
         createdAt: new Date().toISOString(),
-        sender: { _id: 'self' },
+        sender: currentUser || { _id: 'self' },
         reactions: [],
         _optimistic: true,
       };

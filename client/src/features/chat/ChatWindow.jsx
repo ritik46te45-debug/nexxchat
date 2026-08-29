@@ -290,9 +290,9 @@ export default function ChatWindow({ onStartCall }) {
       )}
 
       {/* Main Chat Column */}
-      <div className="flex-1 flex flex-col h-full min-w-0 relative">
-        {/* Chat Top Header */}
-        <div className="h-16 px-3 sm:px-4 border-b border-dark-border flex items-center gap-2.5 sm:gap-3 bg-dark-card/75 backdrop-blur-xl flex-shrink-0 z-10">
+      <div className="flex-1 flex flex-col h-full min-h-0 min-w-0 relative overflow-hidden">
+        {/* Chat Top Header - WhatsApp Sticky Top Bar */}
+        <div className="sticky top-0 h-16 px-3 sm:px-4 border-b border-dark-border flex items-center gap-2.5 sm:gap-3 bg-dark-card/90 backdrop-blur-xl flex-shrink-0 z-30 shadow-sm">
           {/* Mobile back */}
           {isMobile && (
             <button
@@ -405,7 +405,7 @@ export default function ChatWindow({ onStartCall }) {
         <div
           ref={messagesContainerRef}
           onScroll={handleScroll}
-          className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-1 hide-scrollbar bg-dark-bg relative"
+          className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 sm:p-4 space-y-1 hide-scrollbar bg-dark-bg relative"
         >
 
           {/* Top Loading Spinner for Infinite History Scroll */}
