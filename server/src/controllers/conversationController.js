@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import Conversation from '../models/Conversation.js';
 import Message from '../models/Message.js';
 import User from '../models/User.js';
@@ -47,11 +48,18 @@ export const getOrCreateConversation = async (req, res) => {
       (p) => (p.user?._id || p.user)?.toString() === req.userId.toString()
     );
 
+    const actualUnread = await Message.countDocuments({
+      conversation: conversation._id,
+      sender: { $ne: req.userId },
+      'readBy.user': { $ne: req.userId },
+      isDeletedForEveryone: { $ne: true },
+    });
+
     res.json({
       conversation: {
         ...convObj,
-        _participant: myParticipant || null,
-        unreadCount: myParticipant?.unreadCount || 0,
+        _participant: myParticipant ? { ...myParticipant, unreadCount: actualUnread } : null,
+        unreadCount: actualUnread,
       },
     });
   } catch (error) {
@@ -78,17 +86,41 @@ export const getConversations = async (req, res) => {
       .limit(parseInt(limit))
       .skip((parseInt(page) - 1) * parseInt(limit));
 
-    // Filter out conversations where participant deleted & attach clean unreadCount
+    // Calculate exact unread message counts from DB
+    const convIds = conversations.map((c) => c._id);
+    const unreadCountsAgg = await Message.aggregate([
+      {
+        $match: {
+          conversation: { $in: convIds },
+          sender: { $ne: new mongoose.Types.ObjectId(req.userId) },
+          'readBy.user': { $ne: new mongoose.Types.ObjectId(req.userId) },
+          isDeletedForEveryone: { $ne: true },
+        },
+      },
+      {
+        $group: {
+          _id: '$conversation',
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const unreadMap = new Map();
+    unreadCountsAgg.forEach((item) => {
+      unreadMap.set(item._id.toString(), item.count);
+    });
+
+    // Filter out conversations where participant deleted & attach exact unreadCount
     const filtered = conversations.map((conv) => {
       const convObj = conv.toObject();
       const myParticipant = convObj.participants?.find(
         (p) => (p.user?._id || p.user)?.toString() === req.userId.toString()
       );
-      const unreadCount = myParticipant?.unreadCount || 0;
+      const actualUnread = unreadMap.get(conv._id.toString()) || 0;
       return {
         ...convObj,
-        _participant: myParticipant || null,
-        unreadCount,
+        _participant: myParticipant ? { ...myParticipant, unreadCount: actualUnread } : null,
+        unreadCount: actualUnread,
       };
     }).filter((conv) => !conv._participant?.isDeleted);
 
