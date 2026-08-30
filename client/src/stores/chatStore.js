@@ -22,7 +22,11 @@ const useChatStore = create((set, get) => ({
     try {
       const { data } = await api.get('/conversations');
       const convs = data.conversations || [];
-      const unreadTotal = convs.reduce((sum, c) => sum + (c._participant?.unreadCount || 0), 0);
+      const myId = (useAuthStore.getState().user?._id || useAuthStore.getState().user)?.toString();
+      const unreadTotal = convs.reduce((sum, c) => {
+        const myP = c._participant || c.participants?.find(p => (p.user?._id || p.user)?.toString() === myId);
+        return sum + (myP?.unreadCount || 0);
+      }, 0);
       set({ conversations: convs, isLoadingConversations: false, unreadTotal });
     } catch (error) {
       console.error('Fetch conversations error:', error);
@@ -286,13 +290,28 @@ const useChatStore = create((set, get) => ({
   markAsRead: async (conversationId) => {
     try {
       await api.post(`/messages/${conversationId}/read`);
-      set((state) => ({
-        conversations: state.conversations.map(c =>
-          c._id === conversationId
-            ? { ...c, _participant: { ...c._participant, unreadCount: 0 } }
-            : c
-        ),
-      }));
+      const myId = (useAuthStore.getState().user?._id || useAuthStore.getState().user)?.toString();
+      set((state) => {
+        const convs = state.conversations.map((c) => {
+          if (c._id?.toString() === conversationId?.toString()) {
+            return {
+              ...c,
+              _participant: { ...(c._participant || {}), unreadCount: 0 },
+              participants: (c.participants || []).map((p) =>
+                (p.user?._id || p.user)?.toString() === myId
+                  ? { ...p, unreadCount: 0 }
+                  : p
+              ),
+            };
+          }
+          return c;
+        });
+        const unreadTotal = convs.reduce((sum, c) => {
+          const myP = c._participant || c.participants?.find((p) => (p.user?._id || p.user)?.toString() === myId);
+          return sum + (myP?.unreadCount || 0);
+        }, 0);
+        return { conversations: convs, unreadTotal };
+      });
     } catch (error) {
       console.error('Mark as read error:', error);
     }
@@ -342,24 +361,41 @@ const useChatStore = create((set, get) => ({
     const targetId = (conversationId || lastMessage?.conversation?._id || lastMessage?.conversation)?.toString();
     if (!targetId) return;
 
+    const myId = (useAuthStore.getState().user?._id || useAuthStore.getState().user)?.toString();
+    const senderId = (lastMessage?.sender?._id || lastMessage?.sender)?.toString();
+    const isFromMe = Boolean(senderId && myId && senderId === myId);
+
     const convs = [...state.conversations];
-    const idx = convs.findIndex(c => c._id?.toString() === targetId);
+    const idx = convs.findIndex((c) => c._id?.toString() === targetId);
 
     if (idx !== -1) {
       const isCurrentActive = state.activeConversation?._id?.toString() === targetId;
+      const myP = convs[idx]._participant || convs[idx].participants?.find((p) => (p.user?._id || p.user)?.toString() === myId);
+      const currentUnread = myP?.unreadCount || 0;
+      const newUnread = (isCurrentActive || isFromMe) ? 0 : currentUnread + 1;
+
       convs[idx] = {
         ...convs[idx],
         lastMessage,
         lastMessageAt: new Date().toISOString(),
         _participant: {
-          ...convs[idx]._participant,
-          unreadCount: isCurrentActive ? 0 : ((convs[idx]._participant?.unreadCount || 0) + 1),
+          ...(convs[idx]._participant || {}),
+          unreadCount: newUnread,
         },
+        participants: (convs[idx].participants || []).map((p) =>
+          (p.user?._id || p.user)?.toString() === myId
+            ? { ...p, unreadCount: newUnread }
+            : p
+        ),
       };
       // Move to top
       const [conv] = convs.splice(idx, 1);
       convs.unshift(conv);
-      set({ conversations: convs });
+      const unreadTotal = convs.reduce((sum, c) => {
+        const pObj = c._participant || c.participants?.find((p) => (p.user?._id || p.user)?.toString() === myId);
+        return sum + (pObj?.unreadCount || 0);
+      }, 0);
+      set({ conversations: convs, unreadTotal });
     } else {
       // If conversation is new or not in the current list, fetch fresh conversations
       get().fetchConversations();

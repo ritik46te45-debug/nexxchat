@@ -83,13 +83,18 @@ export const unsubscribePush = async (req, res) => {
 // GET IN-APP NOTIFICATIONS
 export const getNotifications = async (req, res) => {
   try {
-    const notifications = await Notification.find({ recipient: req.userId })
+    const query = {
+      recipient: req.userId,
+      type: { $nin: ['message', 'group_message'] },
+    };
+
+    const notifications = await Notification.find(query)
       .populate('sender', 'displayName username avatar userCode')
       .sort({ createdAt: -1 })
       .limit(50);
 
     const unreadCount = await Notification.countDocuments({
-      recipient: req.userId,
+      ...query,
       isRead: false,
     });
 

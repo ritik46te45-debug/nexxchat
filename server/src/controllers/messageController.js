@@ -168,39 +168,6 @@ export const sendMessage = async (req, res) => {
       console.error(`[MSG-ERR] req.app.get('io') returned null/undefined!`);
     }
 
-    // Create in-app Notification records for other participants
-    const otherParticipants = conversation.participants.filter(
-      p => p.user.toString() !== req.userId.toString()
-    );
-
-    const notifTitle = conversation.type === 'group'
-      ? `${conversation.groupName || 'Group'} (${populatedMessage.sender?.displayName || 'User'})`
-      : populatedMessage.sender?.displayName || 'New Message';
-
-    const notifBody = content || (type === 'video_note' ? 'Sent a video note 🎥' : type === 'voice' ? 'Sent a voice message 🎤' : `Sent a ${type}`);
-
-    otherParticipants.forEach(async (p) => {
-      try {
-        const notif = await Notification.create({
-          recipient: p.user,
-          sender: req.userId,
-          type: conversation.type === 'group' ? 'group_message' : 'message',
-          title: notifTitle,
-          body: notifBody,
-          data: {
-            conversationId: conversation._id,
-            messageId: message._id,
-          },
-        });
-
-        if (io) {
-          io.to(p.user.toString()).emit('notification:new', notif);
-        }
-      } catch (e) {
-        console.warn('In-app notification note:', e.message);
-      }
-    });
-
     if (!req.body.isSilent) {
       otherParticipants.forEach(async (p) => {
         try {

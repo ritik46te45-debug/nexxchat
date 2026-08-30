@@ -75,18 +75,6 @@ export default function ChatList({ onOpenProfile }) {
 
           <div className="flex items-center gap-1.5">
             <button
-              onClick={() => setSidebarView('notifications')}
-              className="relative w-9 h-9 rounded-xl bg-dark-input text-surface-400 hover:text-white hover:bg-dark-hover flex items-center justify-center transition-all border border-dark-border"
-              title="Notifications & Alerts"
-            >
-              <Bell className="w-4 h-4" />
-              {unreadNotifCount > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-[16px] h-4 rounded-full bg-accent-red text-white text-[9px] font-bold flex items-center justify-center px-1 animate-pulse">
-                  {unreadNotifCount > 99 ? '99+' : unreadNotifCount}
-                </span>
-              )}
-            </button>
-            <button
               onClick={() => setShowNewGroup(true)}
               className="w-9 h-9 rounded-xl bg-dark-input text-surface-400 hover:text-white hover:bg-dark-hover flex items-center justify-center transition-all border border-dark-border"
               title="New Group"
@@ -178,9 +166,12 @@ function ConversationItem({ conversation, userId, isActive, onClick, typingUsers
   const avatar = conversation.type === 'group' ? conversation.groupAvatar?.url : (canSeeProfilePhoto ? otherUser?.avatar?.url : null);
   const showOnline = isOnline && canSeeOnline;
 
-  const unread = conversation._participant?.unreadCount || 0;
-  const isPinned = conversation._participant?.isPinned;
-  const isMuted = conversation._participant?.isMuted;
+  const myParticipant = conversation._participant || conversation.participants?.find(
+    (p) => (p.user?._id || p.user)?.toString() === myId
+  );
+  const unread = typeof myParticipant?.unreadCount === 'number' ? myParticipant.unreadCount : (conversation.unreadCount || 0);
+  const isPinned = myParticipant?.isPinned || conversation.isPinned;
+  const isMuted = myParticipant?.isMuted || conversation.isMuted;
   const lastMessage = conversation.lastMessage;
 
   const typingNames = typingUsers ? Object.values(typingUsers) : [];
@@ -259,7 +250,7 @@ function ConversationItem({ conversation, userId, isActive, onClick, typingUsers
           <span className={`text-xs truncate ${
             preview.isDraft ? 'text-accent-red' :
             preview.isTyping ? 'text-primary-400' :
-            unread > 0 ? 'text-surface-300 font-medium' : 'text-surface-500'
+            unread > 0 ? 'text-white font-semibold' : 'text-surface-500'
           }`}>
             {preview.text}
           </span>
@@ -267,7 +258,7 @@ function ConversationItem({ conversation, userId, isActive, onClick, typingUsers
             {isPinned && <Pin className="w-3 h-3 text-surface-500 rotate-45" />}
             {isMuted && <VolumeX className="w-3 h-3 text-surface-500" />}
             {unread > 0 && (
-              <span className="min-w-[20px] h-5 rounded-full bg-primary-500 text-white text-[10px] font-bold flex items-center justify-center px-1.5">
+              <span className="min-w-[20px] h-5 rounded-full bg-accent-green text-black text-[10px] font-extrabold flex items-center justify-center px-1.5 shadow-md shadow-accent-green/30 animate-scale-in">
                 {unread > 99 ? '99+' : unread}
               </span>
             )}

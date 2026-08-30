@@ -320,7 +320,8 @@ export default function HomeTab({ onStartCall, onOpenNewChat, onOpenNewGroup }) 
                   avatar = other.user.avatar?.url;
                 }
 
-                const unread = conv._participant?.unreadCount || 0;
+                const myP = conv._participant || conv.participants?.find((p) => (p.user?._id || p.user)?.toString() === myId);
+                const unread = typeof myP?.unreadCount === 'number' ? myP.unreadCount : (conv.unreadCount || 0);
 
                 return (
                   <button
