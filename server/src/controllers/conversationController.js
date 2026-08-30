@@ -42,7 +42,18 @@ export const getOrCreateConversation = async (req, res) => {
         .populate('lastMessage');
     }
 
-    res.json({ conversation });
+    const convObj = conversation.toObject ? conversation.toObject() : conversation;
+    const myParticipant = convObj.participants?.find(
+      (p) => (p.user?._id || p.user)?.toString() === req.userId.toString()
+    );
+
+    res.json({
+      conversation: {
+        ...convObj,
+        _participant: myParticipant || null,
+        unreadCount: myParticipant?.unreadCount || 0,
+      },
+    });
   } catch (error) {
     console.error('Get/create conversation error:', error);
     res.status(500).json({ error: 'Failed to get conversation' });
@@ -67,14 +78,19 @@ export const getConversations = async (req, res) => {
       .limit(parseInt(limit))
       .skip((parseInt(page) - 1) * parseInt(limit));
 
-    // Filter out conversations where participant deleted
-    const filtered = conversations.map(conv => {
-      const participant = conv.getParticipant(req.userId);
+    // Filter out conversations where participant deleted & attach clean unreadCount
+    const filtered = conversations.map((conv) => {
+      const convObj = conv.toObject();
+      const myParticipant = convObj.participants?.find(
+        (p) => (p.user?._id || p.user)?.toString() === req.userId.toString()
+      );
+      const unreadCount = myParticipant?.unreadCount || 0;
       return {
-        ...conv.toObject(),
-        _participant: participant,
+        ...convObj,
+        _participant: myParticipant || null,
+        unreadCount,
       };
-    }).filter(conv => !conv._participant?.isDeleted);
+    }).filter((conv) => !conv._participant?.isDeleted);
 
     res.json({ conversations: filtered });
   } catch (error) {

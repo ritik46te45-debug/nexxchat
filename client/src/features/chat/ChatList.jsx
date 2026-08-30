@@ -154,8 +154,9 @@ export default function ChatList({ onOpenProfile }) {
 }
 
 function ConversationItem({ conversation, userId, isActive, onClick, typingUsers, isOnline, draft }) {
-  const otherUser = getOtherUser(conversation, userId);
-  const myId = userId?.toString();
+  const currentAuthUser = useAuthStore.getState().user;
+  const myId = (userId || currentAuthUser?._id || currentAuthUser?.id || currentAuthUser)?.toString();
+  const otherUser = getOtherUser(conversation, myId);
   const isFriend = Array.isArray(otherUser?.friends) && otherUser.friends.some(f => (f?._id || f)?.toString() === myId);
 
   // Privacy evaluation for avatar and online status
@@ -169,7 +170,11 @@ function ConversationItem({ conversation, userId, isActive, onClick, typingUsers
   const myParticipant = conversation._participant || conversation.participants?.find(
     (p) => (p.user?._id || p.user)?.toString() === myId
   );
-  const unread = typeof myParticipant?.unreadCount === 'number' ? myParticipant.unreadCount : (conversation.unreadCount || 0);
+  const unread = Number(
+    typeof conversation.unreadCount === 'number' && conversation.unreadCount > 0
+      ? conversation.unreadCount
+      : (myParticipant?.unreadCount || 0)
+  );
   const isPinned = myParticipant?.isPinned || conversation.isPinned;
   const isMuted = myParticipant?.isMuted || conversation.isMuted;
   const lastMessage = conversation.lastMessage;

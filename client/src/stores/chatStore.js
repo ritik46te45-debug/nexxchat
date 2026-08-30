@@ -296,6 +296,7 @@ const useChatStore = create((set, get) => ({
           if (c._id?.toString() === conversationId?.toString()) {
             return {
               ...c,
+              unreadCount: 0,
               _participant: { ...(c._participant || {}), unreadCount: 0 },
               participants: (c.participants || []).map((p) =>
                 (p.user?._id || p.user)?.toString() === myId
@@ -308,7 +309,7 @@ const useChatStore = create((set, get) => ({
         });
         const unreadTotal = convs.reduce((sum, c) => {
           const myP = c._participant || c.participants?.find((p) => (p.user?._id || p.user)?.toString() === myId);
-          return sum + (myP?.unreadCount || 0);
+          return sum + (myP?.unreadCount || c.unreadCount || 0);
         }, 0);
         return { conversations: convs, unreadTotal };
       });
@@ -371,13 +372,14 @@ const useChatStore = create((set, get) => ({
     if (idx !== -1) {
       const isCurrentActive = state.activeConversation?._id?.toString() === targetId;
       const myP = convs[idx]._participant || convs[idx].participants?.find((p) => (p.user?._id || p.user)?.toString() === myId);
-      const currentUnread = myP?.unreadCount || 0;
+      const currentUnread = typeof convs[idx].unreadCount === 'number' && convs[idx].unreadCount > 0 ? convs[idx].unreadCount : (myP?.unreadCount || 0);
       const newUnread = (isCurrentActive || isFromMe) ? 0 : currentUnread + 1;
 
       convs[idx] = {
         ...convs[idx],
         lastMessage,
         lastMessageAt: new Date().toISOString(),
+        unreadCount: newUnread,
         _participant: {
           ...(convs[idx]._participant || {}),
           unreadCount: newUnread,
