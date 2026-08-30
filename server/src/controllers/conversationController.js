@@ -48,12 +48,18 @@ export const getOrCreateConversation = async (req, res) => {
       (p) => (p.user?._id || p.user)?.toString() === req.userId.toString()
     );
 
-    const actualUnread = await Message.countDocuments({
+    const lastReadAt = myParticipant?.lastReadAt;
+    const unreadFilter = {
       conversation: conversation._id,
       sender: { $ne: req.userId },
-      'readBy.user': { $ne: req.userId },
       isDeletedForEveryone: { $ne: true },
-    });
+    };
+    if (lastReadAt) {
+      unreadFilter.createdAt = { $gt: lastReadAt };
+    } else {
+      unreadFilter['readBy.user'] = { $ne: req.userId };
+    }
+    const actualUnread = await Message.countDocuments(unreadFilter);
 
     res.json({
       conversation: {
@@ -86,29 +92,28 @@ export const getConversations = async (req, res) => {
       .limit(parseInt(limit))
       .skip((parseInt(page) - 1) * parseInt(limit));
 
-    // Calculate exact unread message counts from DB
-    const convIds = conversations.map((c) => c._id);
-    const unreadCountsAgg = await Message.aggregate([
-      {
-        $match: {
-          conversation: { $in: convIds },
-          sender: { $ne: new mongoose.Types.ObjectId(req.userId) },
-          'readBy.user': { $ne: new mongoose.Types.ObjectId(req.userId) },
-          isDeletedForEveryone: { $ne: true },
-        },
-      },
-      {
-        $group: {
-          _id: '$conversation',
-          count: { $sum: 1 },
-        },
-      },
-    ]);
-
+    // Calculate exact unread message counts from DB using lastReadAt threshold
     const unreadMap = new Map();
-    unreadCountsAgg.forEach((item) => {
-      unreadMap.set(item._id.toString(), item.count);
-    });
+    await Promise.all(
+      conversations.map(async (conv) => {
+        const myP = conv.participants?.find(
+          (p) => (p.user?._id || p.user)?.toString() === req.userId.toString()
+        );
+        const lastReadAt = myP?.lastReadAt;
+        const filter = {
+          conversation: conv._id,
+          sender: { $ne: req.userId },
+          isDeletedForEveryone: { $ne: true },
+        };
+        if (lastReadAt) {
+          filter.createdAt = { $gt: lastReadAt };
+        } else {
+          filter['readBy.user'] = { $ne: req.userId };
+        }
+        const count = await Message.countDocuments(filter);
+        unreadMap.set(conv._id.toString(), count);
+      })
+    );
 
     // Filter out conversations where participant deleted & attach exact unreadCount
     const filtered = conversations.map((conv) => {

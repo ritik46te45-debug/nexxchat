@@ -578,26 +578,27 @@ export const markAsRead = async (req, res) => {
       return res.status(404).json({ error: 'Conversation not found' });
     }
 
-    // Reset unread count
+    // Reset unread count & set lastReadAt
     const participantIndex = conversation.participants.findIndex(
-      p => p.user.toString() === req.userId.toString()
+      p => (p.user?._id || p.user)?.toString() === req.userId.toString()
     );
-    conversation.participants[participantIndex].unreadCount = 0;
-    conversation.participants[participantIndex].lastReadAt = new Date();
-    await conversation.save();
-
-    // Update message read status
-    const unreadMessages = await Message.find({
-      conversation: conversationId,
-      sender: { $ne: req.userId },
-      'readBy.user': { $ne: req.userId },
-    });
-
-    for (const msg of unreadMessages) {
-      msg.readBy.push({ user: req.userId, readAt: new Date() });
-      msg.status = 'read';
-      await msg.save();
+    if (participantIndex !== -1) {
+      conversation.participants[participantIndex].unreadCount = 0;
+      conversation.participants[participantIndex].lastReadAt = new Date();
+      await conversation.save();
     }
+
+    // Update message read status in bulk
+    await Message.updateMany(
+      {
+        conversation: conversationId,
+        sender: { $ne: req.userId },
+      },
+      {
+        $addToSet: { readBy: { user: req.userId, readAt: new Date() } },
+        $set: { status: 'read' },
+      }
+    );
 
     // Notify senders that messages were read directly via room emissions
     const io = req.app.get('io');
