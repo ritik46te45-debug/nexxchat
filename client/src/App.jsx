@@ -84,8 +84,9 @@ function App() {
     const socket = getSocket();
     if (!socket) return;
 
-    // Messages
-    const handleNewMessage = ({ message, conversationId }) => {
+    const handleNewMessage = (payload) => {
+      const message = payload?.message || payload;
+      const conversationId = (payload?.conversationId || message?.conversation?._id || message?.conversation)?.toString();
       console.log(`[REALTIME] message:new RECEIVED -> Message ID: ${message?._id} | Conv ID: ${conversationId}`);
       addMessage(message, conversationId);
 
