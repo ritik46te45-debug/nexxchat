@@ -12,7 +12,7 @@ export default function Sidebar({ onOpenProfile }) {
   const {
     sidebarView, setSidebarView, isMobile, showChatOnMobile,
     isSidebarExpanded, toggleSidebarExpanded,
-    setShowGlobalSearch, setShowCommandPalette
+    setShowGlobalSearch, setShowCommandPalette, unreadNotifCount
   } = useUIStore();
   const { user, logout } = useAuthStore();
   const unreadTotal = useChatStore((s) => s.unreadTotal);
@@ -25,10 +25,10 @@ export default function Sidebar({ onOpenProfile }) {
   const navItems = [
     { id: 'home', icon: Home, label: 'Home' },
     { id: 'chats', icon: MessageSquare, label: 'Chats', badge: unreadTotal },
-    { id: 'contacts', icon: Users, label: 'Friends' },
-    { id: 'calls', icon: Phone, label: 'Calls' },
     { id: 'status', icon: Sparkles, label: 'Status' },
-    { id: 'notifications', icon: Bell, label: 'Alerts' },
+    { id: 'calls', icon: Phone, label: 'Calls' },
+    { id: 'notifications', icon: Bell, label: 'Alerts', badge: unreadNotifCount },
+    { id: 'contacts', icon: Users, label: 'Friends' },
     { id: 'settings', icon: Settings, label: 'Settings' },
   ];
 
@@ -40,6 +40,7 @@ export default function Sidebar({ onOpenProfile }) {
       { id: 'chats', icon: MessageSquare, label: 'Chats', badge: unreadTotal },
       { id: 'status', icon: Sparkles, label: 'Status' },
       { id: 'calls', icon: Phone, label: 'Calls' },
+      { id: 'notifications', icon: Bell, label: 'Alerts', badge: unreadNotifCount },
       { id: 'contacts', icon: Users, label: 'Friends' },
       { id: 'home', icon: Home, label: 'Home' },
     ];

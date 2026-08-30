@@ -13,12 +13,14 @@ export default function NotificationsTab() {
   const [notifications, setNotifications] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const { setActiveConversation } = useChatStore();
-  const { isMobile, setShowChatOnMobile } = useUIStore();
+  const { isMobile, setShowChatOnMobile, setSidebarView, setUnreadNotifCount } = useUIStore();
 
   const fetchNotifications = async () => {
     try {
       const { data } = await api.get('/notifications');
-      setNotifications(data.notifications || []);
+      const list = data.notifications || [];
+      setNotifications(list);
+      setUnreadNotifCount(data.unreadCount || list.filter((n) => !n.isRead).length);
     } catch (err) {
       console.error('Fetch notifications error:', err);
     } finally {
@@ -34,6 +36,7 @@ export default function NotificationsTab() {
     try {
       await api.put('/notifications/read-all');
       setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+      setUnreadNotifCount(0);
       toast.success('Marked all as read');
     } catch {
       toast.error('Failed to mark read');
@@ -44,6 +47,7 @@ export default function NotificationsTab() {
     try {
       await api.delete('/notifications/clear');
       setNotifications([]);
+      setUnreadNotifCount(0);
       toast.success('Notifications cleared');
     } catch {
       toast.error('Failed to clear notifications');
@@ -117,7 +121,31 @@ export default function NotificationsTab() {
           notifications.map((notif) => (
             <div
               key={notif._id}
-              className={`p-3.5 rounded-2xl border transition-all flex items-start gap-3.5 ${
+              onClick={async () => {
+                if (!notif.isRead) {
+                  api.put(`/notifications/${notif._id}/read`).catch(() => {});
+                  setNotifications((prev) =>
+                    prev.map((n) => (n._id === notif._id ? { ...n, isRead: true } : n))
+                  );
+                  setUnreadNotifCount(
+                    notifications.filter((n) => !n.isRead && n._id !== notif._id).length
+                  );
+                }
+                if (notif.data?.conversationId) {
+                  const convs = useChatStore.getState().conversations;
+                  const targetConv = convs.find(
+                    (c) => c._id?.toString() === notif.data.conversationId?.toString()
+                  );
+                  if (targetConv) {
+                    setActiveConversation(targetConv);
+                    setSidebarView('chats');
+                    if (isMobile) setShowChatOnMobile(true);
+                  }
+                } else if (notif.type === 'friend_request' || notif.type === 'friend_accepted') {
+                  setSidebarView('contacts');
+                }
+              }}
+              className={`p-3.5 rounded-2xl border transition-all flex items-start gap-3.5 cursor-pointer hover:bg-dark-hover select-none ${
                 notif.isRead
                   ? 'bg-dark-card/50 border-dark-border/60 text-surface-300'
                   : 'bg-dark-card border-primary-500/40 text-white shadow-md'

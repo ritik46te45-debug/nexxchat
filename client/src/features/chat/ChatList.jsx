@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Search, Plus, Edit3, Users, Archive, Pin, Volume2, VolumeX } from 'lucide-react';
+import { Search, Plus, Edit3, Users, Archive, Pin, Volume2, VolumeX, Bell } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import useChatStore from '../../stores/chatStore';
 import useAuthStore from '../../stores/authStore';
@@ -13,7 +13,7 @@ export default function ChatList({ onOpenProfile }) {
   const [showNewGroup, setShowNewGroup] = useState(false);
   const { conversations, activeConversation, setActiveConversation, typingUsers, onlineUsers, drafts } = useChatStore();
   const { user } = useAuthStore();
-  const { isMobile, setShowChatOnMobile } = useUIStore();
+  const { isMobile, setShowChatOnMobile, unreadNotifCount, setSidebarView } = useUIStore();
 
   // Filter and sort conversations
   const filteredConversations = useMemo(() => {
@@ -74,6 +74,18 @@ export default function ChatList({ onOpenProfile }) {
           </div>
 
           <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setSidebarView('notifications')}
+              className="relative w-9 h-9 rounded-xl bg-dark-input text-surface-400 hover:text-white hover:bg-dark-hover flex items-center justify-center transition-all border border-dark-border"
+              title="Notifications & Alerts"
+            >
+              <Bell className="w-4 h-4" />
+              {unreadNotifCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[16px] h-4 rounded-full bg-accent-red text-white text-[9px] font-bold flex items-center justify-center px-1 animate-pulse">
+                  {unreadNotifCount > 99 ? '99+' : unreadNotifCount}
+                </span>
+              )}
+            </button>
             <button
               onClick={() => setShowNewGroup(true)}
               className="w-9 h-9 rounded-xl bg-dark-input text-surface-400 hover:text-white hover:bg-dark-hover flex items-center justify-center transition-all border border-dark-border"

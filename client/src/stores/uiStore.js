@@ -25,6 +25,7 @@ const useUIStore = create((set) => ({
 
   // Notification
   notification: null,
+  unreadNotifCount: 0,
 
   // Network
   isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
@@ -50,6 +51,8 @@ const useUIStore = create((set) => ({
   setSidebarView: (view) => set({ sidebarView: view }),
   setMobile: (isMobile) => set({ isMobile }),
   setShowChatOnMobile: (show) => set({ showChatOnMobile: show }),
+  setUnreadNotifCount: (count) => set({ unreadNotifCount: Math.max(0, count) }),
+  incrementUnreadNotifCount: () => set((s) => ({ unreadNotifCount: s.unreadNotifCount + 1 })),
 
   setShowGlobalSearch: (show) => set({ showGlobalSearch: show }),
   setShowCommandPalette: (show) => set({ showCommandPalette: show }),
