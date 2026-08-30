@@ -169,6 +169,16 @@ export const sendMessage = async (req, res) => {
     }
 
     if (!req.body.isSilent) {
+      const otherParticipants = conversation.participants.filter(
+        p => (p.user?._id || p.user)?.toString() !== req.userId.toString()
+      );
+
+      const notifTitle = conversation.type === 'group'
+        ? `${conversation.groupName || 'Group'} (${populatedMessage.sender?.displayName || 'User'})`
+        : populatedMessage.sender?.displayName || 'New Message';
+
+      const notifBody = content || (type === 'video_note' ? 'Sent a video note 🎥' : type === 'voice' ? 'Sent a voice message 🎤' : `Sent a ${type}`);
+
       otherParticipants.forEach(async (p) => {
         try {
           const user = await User.findById(p.user);
