@@ -326,7 +326,17 @@ const useChatStore = create((set, get) => ({
     const activeConvId = (activeConv?._id || activeConv?.id || activeConv)?.toString();
     const msgConvId = (conversationId || message?.conversation?._id || message?.conversation?.id || message?.conversation)?.toString();
 
-    console.log(`[CHAT STORE] addMessage -> ID: ${message?._id} | MsgConv: ${msgConvId} | ActiveConv: ${activeConvId} | ActiveMatches: ${activeConvId === msgConvId}`);
+    // Check if receiver is ACTIVELY viewing this chat window right now
+    const uiState = useUIStore.getState();
+    const isActivelyInChat = Boolean(
+      activeConvId &&
+      msgConvId &&
+      activeConvId === msgConvId &&
+      (uiState.isMobile ? uiState.showChatOnMobile : uiState.sidebarView === 'chats') &&
+      (typeof document === 'undefined' || !document.hidden)
+    );
+
+    console.log(`[CHAT STORE] addMessage -> ID: ${message?._id} | MsgConv: ${msgConvId} | ActiveConv: ${activeConvId} | IsActivelyInChat: ${isActivelyInChat}`);
 
     if (activeConvId && msgConvId && activeConvId === msgConvId) {
       const msgs = [...state.messages];
@@ -343,8 +353,10 @@ const useChatStore = create((set, get) => ({
       }
       set({ messages: msgs });
 
-      // Auto mark as read if currently in active chat
-      state.markAsRead(msgConvId);
+      // ONLY auto-mark as read if receiver is ACTIVELY viewing the chat window
+      if (isActivelyInChat) {
+        state.markAsRead(msgConvId);
+      }
     }
     state.updateConversationInList(msgConvId, message);
   },
@@ -366,14 +378,20 @@ const useChatStore = create((set, get) => ({
     const senderId = (lastMessage?.sender?._id || lastMessage?.sender)?.toString();
     const isFromMe = Boolean(senderId && myId && senderId === myId);
 
+    const uiState = useUIStore.getState();
+    const isActivelyInChat = Boolean(
+      state.activeConversation?._id?.toString() === targetId &&
+      (uiState.isMobile ? uiState.showChatOnMobile : uiState.sidebarView === 'chats') &&
+      (typeof document === 'undefined' || !document.hidden)
+    );
+
     const convs = [...state.conversations];
     const idx = convs.findIndex((c) => c._id?.toString() === targetId);
 
     if (idx !== -1) {
-      const isCurrentActive = state.activeConversation?._id?.toString() === targetId;
       const myP = convs[idx]._participant || convs[idx].participants?.find((p) => (p.user?._id || p.user)?.toString() === myId);
       const currentUnread = typeof convs[idx].unreadCount === 'number' && convs[idx].unreadCount > 0 ? convs[idx].unreadCount : (myP?.unreadCount || 0);
-      const newUnread = (isCurrentActive || isFromMe) ? 0 : currentUnread + 1;
+      const newUnread = (isActivelyInChat || isFromMe) ? 0 : currentUnread + 1;
 
       convs[idx] = {
         ...convs[idx],
@@ -395,7 +413,7 @@ const useChatStore = create((set, get) => ({
       convs.unshift(conv);
       const unreadTotal = convs.reduce((sum, c) => {
         const pObj = c._participant || c.participants?.find((p) => (p.user?._id || p.user)?.toString() === myId);
-        return sum + (pObj?.unreadCount || 0);
+        return sum + (pObj?.unreadCount || c.unreadCount || 0);
       }, 0);
       set({ conversations: convs, unreadTotal });
     } else {

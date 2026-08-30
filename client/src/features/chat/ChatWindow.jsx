@@ -336,7 +336,10 @@ export default function ChatWindow({ onStartCall }) {
           {/* Mobile back */}
           {isMobile && (
             <button
-              onClick={() => setShowChatOnMobile(false)}
+              onClick={() => {
+                setShowChatOnMobile(false);
+                useChatStore.getState().setActiveConversation(null);
+              }}
               className="p-2 rounded-2xl text-surface-400 hover:text-white hover:bg-dark-hover transition-colors"
             >
               <ArrowLeft className="w-5 h-5" />
