@@ -113,7 +113,9 @@ export const uploadFile = async (req, res) => {
           const options = {
             folder,
             resource_type: resourceType,
-            public_id: `${Date.now()}_${sanitizedName.replace(/\.[^/.]+$/, '')}`,
+            public_id: `${Date.now()}_${sanitizedName}`,
+            use_filename: true,
+            unique_filename: false,
           };
 
           if (category === 'image' && !effectiveMime.includes('gif') && !effectiveMime.includes('svg')) {
@@ -195,7 +197,9 @@ export const uploadMultipleFiles = async (req, res) => {
                 {
                   folder: `nexchat/${category}s`,
                   resource_type: resourceType,
-                  public_id: `${Date.now()}_${sanitizedName.replace(/\.[^/.]+$/, '')}`,
+                  public_id: `${Date.now()}_${sanitizedName}`,
+                  use_filename: true,
+                  unique_filename: false,
                 },
                 (error, result) => {
                   if (error) reject(error);

@@ -7,6 +7,7 @@ import {
 import { format } from 'date-fns';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
+import { downloadFile } from '../../lib/fileDownload';
 
 const WALLPAPERS = [
   { id: 'default', name: 'Default Dark', bg: 'bg-dark-bg' },
@@ -215,19 +216,18 @@ export default function ChatDetailsPanel({
               ) : (
                 <div className="space-y-1.5">
                   {sharedFiles.map((file, idx) => (
-                    <a
+                    <div
                       key={idx}
-                      href={file.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="p-2.5 rounded-xl bg-dark-input/60 hover:bg-dark-hover border border-dark-border flex items-center justify-between gap-2 transition-all group"
+                      onClick={() => downloadFile(file.url, file.fileName, file.mimeType)}
+                      className="p-2.5 rounded-xl bg-dark-input/60 hover:bg-dark-hover border border-dark-border flex items-center justify-between gap-2 transition-all group cursor-pointer select-none"
+                      title="Click to download file"
                     >
                       <div className="flex items-center gap-2 min-w-0">
                         <FileText className="w-4 h-4 text-primary-400 flex-shrink-0" />
                         <span className="truncate text-white font-medium">{file.fileName || 'Document'}</span>
                       </div>
                       <Download className="w-3.5 h-3.5 text-surface-400 group-hover:text-white flex-shrink-0" />
-                    </a>
+                    </div>
                   ))}
                 </div>
               )

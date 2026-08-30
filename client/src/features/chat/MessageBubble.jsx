@@ -11,6 +11,7 @@ import useAuthStore from '../../stores/authStore';
 import ViewOnceModal from './ViewOnceModal';
 import AudioWaveformPlayer from './AudioWaveformPlayer';
 import CustomVideoPlayer from './CustomVideoPlayer';
+import { downloadFile } from '../../lib/fileDownload';
 import toast from 'react-hot-toast';
 
 const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', '🎉', '👏', '💯', '🚀'];
@@ -444,13 +445,19 @@ export default function MessageBubble({
           {/* DOCUMENTS & FILES */}
           {(message.type === 'document' || message.type === 'file') && message.attachments?.[0]?.url && (
             <div className="my-1">
-              <a
-                href={message.attachments[0].url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={`p-3 rounded-2xl flex items-center justify-between gap-3 border transition-all ${
+              <div
+                onClick={(e) => {
+                  e.stopPropagation();
+                  downloadFile(
+                    message.attachments[0].url,
+                    message.attachments[0].fileName,
+                    message.attachments[0].mimeType
+                  );
+                }}
+                className={`p-3 rounded-2xl flex items-center justify-between gap-3 border transition-all cursor-pointer select-none ${
                   isOwn ? 'bg-black/20 border-white/20 hover:bg-black/30' : 'bg-dark-input hover:bg-dark-hover border-dark-border'
                 }`}
+                title="Click to download file"
               >
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="w-10 h-10 rounded-xl bg-primary-500/20 text-primary-400 flex items-center justify-center flex-shrink-0">
@@ -464,7 +471,7 @@ export default function MessageBubble({
                   </div>
                 </div>
                 <Download className="w-4 h-4 text-surface-300 hover:text-white flex-shrink-0" />
-              </a>
+              </div>
             </div>
           )}
 
