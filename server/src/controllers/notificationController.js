@@ -1,4 +1,6 @@
 import User from '../models/User.js';
+import Notification from '../models/Notification.js';
+import Device from '../models/Device.js';
 import { getVapidPublicKey, sendPushNotification } from '../config/webPush.js';
 
 // GET VAPID PUBLIC KEY
@@ -27,11 +29,11 @@ export const subscribePush = async (req, res) => {
     }
 
     // Remove any existing subscription with the same endpoint to avoid duplicates
-    user.pushSubscriptions = user.pushSubscriptions.filter(
+    user.pushSubscriptions = (user.pushSubscriptions || []).filter(
       (sub) => sub.endpoint !== subscription.endpoint
     );
 
-    // Add new subscription
+    // Add new subscription to user document (legacy compatibility)
     user.pushSubscriptions.push({
       endpoint: subscription.endpoint,
       keys: {
@@ -43,6 +45,29 @@ export const subscribePush = async (req, res) => {
     });
 
     await user.save();
+
+    // Also register / upsert in Device model
+    const deviceId = `web-${Buffer.from(subscription.endpoint).toString('base64').slice(-32)}`;
+    await Device.findOneAndUpdate(
+      { user: req.userId, deviceId },
+      {
+        $set: {
+          platform: 'web',
+          pushTransport: 'vapid',
+          pushSubscription: {
+            endpoint: subscription.endpoint,
+            keys: {
+              p256dh: subscription.keys.p256dh,
+              auth: subscription.keys.auth,
+            },
+          },
+          status: 'active',
+          lastActiveAt: new Date(),
+          pushFailureCount: 0,
+        },
+      },
+      { upsert: true, setDefaultsOnInsert: true }
+    );
 
     // Send a welcome test push notification to verify the pipeline
     sendPushNotification(subscription, {
@@ -127,5 +152,20 @@ export const clearNotifications = async (req, res) => {
   } catch (error) {
     console.error('Clear notifications error:', error);
     res.status(500).json({ error: 'Failed to clear notifications' });
+  }
+};
+
+// MARK SINGLE NOTIFICATION AS READ
+export const markNotificationAsRead = async (req, res) => {
+  try {
+    const { id } = req.params;
+    await Notification.findOneAndUpdate(
+      { _id: id, recipient: req.userId },
+      { isRead: true, readAt: new Date() }
+    );
+    res.json({ message: 'Notification marked as read' });
+  } catch (error) {
+    console.error('Mark single notification read error:', error);
+    res.status(500).json({ error: 'Failed to mark notification as read' });
   }
 };

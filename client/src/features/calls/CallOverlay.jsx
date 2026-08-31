@@ -26,6 +26,11 @@ const startRingtoneAudio = (type = 'incoming') => {
         const gain = ctx.createGain();
 
         if (type === 'incoming') {
+          // Mobile vibration pattern for incoming calls (WhatsApp style)
+          if (typeof navigator !== 'undefined' && navigator.vibrate) {
+            try { navigator.vibrate([400, 200, 400, 200, 600]); } catch (e) {}
+          }
+
           osc.type = 'sine';
           osc.frequency.setValueAtTime(523.25, ctx.currentTime);
           osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.12);
@@ -57,6 +62,9 @@ const startRingtoneAudio = (type = 'incoming') => {
     return () => {
       isPlaying = false;
       clearInterval(interval);
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        try { navigator.vibrate(0); } catch (e) {}
+      }
       try { ctx.close(); } catch (e) {}
     };
   } catch (e) {

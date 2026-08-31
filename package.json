@@ -2,7 +2,14 @@
   "name": "nexchat-monorepo",
   "version": "1.0.0",
   "private": true,
+  "main": "electron/main.cjs",
   "scripts": {
-    "build": "cd client && npm install && npm run build"
+    "build": "cd client && npm install && npm run build",
+    "electron:dev": "electron electron/main.cjs",
+    "electron:build": "cd client && npm run build && cd .. && electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^44.0.0",
+    "electron-builder": "^26.15.3"
   }
 }

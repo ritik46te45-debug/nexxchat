@@ -18,14 +18,34 @@ const twoFactorSchema = new mongoose.Schema({
 }, { _id: false });
 
 const notificationSettingsSchema = new mongoose.Schema({
+  // Master kill switch
+  allNotifications: { type: Boolean, default: true },
+
+  // Per-category toggles
   messages: { type: Boolean, default: true },
   calls: { type: Boolean, default: true },
   groups: { type: Boolean, default: true },
   friendRequests: { type: Boolean, default: true },
+  mentions: { type: Boolean, default: true },
   statusUpdates: { type: Boolean, default: true },
+
+  // Delivery modifiers
   sound: { type: Boolean, default: true },
-  doNotDisturb: { type: Boolean, default: false },
+  vibration: { type: Boolean, default: true },
+  desktopNotifications: { type: Boolean, default: true },
+
+  // Content privacy
   showPreview: { type: Boolean, default: true },
+  showSender: { type: Boolean, default: true },
+
+  // Do Not Disturb
+  doNotDisturb: { type: Boolean, default: false },
+  dndSchedule: {
+    enabled: { type: Boolean, default: false },
+    startTime: { type: String, default: '22:00' },
+    endTime: { type: String, default: '07:00' },
+    timezone: { type: String, default: 'UTC' },
+  },
 }, { _id: false });
 
 const userSchema = new mongoose.Schema({

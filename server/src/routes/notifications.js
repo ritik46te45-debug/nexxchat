@@ -6,6 +6,7 @@ import {
   unsubscribePush,
   getNotifications,
   markAllNotificationsAsRead,
+  markNotificationAsRead,
   clearNotifications,
 } from '../controllers/notificationController.js';
 
@@ -18,6 +19,7 @@ router.get('/vapid-key', getPublicKey);
 router.use(authenticate);
 router.get('/', getNotifications);
 router.put('/read-all', markAllNotificationsAsRead);
+router.put('/:id/read', markNotificationAsRead);
 router.delete('/clear', clearNotifications);
 router.post('/subscribe', subscribePush);
 router.post('/unsubscribe', unsubscribePush);

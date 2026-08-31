@@ -6,7 +6,7 @@ import useChatStore from './stores/chatStore';
 import useUIStore from './stores/uiStore';
 import { getSocket } from './lib/socket';
 import { playIncomingMessageSound, showSystemNotification, requestNotificationPermission } from './lib/notifications';
-import { registerPushNotifications } from './lib/pushNotifications';
+import { initPushNotifications } from './lib/capacitorPush';
 import api from './lib/api';
 import LoginPage from './features/auth/LoginPage';
 import RegisterPage from './features/auth/RegisterPage';
@@ -50,23 +50,46 @@ function App() {
   const initialize = useAuthStore((s) => s.initialize);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const user = useAuthStore((s) => s.user);
-  const { addMessage, setTypingUser, clearTypingUser, setRecordingUser, clearRecordingUser, setUserOnline, setUserOffline, updateMessageInList, fetchConversations } = useChatStore();
+  const { addMessage, setTypingUser, clearTypingUser, setRecordingUser, clearRecordingUser, setUserOnline, setUserOffline, updateMessageInList, fetchConversations, syncMissedMessages } = useChatStore();
   const { setOnline, setReconnecting } = useUIStore();
 
   // Use ref for user to avoid re-mounting socket listeners on profile changes
   const userRef = useRef(user);
   useEffect(() => { userRef.current = user; }, [user]);
 
-  // Initialize auth on mount
+  // Initialize auth on mount & setup Electron desktop listeners
   useEffect(() => {
     initialize();
+
+    if (typeof window !== 'undefined' && window.electronAPI?.onNavigateConversation) {
+      window.electronAPI.onNavigateConversation((conversationId) => {
+        const convs = useChatStore.getState().conversations;
+        const targetConv = convs.find((c) => c._id?.toString() === conversationId?.toString());
+        if (targetConv) {
+          useChatStore.getState().setActiveConversation(targetConv);
+          useUIStore.getState().setSidebarView('chats');
+          useUIStore.getState().setShowChatOnMobile(true);
+        }
+      });
+    }
   }, [initialize]);
 
-  // Request notification permissions, register Web Push, and fetch initial notification count
+  // Request notification permissions, register Push (Capacitor FCM / Web VAPID), and fetch notification count
   useEffect(() => {
     if (isAuthenticated) {
       requestNotificationPermission().catch(() => {});
-      registerPushNotifications().catch(() => {});
+      initPushNotifications({
+        onNavigateToConversation: (conversationId) => {
+          const convs = useChatStore.getState().conversations;
+          const targetConv = convs.find((c) => c._id?.toString() === conversationId?.toString());
+          if (targetConv) {
+            useChatStore.getState().setActiveConversation(targetConv);
+            useUIStore.getState().setSidebarView('chats');
+            useUIStore.getState().setShowChatOnMobile(true);
+          }
+        },
+      }).catch(() => {});
+
       api.get('/notifications')
         .then(({ data }) => {
           const count = data.unreadCount || (data.notifications || []).filter((n) => !n.isRead).length;
@@ -80,6 +103,7 @@ function App() {
   useEffect(() => {
     if (!isAuthenticated) return;
     fetchConversations();
+    syncMissedMessages();
 
     const socket = getSocket();
     if (!socket) return;
@@ -187,11 +211,43 @@ function App() {
       updateMessageInList(messageId, { status: 'delivered' });
     };
 
-    const handleMessageRead = ({ conversationId }) => {
+    const handleMessageRead = ({ conversationId, readBy }) => {
       const state = useChatStore.getState();
+      const currentUserId = (useAuthStore.getState().user?._id || useAuthStore.getState().user)?.toString();
+      const isReadByMe = readBy && currentUserId && readBy.toString() === currentUserId;
+
       if (state.activeConversation?._id?.toString() === conversationId?.toString()) {
-        const messages = state.messages.map(m => ({ ...m, status: 'read' }));
+        const messages = state.messages.map(m => {
+          const mSender = (m.sender?._id || m.sender)?.toString();
+          if (!isReadByMe && mSender === currentUserId) {
+            return { ...m, status: 'read' };
+          }
+          return m;
+        });
         useChatStore.setState({ messages });
+      }
+
+      if (isReadByMe) {
+        const convs = state.conversations.map(c => {
+          if (c._id?.toString() === conversationId?.toString()) {
+            return {
+              ...c,
+              unreadCount: 0,
+              _participant: { ...(c._participant || {}), unreadCount: 0 },
+              participants: (c.participants || []).map(p =>
+                (p.user?._id || p.user)?.toString() === currentUserId
+                  ? { ...p, unreadCount: 0 }
+                  : p
+              ),
+            };
+          }
+          return c;
+        });
+        const unreadTotal = convs.reduce((sum, c) => {
+          const myP = c._participant || c.participants?.find(p => (p.user?._id || p.user)?.toString() === currentUserId);
+          return sum + (myP?.unreadCount || c.unreadCount || 0);
+        }, 0);
+        useChatStore.setState({ conversations: convs, unreadTotal });
       }
     };
 
@@ -264,11 +320,13 @@ function App() {
     const handleReconnect = () => {
       setReconnecting(false);
       fetchConversations();
+      syncMissedMessages();
     };
     const handleDisconnect = () => setReconnecting(true);
     const handleConnect = () => {
       setReconnecting(false);
       fetchConversations();
+      syncMissedMessages();
     };
 
     // Attach listeners

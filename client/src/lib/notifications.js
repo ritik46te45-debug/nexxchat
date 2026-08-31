@@ -201,7 +201,18 @@ export const requestNotificationPermission = async () => {
 
 // Show Native Windows / Android / iOS System Notification
 export const showSystemNotification = ({ title, body, icon, onClick, data }) => {
-  // Mobile phone vibration
+  // 1. Electron Desktop Native Toast Notification (Windows 10/11)
+  if (typeof window !== 'undefined' && window.electronAPI?.showNotification) {
+    window.electronAPI.showNotification({
+      title: title || 'NexChat',
+      body: body || 'New message received',
+      icon: icon || '/favicon.ico',
+      conversationId: data?.conversationId,
+    });
+    return null;
+  }
+
+  // 2. Mobile phone vibration
   if (typeof navigator !== 'undefined' && navigator.vibrate) {
     try {
       navigator.vibrate([120, 80, 120]);

@@ -96,7 +96,8 @@ export const authenticateSocket = async (socket, next) => {
       try {
         decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET);
       } catch (refErr) {
-        decoded = jwt.decode(token);
+        // Both tokens invalid — reject connection (security fix: no raw decode fallback)
+        return next(new Error('Authentication failed — invalid token'));
       }
     }
 

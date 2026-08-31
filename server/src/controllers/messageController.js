@@ -5,6 +5,7 @@ import Notification from '../models/Notification.js';
 import cloudinary from '../config/cloudinary.js';
 import { sendPushNotification } from '../config/webPush.js';
 import connectionManager from '../socket/connectionManager.js';
+import { dispatchPush } from '../services/pushService.js';
 
 // Helper: Broadcast event to a conversation and all its participants reliably
 export const emitToConversationParticipants = (io, conversation, event, data) => {
@@ -173,43 +174,28 @@ export const sendMessage = async (req, res) => {
         p => (p.user?._id || p.user)?.toString() !== req.userId.toString()
       );
 
-      const notifTitle = conversation.type === 'group'
-        ? `${conversation.groupName || 'Group'} (${populatedMessage.sender?.displayName || 'User'})`
-        : populatedMessage.sender?.displayName || 'New Message';
-
       const notifBody = content || (type === 'video_note' ? 'Sent a video note 🎥' : type === 'voice' ? 'Sent a voice message 🎤' : `Sent a ${type}`);
 
       otherParticipants.forEach(async (p) => {
-        try {
-          const user = await User.findById(p.user);
-          if (user && user.notificationSettings?.messages !== false && Array.isArray(user.pushSubscriptions) && user.pushSubscriptions.length > 0) {
-            const title = notifTitle;
-            const body = user.notificationSettings?.showPreview !== false ? notifBody : 'New message';
-
-            const payload = {
-              title,
-              body,
-              icon: populatedMessage.sender?.avatar?.url || '/favicon.ico',
-              badge: '/favicon.ico',
-              data: {
-                conversationId: conversationId.toString(),
-                messageId: message._id.toString(),
-                url: `/?conversation=${conversationId}`,
-              },
-            };
-
-            for (const sub of user.pushSubscriptions) {
-              const res = await sendPushNotification(sub, payload);
-              if (res?.expired) {
-                // Auto-cleanup expired browser subscription
-                await User.findByIdAndUpdate(user._id, {
-                  $pull: { pushSubscriptions: { endpoint: res.endpoint } },
-                });
-              }
+        const pUserId = (p.user?._id || p.user)?.toString();
+        if (pUserId) {
+          dispatchPush(
+            pUserId,
+            conversation.type === 'group' ? 'group_message' : 'message',
+            {
+              senderName: populatedMessage.sender?.displayName || 'User',
+              senderAvatar: populatedMessage.sender?.avatar?.url || '',
+              content: notifBody,
+              type: populatedMessage.type || 'text',
+              conversationId: conversationId.toString(),
+              messageId: populatedMessage._id.toString(),
+              senderId: req.userId.toString(),
+            },
+            {
+              conversationId: conversationId.toString(),
+              skipForegroundDevices: true,
             }
-          }
-        } catch (err) {
-          console.warn('Push delivery error:', err.message);
+          ).catch(e => console.warn('[PUSH] REST message push dispatch error:', e.message));
         }
       });
     }
@@ -807,5 +793,43 @@ export const markViewOnceOpened = async (req, res) => {
   } catch (error) {
     console.error('Mark view-once opened error:', error);
     res.status(500).json({ error: 'Failed to update view-once status' });
+  }
+};
+
+// SYNC MISSED MESSAGES (Delta sync on reconnect)
+export const syncMessages = async (req, res) => {
+  try {
+    const { since } = req.query;
+    const sinceDate = since ? new Date(since) : new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    // Find all conversations the user is in
+    const userConvs = await Conversation.find({
+      'participants.user': req.userId,
+    }).select('_id');
+
+    const convIds = userConvs.map(c => c._id);
+
+    // Find messages in these conversations created or updated since timestamp
+    const missedMessages = await Message.find({
+      conversation: { $in: convIds },
+      updatedAt: { $gt: sinceDate },
+      deletedFor: { $ne: req.userId },
+    })
+      .populate('sender', 'username displayName avatar')
+      .populate({
+        path: 'replyTo',
+        select: 'content type sender attachments',
+        populate: { path: 'sender', select: 'username displayName' },
+      })
+      .sort({ createdAt: 1 })
+      .limit(200);
+
+    res.json({
+      messages: missedMessages,
+      syncTimestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('Sync messages error:', error);
+    res.status(500).json({ error: 'Failed to sync messages' });
   }
 };

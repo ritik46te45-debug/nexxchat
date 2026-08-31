@@ -3,7 +3,7 @@ import {
   Shield, Bell, Lock, Smartphone, Moon, Sun, Trash2, LogOut,
   Check, ChevronRight, Volume2, Music, Play, QrCode, Key,
   Radio, Send, AlertTriangle, Fingerprint, Sparkles, Palette,
-  Search
+  Search, Clock, MoonStar, Eye, PhoneCall, Users, AtSign, Vibrate, CheckCheck
 } from 'lucide-react';
 import api from '../../lib/api';
 import useAuthStore from '../../stores/authStore';
@@ -733,42 +733,70 @@ export default function SettingsTab({ onOpenProfile }) {
         {/* Notifications Section */}
         {activeSection === 'notifications' && (
           <div className="space-y-4">
-            {/* Background Web Push Card */}
+            {/* Master Notification Switch */}
+            <div className="p-4 rounded-2xl bg-dark-card border border-dark-border space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-primary-500/20 text-primary-400 flex items-center justify-center">
+                    <Bell className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white">All Notifications</h3>
+                    <p className="text-xs text-surface-400">Master switch for all alerts across all devices</p>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={notifications.allNotifications !== false}
+                  onChange={(e) => handleUpdateNotification('allNotifications', e.target.checked)}
+                  className="w-6 h-6 accent-primary-500 rounded cursor-pointer"
+                />
+              </div>
+            </div>
+
+            {/* Background Push Registration Card */}
             <div className="p-4 rounded-2xl bg-dark-card border border-dark-border space-y-3">
               <div className="flex items-center gap-2 border-b border-dark-border/60 pb-2">
                 <Radio className="w-4 h-4 text-accent-green" />
-                <h3 className="text-xs font-bold text-white uppercase tracking-wider">Background Web Push</h3>
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider">Device Push Status</h3>
               </div>
-              <div>
-                <p className="text-sm font-semibold text-white">Receive Alerts When Browser Is Closed</p>
-                <p className="text-xs text-surface-400 mt-0.5">
-                  Enables OS push notifications on Windows, Mac, Android, and iOS through Service Workers.
-                </p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-white">Background Push Notifications</p>
+                  <p className="text-xs text-surface-400 mt-0.5">
+                    Receive instant alerts on Android & Windows even when app is closed.
+                  </p>
+                </div>
+                <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-accent-green/20 text-accent-green">
+                  Active
+                </span>
               </div>
               <button
                 onClick={handleEnableWebPush}
                 disabled={isPushRegistering}
                 className="w-full py-2.5 rounded-xl gradient-primary text-white text-xs font-bold flex items-center justify-center gap-2 shadow-md shadow-primary-500/20 hover:opacity-95 transition-all"
               >
-                <Bell className="w-4 h-4" />
-                {isPushRegistering ? 'Connecting...' : 'Enable & Verify Background Web Push'}
+                <CheckCheck className="w-4 h-4" />
+                {isPushRegistering ? 'Syncing...' : 'Sync & Re-register Push Token'}
               </button>
             </div>
 
-            {/* Notification Alerts Card */}
+            {/* Notification Categories */}
             <div className="p-4 rounded-2xl bg-dark-card border border-dark-border space-y-4">
               <div className="flex items-center gap-2 border-b border-dark-border/60 pb-2">
-                <Bell className="w-4 h-4 text-primary-400" />
-                <h3 className="text-xs font-bold text-white uppercase tracking-wider">System Alerts & Popups</h3>
+                <Users className="w-4 h-4 text-purple-400" />
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider">Notification Categories</h3>
               </div>
 
               {[
-                { key: 'messages', label: 'Message Popups', desc: 'Show desktop/phone system notifications for DMs' },
-                { key: 'calls', label: 'Call Notifications', desc: 'Ringtone and incoming call alerts' },
-                { key: 'groups', label: 'Group Alerts', desc: 'Notifications for group messages' },
-                { key: 'showPreview', label: 'Show Message Preview', desc: 'Show message text inside popup notifications' },
+                { key: 'messages', label: 'Direct Messages', desc: 'Alerts for 1-on-1 private messages' },
+                { key: 'groups', label: 'Group Chats', desc: 'Alerts for messages in groups' },
+                { key: 'calls', label: 'Voice & Video Calls', desc: 'Ringtone & alerts for incoming calls' },
+                { key: 'mentions', label: 'Mentions & Replies', desc: 'Alerts when someone @mentions or replies to you' },
+                { key: 'friendRequests', label: 'Friend Requests', desc: 'New friend invitations and acceptances' },
+                { key: 'statusUpdates', label: 'Status Updates', desc: 'Replies and reactions to your status' },
               ].map(({ key, label, desc }) => (
-                <div key={key} className="flex items-center justify-between py-1">
+                <div key={key} className="flex items-center justify-between py-1 border-b border-dark-border/30 last:border-0 pb-2 last:pb-0">
                   <div>
                     <p className="text-sm font-semibold text-white">{label}</p>
                     <p className="text-xs text-surface-500">{desc}</p>
@@ -777,10 +805,159 @@ export default function SettingsTab({ onOpenProfile }) {
                     type="checkbox"
                     checked={notifications[key] !== false}
                     onChange={(e) => handleUpdateNotification(key, e.target.checked)}
-                    className="w-5 h-5 accent-primary-500 rounded"
+                    className="w-5 h-5 accent-primary-500 rounded cursor-pointer"
                   />
                 </div>
               ))}
+            </div>
+
+            {/* Feedback & Delivery Modifiers */}
+            <div className="p-4 rounded-2xl bg-dark-card border border-dark-border space-y-4">
+              <div className="flex items-center gap-2 border-b border-dark-border/60 pb-2">
+                <Volume2 className="w-4 h-4 text-blue-400" />
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider">Delivery & Alerts</h3>
+              </div>
+
+              <div className="flex items-center justify-between py-1">
+                <div>
+                  <p className="text-sm font-semibold text-white">Sound Alerts</p>
+                  <p className="text-xs text-surface-500">Play alert tones for incoming notifications</p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={notifications.sound !== false}
+                  onChange={(e) => handleUpdateNotification('sound', e.target.checked)}
+                  className="w-5 h-5 accent-primary-500 rounded cursor-pointer"
+                />
+              </div>
+
+              <div className="flex items-center justify-between py-1">
+                <div>
+                  <p className="text-sm font-semibold text-white">Vibration</p>
+                  <p className="text-xs text-surface-500">Vibrate mobile device on incoming alerts</p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={notifications.vibration !== false}
+                  onChange={(e) => handleUpdateNotification('vibration', e.target.checked)}
+                  className="w-5 h-5 accent-primary-500 rounded cursor-pointer"
+                />
+              </div>
+
+              <div className="flex items-center justify-between py-1">
+                <div>
+                  <p className="text-sm font-semibold text-white">Desktop System Toasts</p>
+                  <p className="text-xs text-surface-500">Show native Windows 10/11 system notifications</p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={notifications.desktopNotifications !== false}
+                  onChange={(e) => handleUpdateNotification('desktopNotifications', e.target.checked)}
+                  className="w-5 h-5 accent-primary-500 rounded cursor-pointer"
+                />
+              </div>
+            </div>
+
+            {/* Content Privacy */}
+            <div className="p-4 rounded-2xl bg-dark-card border border-dark-border space-y-4">
+              <div className="flex items-center gap-2 border-b border-dark-border/60 pb-2">
+                <Eye className="w-4 h-4 text-amber-400" />
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider">Content Privacy</h3>
+              </div>
+
+              <div className="flex items-center justify-between py-1">
+                <div>
+                  <p className="text-sm font-semibold text-white">Show Message Preview</p>
+                  <p className="text-xs text-surface-500">Display message text in popup alerts</p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={notifications.showPreview !== false}
+                  onChange={(e) => handleUpdateNotification('showPreview', e.target.checked)}
+                  className="w-5 h-5 accent-primary-500 rounded cursor-pointer"
+                />
+              </div>
+
+              <div className="flex items-center justify-between py-1">
+                <div>
+                  <p className="text-sm font-semibold text-white">Show Sender Name</p>
+                  <p className="text-xs text-surface-500">Display the sender's name in notifications</p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={notifications.showSender !== false}
+                  onChange={(e) => handleUpdateNotification('showSender', e.target.checked)}
+                  className="w-5 h-5 accent-primary-500 rounded cursor-pointer"
+                />
+              </div>
+            </div>
+
+            {/* Scheduled Do Not Disturb */}
+            <div className="p-4 rounded-2xl bg-dark-card border border-dark-border space-y-4">
+              <div className="flex items-center gap-2 border-b border-dark-border/60 pb-2">
+                <MoonStar className="w-4 h-4 text-indigo-400" />
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider">Do Not Disturb (DnD)</h3>
+              </div>
+
+              <div className="flex items-center justify-between py-1">
+                <div>
+                  <p className="text-sm font-semibold text-white">Do Not Disturb</p>
+                  <p className="text-xs text-surface-500">Silence all notification popups and sounds</p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={notifications.doNotDisturb === true}
+                  onChange={(e) => handleUpdateNotification('doNotDisturb', e.target.checked)}
+                  className="w-5 h-5 accent-primary-500 rounded cursor-pointer"
+                />
+              </div>
+
+              <div className="pt-2 border-t border-dark-border/40 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-surface-400" />
+                    <p className="text-xs font-bold text-white">Scheduled Quiet Hours</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={notifications.dndSchedule?.enabled === true}
+                    onChange={(e) => handleUpdateNotification('dndSchedule', {
+                      ...(notifications.dndSchedule || {}),
+                      enabled: e.target.checked,
+                    })}
+                    className="w-4 h-4 accent-primary-500 rounded cursor-pointer"
+                  />
+                </div>
+
+                {notifications.dndSchedule?.enabled && (
+                  <div className="grid grid-cols-2 gap-3 pt-1">
+                    <div>
+                      <label className="text-[11px] font-semibold text-surface-400 block mb-1">Start Time</label>
+                      <input
+                        type="time"
+                        value={notifications.dndSchedule?.startTime || '22:00'}
+                        onChange={(e) => handleUpdateNotification('dndSchedule', {
+                          ...(notifications.dndSchedule || {}),
+                          startTime: e.target.value,
+                        })}
+                        className="w-full bg-dark-input border border-dark-border rounded-xl p-2 text-xs text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-semibold text-surface-400 block mb-1">End Time</label>
+                      <input
+                        type="time"
+                        value={notifications.dndSchedule?.endTime || '07:00'}
+                        onChange={(e) => handleUpdateNotification('dndSchedule', {
+                          ...(notifications.dndSchedule || {}),
+                          endTime: e.target.value,
+                        })}
+                        className="w-full bg-dark-input border border-dark-border rounded-xl p-2 text-xs text-white"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}

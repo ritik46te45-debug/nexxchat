@@ -15,6 +15,7 @@ const useChatStore = create((set, get) => ({
   onlineUsers: new Set(),
   drafts: JSON.parse(localStorage.getItem('nexchat_drafts') || '{}'),
   unreadTotal: 0,
+  lastSyncTime: null,
 
   // ====== CONVERSATIONS ======
   fetchConversations: async () => {
@@ -31,6 +32,33 @@ const useChatStore = create((set, get) => ({
     } catch (error) {
       console.error('Fetch conversations error:', error);
       set({ isLoadingConversations: false });
+    }
+  },
+
+  syncMissedMessages: async () => {
+    try {
+      const lastSync = get().lastSyncTime || new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+      const { data } = await api.get('/messages/sync', { params: { since: lastSync } });
+      const missed = data.messages || [];
+      const syncTimestamp = data.syncTimestamp || new Date().toISOString();
+
+      if (missed.length > 0) {
+        const state = get();
+        const activeConvId = (state.activeConversation?._id || state.activeConversation?.id || state.activeConversation)?.toString();
+
+        missed.forEach((msg) => {
+          const msgConvId = (msg.conversation?._id || msg.conversation)?.toString();
+          if (activeConvId && msgConvId && activeConvId === msgConvId) {
+            state.addMessage(msg, msgConvId);
+          } else {
+            state.updateConversationInList(msgConvId, msg);
+          }
+        });
+      }
+
+      set({ lastSyncTime: syncTimestamp });
+    } catch (error) {
+      console.warn('Sync missed messages note:', error.message);
     }
   },
 
@@ -395,6 +423,10 @@ const useChatStore = create((set, get) => ({
         const pObj = c._participant || c.participants?.find((p) => (p.user?._id || p.user)?.toString() === myId);
         return sum + (pObj?.unreadCount || c.unreadCount || 0);
       }, 0);
+
+      if (typeof window !== 'undefined' && window.electronAPI?.setBadgeCount) {
+        window.electronAPI.setBadgeCount(unreadTotal);
+      }
 
       set({ conversations: [...convs], unreadTotal });
     } else {

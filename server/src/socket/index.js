@@ -5,6 +5,7 @@ import Message from '../models/Message.js';
 import Conversation from '../models/Conversation.js';
 import Call from '../models/Call.js';
 import connectionManager from './connectionManager.js';
+import { dispatchPush } from '../services/pushService.js';
 
 // Track active calls in memory: Map<callId, { caller, receiver, type, conversationId }>
 const activeCalls = new Map();
@@ -15,11 +16,12 @@ export const setupSocket = (io) => {
 
   io.on('connection', async (socket) => {
     const userId = socket.userId;
+    const deviceId = socket.handshake.auth?.deviceId || socket.handshake.query?.deviceId || null;
     const transport = socket.conn.transport.name;
-    console.log(`[REALTIME] SOCKET CONNECTED -> User: ${userId} | Socket: ${socket.id} | Transport: ${transport}`);
+    console.log(`[REALTIME] SOCKET CONNECTED -> User: ${userId} | Socket: ${socket.id} | Device: ${deviceId || 'N/A'} | Transport: ${transport}`);
 
     // Register socket in centralized connection manager
-    connectionManager.registerSocket(userId, socket.id);
+    connectionManager.registerSocket(userId, socket.id, deviceId);
 
     // Update user online status and socketIds in DB
     await User.findByIdAndUpdate(userId, {
@@ -223,6 +225,27 @@ export const setupSocket = (io) => {
         // Emit to conversation room
         io.to(`conv:${conversationId}`).emit('message:new', payload);
 
+        // [RT-009] Dispatch push notifications to background/closed devices of recipients
+        recipientIds.forEach(rId => {
+          dispatchPush(
+            rId,
+            conversation.type === 'group' ? 'group_message' : 'message',
+            {
+              senderName: canonicalMessage.sender?.displayName || 'User',
+              senderAvatar: canonicalMessage.sender?.avatar?.url || '',
+              content: canonicalMessage.content || '',
+              type: canonicalMessage.type || 'text',
+              conversationId: conversationId.toString(),
+              messageId: canonicalMessage._id.toString(),
+              senderId: userId.toString(),
+            },
+            {
+              conversationId: conversationId.toString(),
+              skipForegroundDevices: true,
+            }
+          ).catch(e => console.warn('[PUSH] Socket message push dispatch note:', e.message));
+        });
+
         // Acknowledge back to sender socket
         if (typeof callback === 'function') {
           callback({ success: true, message: canonicalMessage });
@@ -406,6 +429,23 @@ export const setupSocket = (io) => {
             type,
             conversationId: convId,
           });
+
+          // Dispatch incoming call push to target receiver devices
+          dispatchPush(
+            targetReceiver,
+            'call',
+            {
+              callerName: populatedCall.caller?.displayName || 'User',
+              callerAvatar: populatedCall.caller?.avatar?.url || '',
+              callType: type,
+              callId: call._id.toString(),
+              conversationId: convId?.toString(),
+            },
+            {
+              conversationId: convId?.toString(),
+              skipForegroundDevices: false, // Send to all devices so phone rings even if tab is in bg
+            }
+          ).catch(e => console.warn('[PUSH] Call push dispatch note:', e.message));
         }
 
         socket.emit('call:initiated', {

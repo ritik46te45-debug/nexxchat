@@ -5,11 +5,14 @@ import {
   reactToMessage, toggleStarMessage, getStarredMessages,
   forwardMessage, searchMessages, markAsRead,
   getMediaGallery, pinMessage, unpinMessage, votePoll,
-  markViewOnceOpened,
+  markViewOnceOpened, syncMessages,
 } from '../controllers/messageController.js';
 
 const router = Router();
 router.use(authenticate);
+
+// Sync missed messages on reconnect
+router.get('/sync', syncMessages);
 
 // Starred messages
 router.get('/starred', getStarredMessages);

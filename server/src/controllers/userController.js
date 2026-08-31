@@ -151,7 +151,22 @@ export const updatePrivacy = async (req, res) => {
 export const updateNotificationSettings = async (req, res) => {
   try {
     const updates = {};
-    const allowedFields = ['messages', 'calls', 'groups', 'friendRequests', 'statusUpdates', 'sound', 'doNotDisturb', 'showPreview'];
+    const allowedFields = [
+      'allNotifications',
+      'messages',
+      'calls',
+      'groups',
+      'friendRequests',
+      'mentions',
+      'statusUpdates',
+      'sound',
+      'vibration',
+      'desktopNotifications',
+      'showPreview',
+      'showSender',
+      'doNotDisturb',
+      'dndSchedule',
+    ];
 
     for (const field of allowedFields) {
       if (req.body[field] !== undefined) {
@@ -160,7 +175,10 @@ export const updateNotificationSettings = async (req, res) => {
     }
 
     const user = await User.findByIdAndUpdate(req.userId, updates, { new: true });
-    res.json({ notificationSettings: user.notificationSettings });
+    res.json({
+      notificationSettings: user.notificationSettings,
+      user: user.toSafeObject(),
+    });
   } catch (error) {
     console.error('Update notification settings error:', error);
     res.status(500).json({ error: 'Notification settings update failed' });

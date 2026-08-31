@@ -22,12 +22,23 @@ export const getSocketURL = () => {
   return 'https://nexxchat-5d29.onrender.com';
 };
 
+export const getOrCreateDeviceId = () => {
+  if (typeof localStorage === 'undefined') return 'server-env';
+  let deviceId = localStorage.getItem('nexchat_device_id');
+  if (!deviceId) {
+    deviceId = 'dev_' + Math.random().toString(36).substring(2, 15) + '_' + Date.now().toString(36);
+    localStorage.setItem('nexchat_device_id', deviceId);
+  }
+  return deviceId;
+};
+
 export const connectSocket = (token) => {
   const authToken = token || (typeof localStorage !== 'undefined' ? localStorage.getItem('accessToken') : null);
+  const deviceId = getOrCreateDeviceId();
 
   if (socket) {
     if (authToken && socket.auth?.token !== authToken) {
-      socket.auth = { token: authToken };
+      socket.auth = { token: authToken, deviceId };
       if (!socket.connected) {
         socket.connect();
       }
@@ -36,7 +47,7 @@ export const connectSocket = (token) => {
   }
 
   socket = io(getSocketURL(), {
-    auth: { token: authToken },
+    auth: { token: authToken, deviceId },
     reconnection: true,
     reconnectionAttempts: Infinity,
     reconnectionDelay: 1000,
