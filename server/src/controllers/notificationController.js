@@ -169,3 +169,30 @@ export const markNotificationAsRead = async (req, res) => {
     res.status(500).json({ error: 'Failed to mark notification as read' });
   }
 };
+
+// SEND TEST PUSH NOTIFICATION
+export const sendTestPushNotification = async (req, res) => {
+  try {
+    const user = await User.findById(req.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const pushResult = await dispatchPush(
+      req.userId,
+      'message',
+      {
+        senderName: 'NexChat Bot 🤖',
+        content: '🎉 Hello from NexChat! Your notifications are working perfectly on your laptop & phone!',
+        type: 'text',
+      },
+      { skipForegroundDevices: false }
+    );
+
+    res.json({
+      message: 'Test notification triggered successfully',
+      result: pushResult,
+    });
+  } catch (error) {
+    console.error('Send test push error:', error);
+    res.status(500).json({ error: error.message || 'Failed to send test push' });
+  }
+};

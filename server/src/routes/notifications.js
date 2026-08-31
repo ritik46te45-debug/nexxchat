@@ -1,5 +1,3 @@
-import { Router } from 'express';
-import { authenticate } from '../middleware/auth.js';
 import {
   getPublicKey,
   subscribePush,
@@ -8,6 +6,7 @@ import {
   markAllNotificationsAsRead,
   markNotificationAsRead,
   clearNotifications,
+  sendTestPushNotification,
 } from '../controllers/notificationController.js';
 
 const router = Router();
@@ -18,6 +17,7 @@ router.get('/vapid-key', getPublicKey);
 // Protected routes
 router.use(authenticate);
 router.get('/', getNotifications);
+router.post('/test', sendTestPushNotification);
 router.put('/read-all', markAllNotificationsAsRead);
 router.put('/:id/read', markNotificationAsRead);
 router.delete('/clear', clearNotifications);

@@ -8,7 +8,7 @@ import {
 import api from '../../lib/api';
 import useAuthStore from '../../stores/authStore';
 import useUIStore from '../../stores/uiStore';
-import { playIncomingMessageSound, playSentMessageSound } from '../../lib/notifications';
+import { playIncomingMessageSound, playSentMessageSound, showSystemNotification } from '../../lib/notifications';
 import { registerPushNotifications } from '../../lib/pushNotifications';
 import toast from 'react-hot-toast';
 
@@ -771,14 +771,32 @@ export default function SettingsTab({ onOpenProfile }) {
                   Active
                 </span>
               </div>
-              <button
-                onClick={handleEnableWebPush}
-                disabled={isPushRegistering}
-                className="w-full py-2.5 rounded-xl gradient-primary text-white text-xs font-bold flex items-center justify-center gap-2 shadow-md shadow-primary-500/20 hover:opacity-95 transition-all"
-              >
-                <CheckCheck className="w-4 h-4" />
-                {isPushRegistering ? 'Syncing...' : 'Sync & Re-register Push Token'}
-              </button>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                <button
+                  onClick={handleEnableWebPush}
+                  disabled={isPushRegistering}
+                  className="py-2.5 px-3 rounded-xl gradient-primary text-white text-xs font-bold flex items-center justify-center gap-2 shadow-md shadow-primary-500/20 hover:opacity-95 transition-all"
+                >
+                  <CheckCheck className="w-4 h-4" />
+                  {isPushRegistering ? 'Syncing...' : 'Sync Push Token'}
+                </button>
+
+                <button
+                  onClick={async () => {
+                    try {
+                      showSystemNotification('NexChat Notification Test 🔔', '🎉 Your notifications are working 100% on this laptop!');
+                      const { data } = await api.post('/notifications/test');
+                      toast.success(data.message || 'Test notification dispatched!');
+                    } catch (err) {
+                      toast.error('Failed to trigger test push: ' + (err.response?.data?.error || err.message));
+                    }
+                  }}
+                  className="py-2.5 px-3 rounded-xl bg-purple-500/20 text-purple-300 hover:bg-purple-500/30 border border-purple-500/30 text-xs font-bold flex items-center justify-center gap-2 transition-all active:scale-95"
+                >
+                  <Send className="w-4 h-4" />
+                  Send Test Toast
+                </button>
+              </div>
             </div>
 
             {/* Notification Categories */}
