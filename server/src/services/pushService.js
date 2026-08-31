@@ -10,6 +10,8 @@
  * conversation mute status, DnD schedule, and foreground socket status.
  */
 
+import fs from 'fs';
+import path from 'path';
 import Device from '../models/Device.js';
 import User from '../models/User.js';
 import Conversation from '../models/Conversation.js';
@@ -18,38 +20,51 @@ import { sendPushNotification as sendVapidPush } from '../config/webPush.js';
 // ============================================================
 // Firebase Cloud Messaging (FCM) Driver for Android & iOS
 // ============================================================
-let firebaseAdmin = null;
+let firebaseApp = null;
 let firebaseInitialized = false;
 
 const getFirebaseMessaging = async () => {
-  if (firebaseInitialized) return firebaseAdmin ? firebaseAdmin.messaging() : null;
-
   try {
-    const admin = await import('firebase-admin');
-    
-    // Check environment for service account credentials
-    if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
-      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
-      firebaseAdmin = admin.default.initializeApp({
-        credential: admin.default.credential.cert(serviceAccount),
-      });
-      firebaseInitialized = true;
-      console.log('✅ Firebase Admin SDK initialized from FIREBASE_SERVICE_ACCOUNT_KEY');
-    } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-      firebaseAdmin = admin.default.initializeApp({
-        credential: admin.default.credential.applicationDefault(),
-      });
-      firebaseInitialized = true;
-      console.log('✅ Firebase Admin SDK initialized from GOOGLE_APPLICATION_CREDENTIALS');
-    } else {
-      firebaseInitialized = true; // Tried, but no credentials configured
+    if (!firebaseInitialized) {
+      const { initializeApp, cert, applicationDefault } = await import('firebase-admin/app');
+      
+      // Check for local file or environment for service account credentials
+      const localKeyPath = path.resolve('firebase-service-account.json');
+      if (fs.existsSync(localKeyPath)) {
+        const serviceAccount = JSON.parse(fs.readFileSync(localKeyPath, 'utf8'));
+        firebaseApp = initializeApp({
+          credential: cert(serviceAccount),
+        });
+        firebaseInitialized = true;
+        console.log('✅ Firebase Admin SDK initialized from firebase-service-account.json');
+      } else if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
+        const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+        firebaseApp = initializeApp({
+          credential: cert(serviceAccount),
+        });
+        firebaseInitialized = true;
+        console.log('✅ Firebase Admin SDK initialized from FIREBASE_SERVICE_ACCOUNT_KEY');
+      } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+        firebaseApp = initializeApp({
+          credential: applicationDefault(),
+        });
+        firebaseInitialized = true;
+        console.log('✅ Firebase Admin SDK initialized from GOOGLE_APPLICATION_CREDENTIALS');
+      } else {
+        firebaseInitialized = true;
+      }
+    }
+
+    if (firebaseApp) {
+      const { getMessaging } = await import('firebase-admin/messaging');
+      return getMessaging(firebaseApp);
     }
   } catch (e) {
     firebaseInitialized = true;
-    console.warn('[PUSH] Firebase Admin SDK not initialized (credentials not provided yet):', e.message);
+    console.warn('[PUSH] Firebase Admin SDK initialization warning:', e.message);
   }
 
-  return firebaseAdmin ? firebaseAdmin.messaging() : null;
+  return null;
 };
 
 const sendFcmPush = async (fcmToken, payload) => {
