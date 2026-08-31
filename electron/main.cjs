@@ -25,26 +25,20 @@ function createWindow() {
 
   const fs = require('fs');
   const distHtml = path.join(__dirname, '../client/dist/index.html');
-  const devUrl = process.env.ELECTRON_START_URL || 'http://localhost:5173';
 
-  // Try localhost dev server first; fall back to built client or live web app seamlessly
-  mainWindow.loadURL(devUrl).catch(() => {
-    if (fs.existsSync(distHtml)) {
-      mainWindow.loadFile(distHtml);
-    } else {
-      mainWindow.loadURL('https://nexxchat-zeta.vercel.app');
-    }
-  });
-
-  mainWindow.webContents.on('did-fail-load', (event, errorCode) => {
-    if (errorCode === -102 || errorCode === -6 || errorCode === -105) { // Connection refused / not found
+  if (process.env.ELECTRON_START_URL) {
+    mainWindow.loadURL(process.env.ELECTRON_START_URL).catch(() => {
       if (fs.existsSync(distHtml)) {
         mainWindow.loadFile(distHtml);
       } else {
         mainWindow.loadURL('https://nexxchat-zeta.vercel.app');
       }
-    }
-  });
+    });
+  } else if (fs.existsSync(distHtml)) {
+    mainWindow.loadFile(distHtml);
+  } else {
+    mainWindow.loadURL('https://nexxchat-zeta.vercel.app');
+  }
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
