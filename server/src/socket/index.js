@@ -343,7 +343,7 @@ export const setupSocket = (io) => {
 
         conversation.participants.forEach(p => {
           const pUserId = (p.user?._id || p.user || p)?.toString();
-          if (pUserId && pUserId !== userId.toString()) {
+          if (pUserId) {
             const sockets = connectionManager.getUserSockets(pUserId);
             sockets.forEach(sid => {
               io.to(sid).emit('message:read', payload);

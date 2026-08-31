@@ -317,7 +317,12 @@ const useChatStore = create((set, get) => ({
 
   markAsRead: async (conversationId) => {
     try {
-      await api.post(`/messages/${conversationId}/read`);
+      if (!conversationId) return;
+      const socket = getSocket();
+      if (socket) {
+        socket.emit('message:read', { conversationId: conversationId.toString() });
+      }
+      api.post(`/messages/${conversationId}/read`).catch(() => {});
       const myId = (useAuthStore.getState().user?._id || useAuthStore.getState().user)?.toString();
       set((state) => {
         const convs = state.conversations.map((c) => {

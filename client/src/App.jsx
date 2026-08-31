@@ -127,7 +127,12 @@ function App() {
         }
 
         const activeConv = useChatStore.getState().activeConversation;
-        const isCurrentActiveChat = activeConv?._id?.toString() === conversationId?.toString();
+        const isCurrentActiveChat = activeConv?._id?.toString() === conversationId?.toString();        
+        
+        if (isCurrentActiveChat && typeof document !== 'undefined' && !document.hidden) {
+          socket.emit('message:read', { conversationId });
+          useChatStore.getState().markAsRead(conversationId);
+        }
 
         if (!isCurrentActiveChat || (typeof document !== 'undefined' && document.hidden)) {
           const senderName = message.sender?.displayName || message.sender?.username || 'NexChat User';
@@ -135,48 +140,41 @@ function App() {
             ? (message.content || (message.type === 'video_note' ? 'Sent a video note 🎥' : message.type === 'voice' ? 'Sent a voice message 🎤' : message.type ? `Sent a ${message.type}` : 'Sent an attachment'))
             : 'New message';
 
-          // 1. In-App Interactive Notification Toast Popup (Visible when on any other screen/chat)
-          if (!isCurrentActiveChat) {
-            toast.custom((t) => (
-              <div
-                onClick={() => {
-                  toast.dismiss(t.id);
-                  const convs = useChatStore.getState().conversations;
-                  const targetConv = convs.find((c) => c._id?.toString() === conversationId?.toString());
-                  if (targetConv) {
-                    useChatStore.getState().setActiveConversation(targetConv);
-                    useUIStore.getState().setSidebarView('chats');
-                    useUIStore.getState().setShowChatOnMobile(true);
-                  }
-                }}
-                className={`${
-                  t.visible ? 'animate-slide-in-top' : 'animate-fade-out opacity-0'
-                } max-w-sm w-full bg-dark-card/95 backdrop-blur-xl border border-primary-500/50 shadow-2xl rounded-2xl p-3 flex items-center gap-3 cursor-pointer hover:bg-dark-hover transition-all pointer-events-auto select-none`}
-              >
-                {message.sender?.avatar?.url ? (
-                  <img src={message.sender.avatar.url} alt="" className="w-10 h-10 rounded-full object-cover ring-2 ring-primary-500 flex-shrink-0 shadow-md" />
-                ) : (
-                  <div className="w-10 h-10 rounded-full gradient-primary flex items-center justify-center font-bold text-white text-sm flex-shrink-0 shadow-md">
-                    {senderName.charAt(0).toUpperCase()}
-                  </div>
-                )}
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-bold text-white truncate">{senderName}</p>
-                    <span className="text-[10px] text-primary-400 font-medium">Just now</span>
-                  </div>
-                  <p className="text-xs text-surface-300 truncate mt-0.5">{previewText}</p>
+          // 1. In-App Interactive Notification Toast Popup
+          toast.custom((t) => (
+            <div
+              onClick={() => {
+                toast.dismiss(t.id);
+                const convs = useChatStore.getState().conversations;
+                const targetConv = convs.find((c) => c._id?.toString() === conversationId?.toString());
+                if (targetConv) {
+                  useChatStore.getState().setActiveConversation(targetConv);
+                  useUIStore.getState().setSidebarView('chats');
+                  useUIStore.getState().setShowChatOnMobile(true);
+                }
+              }}
+              className={`${
+                t.visible ? 'animate-slide-in-top' : 'animate-fade-out opacity-0'
+              } max-w-sm w-full bg-dark-card/95 backdrop-blur-xl border border-primary-500/50 shadow-2xl rounded-2xl p-3 flex items-center gap-3 cursor-pointer hover:bg-dark-hover transition-all pointer-events-auto select-none`}
+            >
+              {message.sender?.avatar?.url ? (
+                <img src={message.sender.avatar.url} alt="" className="w-10 h-10 rounded-full object-cover ring-2 ring-primary-500 flex-shrink-0 shadow-md" />
+              ) : (
+                <div className="w-10 h-10 rounded-full gradient-primary flex items-center justify-center font-bold text-white text-sm flex-shrink-0 shadow-md">
+                  {senderName.charAt(0).toUpperCase()}
                 </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-bold text-white truncate">{senderName}</p>
+                <p className="text-[11px] text-surface-300 truncate">{previewText}</p>
               </div>
-            ), { id: `msg-${message._id}`, duration: 4000 });
-          }
+            </div>
+          ), { duration: 4000, position: 'top-right' });
 
-          // 2. Native Windows / Android / iOS system notification
-          if (notifSettings.messages !== false) {
-            showSystemNotification({
-              title: senderName,
-              body: previewText,
-              icon: message.sender?.avatar?.url,
+          // 2. Cross-platform System Notification (Windows Desktop Toast & Mobile Background Notification)
+          if (notifSettings.desktopNotifications !== false) {
+            showSystemNotification(senderName, previewText, {
+              tag: `msg-${conversationId}`,
               data: { conversationId },
               onClick: () => {
                 const convs = useChatStore.getState().conversations;
@@ -186,7 +184,7 @@ function App() {
                   useUIStore.getState().setSidebarView('chats');
                   useUIStore.getState().setShowChatOnMobile(true);
                 }
-              },
+              }
             });
           }
         }
@@ -227,11 +225,15 @@ function App() {
         useChatStore.setState({ messages });
       }
 
-      if (isReadByMe) {
-        const convs = state.conversations.map(c => {
-          if (c._id?.toString() === conversationId?.toString()) {
+      const convs = state.conversations.map(c => {
+        if (c._id?.toString() === conversationId?.toString()) {
+          const lastMsg = c.lastMessage
+            ? { ...c.lastMessage, status: (!isReadByMe && (c.lastMessage.sender?._id || c.lastMessage.sender)?.toString() === currentUserId) ? 'read' : c.lastMessage.status }
+            : c.lastMessage;
+          if (isReadByMe) {
             return {
               ...c,
+              lastMessage: lastMsg,
               unreadCount: 0,
               _participant: { ...(c._participant || {}), unreadCount: 0 },
               participants: (c.participants || []).map(p =>
@@ -241,13 +243,19 @@ function App() {
               ),
             };
           }
-          return c;
-        });
+          return { ...c, lastMessage: lastMsg };
+        }
+        return c;
+      });
+
+      if (isReadByMe) {
         const unreadTotal = convs.reduce((sum, c) => {
           const myP = c._participant || c.participants?.find(p => (p.user?._id || p.user)?.toString() === currentUserId);
           return sum + (myP?.unreadCount || c.unreadCount || 0);
         }, 0);
         useChatStore.setState({ conversations: convs, unreadTotal });
+      } else {
+        useChatStore.setState({ conversations: convs });
       }
     };
 

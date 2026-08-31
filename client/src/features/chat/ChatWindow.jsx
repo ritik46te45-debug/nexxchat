@@ -63,6 +63,31 @@ export default function ChatWindow({ onStartCall }) {
     if (socket) {
       socket.emit('conversation:join', { conversationId: convId });
     }
+    useChatStore.getState().markAsRead(convId);
+  }, [activeConversation?._id]);
+
+  // Mark as read whenever new messages arrive while viewing this conversation
+  useEffect(() => {
+    const convId = activeConversation?._id?.toString();
+    if (convId && typeof document !== 'undefined' && !document.hidden) {
+      useChatStore.getState().markAsRead(convId);
+    }
+  }, [messages.length, activeConversation?._id]);
+
+  // Mark as read on window/tab focus
+  useEffect(() => {
+    const handleFocus = () => {
+      const convId = activeConversation?._id?.toString();
+      if (convId && typeof document !== 'undefined' && !document.hidden) {
+        useChatStore.getState().markAsRead(convId);
+      }
+    };
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleFocus);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleFocus);
+    };
   }, [activeConversation?._id]);
 
   useEffect(() => {
