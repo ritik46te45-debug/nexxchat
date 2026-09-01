@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import {
   Shield, Bell, Lock, Smartphone, Moon, Sun, Trash2, LogOut,
   Check, ChevronRight, Volume2, Music, Play, QrCode, Key,

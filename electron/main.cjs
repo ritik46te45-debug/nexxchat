@@ -39,6 +39,8 @@ let desktopSettings = null;
 function createWindow() {
   desktopSettings = loadSettings();
 
+  const chromeUserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -53,6 +55,26 @@ function createWindow() {
       nodeIntegration: false,
       sandbox: false,
     },
+  });
+
+  // Mask Electron user-agent for Google OAuth compatibility
+  mainWindow.webContents.setUserAgent(chromeUserAgent);
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.includes('accounts.google.com') || url.includes('google.com/o/oauth2')) {
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          userAgent: chromeUserAgent,
+          webPreferences: {
+            nodeIntegration: false,
+            contextIsolation: true,
+          },
+        },
+      };
+    }
+    require('electron').shell.openExternal(url);
+    return { action: 'deny' };
   });
 
   const distHtml = path.join(__dirname, '../client/dist/index.html');

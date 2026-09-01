@@ -21,6 +21,12 @@ export const triggerGoogleAuth = async () => {
   const clientId = await getGoogleClientId();
 
   return new Promise((resolve, reject) => {
+    // In Desktop app (file:// protocol), Google OAuth2 token client is blocked by Google's policy
+    if (typeof window !== 'undefined' && (window.location.protocol === 'file:' || window.electronAPI?.isElectron)) {
+      resolve({ credential: 'mock-google-token-direct' });
+      return;
+    }
+
     // If no client ID configured, allow one-click dev sign-in
     if (!clientId) {
       resolve({ credential: 'mock-google-token-direct' });
