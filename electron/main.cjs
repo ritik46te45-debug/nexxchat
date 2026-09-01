@@ -1,12 +1,44 @@
-const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, Notification } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, Notification, dialog } = require('electron');
 const path = require('path');
+const fs = require('fs');
 
 let mainWindow = null;
 let tray = null;
 let isQuitting = false;
 
+// Persistent desktop settings file
+const getSettingsFile = () => path.join(app.getPath('userData'), 'desktop-settings.json');
+
+function loadSettings() {
+  try {
+    const file = getSettingsFile();
+    if (fs.existsSync(file)) {
+      return JSON.parse(fs.readFileSync(file, 'utf-8'));
+    }
+  } catch (e) {
+    console.error('Failed to read desktop settings:', e);
+  }
+  return {
+    backgroundConsent: null, // null = not asked yet, 'yes' = consented, 'no' = declined
+    closeToTray: false,
+    startWithWindows: false,
+  };
+}
+
+function saveSettings(settings) {
+  try {
+    fs.writeFileSync(getSettingsFile(), JSON.stringify(settings, null, 2));
+  } catch (e) {
+    console.error('Failed to write desktop settings:', e);
+  }
+}
+
+let desktopSettings = null;
+
 // Create main desktop window
 function createWindow() {
+  desktopSettings = loadSettings();
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -23,7 +55,6 @@ function createWindow() {
     },
   });
 
-  const fs = require('fs');
   const distHtml = path.join(__dirname, '../client/dist/index.html');
 
   if (process.env.ELECTRON_START_URL) {
@@ -44,17 +75,56 @@ function createWindow() {
     mainWindow.show();
   });
 
-  // Minimize to tray on close
-  mainWindow.on('close', (event) => {
-    if (!isQuitting) {
+  // Handle window close with explicit consent prompt
+  mainWindow.on('close', async (event) => {
+    if (isQuitting) return;
+
+    // Prompt user on first close if consent is not yet given or declined
+    if (desktopSettings.backgroundConsent === null) {
+      event.preventDefault();
+      const choice = await dialog.showMessageBox(mainWindow, {
+        type: 'question',
+        buttons: ['Yes, Keep Running', 'Not Now (Quit App)'],
+        defaultId: 0,
+        cancelId: 1,
+        title: 'Background Notifications & Calls',
+        message: 'Keep NexChat running in the background so you don\'t miss messages and calls?',
+        detail: 'When enabled, NexChat stays active in your Windows system tray and starts when you sign in to Windows. You can change this anytime in Settings.',
+      });
+
+      if (choice.response === 0) {
+        desktopSettings.backgroundConsent = 'yes';
+        desktopSettings.closeToTray = true;
+        desktopSettings.startWithWindows = true;
+        app.setLoginItemSettings({ openAtLogin: true, openAsHidden: true });
+        saveSettings(desktopSettings);
+        updateTrayMenu();
+        mainWindow.hide();
+        if (tray) {
+          tray.displayBalloon?.({
+            title: 'NexChat is running in background',
+            content: 'You will continue receiving instant message and call notifications.',
+          });
+        }
+      } else {
+        desktopSettings.backgroundConsent = 'no';
+        desktopSettings.closeToTray = false;
+        desktopSettings.startWithWindows = false;
+        app.setLoginItemSettings({ openAtLogin: false });
+        saveSettings(desktopSettings);
+        updateTrayMenu();
+        isQuitting = true;
+        app.quit();
+      }
+      return;
+    }
+
+    if (desktopSettings.closeToTray) {
       event.preventDefault();
       mainWindow.hide();
-      if (tray) {
-        tray.displayBalloon?.({
-          title: 'NexChat is running in background',
-          content: 'You will continue receiving instant message and call notifications.',
-        });
-      }
+    } else {
+      isQuitting = true;
+      app.quit();
     }
   });
 
@@ -66,7 +136,7 @@ function createWindow() {
 // Update Tray context menu dynamically
 function updateTrayMenu() {
   if (!tray) return;
-  const isAutoLaunch = app.getLoginItemSettings().openAtLogin;
+  if (!desktopSettings) desktopSettings = loadSettings();
 
   const contextMenu = Menu.buildFromTemplate([
     {
@@ -81,9 +151,20 @@ function updateTrayMenu() {
     {
       label: 'Start with Windows',
       type: 'checkbox',
-      checked: isAutoLaunch,
+      checked: desktopSettings.startWithWindows,
       click: (item) => {
+        desktopSettings.startWithWindows = item.checked;
         app.setLoginItemSettings({ openAtLogin: item.checked, openAsHidden: true });
+        saveSettings(desktopSettings);
+      },
+    },
+    {
+      label: 'Close to System Tray',
+      type: 'checkbox',
+      checked: desktopSettings.closeToTray,
+      click: (item) => {
+        desktopSettings.closeToTray = item.checked;
+        saveSettings(desktopSettings);
       },
     },
     { type: 'separator' },
@@ -131,14 +212,32 @@ ipcMain.on('set-badge-count', (event, count) => {
   }
 });
 
+ipcMain.handle('get-desktop-settings', () => {
+  if (!desktopSettings) desktopSettings = loadSettings();
+  return desktopSettings;
+});
+
+ipcMain.handle('set-desktop-settings', (event, newSettings) => {
+  desktopSettings = { ...(desktopSettings || loadSettings()), ...newSettings };
+  if (typeof newSettings.startWithWindows === 'boolean') {
+    app.setLoginItemSettings({ openAtLogin: newSettings.startWithWindows, openAsHidden: true });
+  }
+  saveSettings(desktopSettings);
+  updateTrayMenu();
+  return desktopSettings;
+});
+
 ipcMain.handle('get-auto-launch', () => {
   return app.getLoginItemSettings().openAtLogin;
 });
 
 ipcMain.handle('set-auto-launch', (event, enabled) => {
+  if (!desktopSettings) desktopSettings = loadSettings();
+  desktopSettings.startWithWindows = Boolean(enabled);
   app.setLoginItemSettings({ openAtLogin: Boolean(enabled), openAsHidden: true });
+  saveSettings(desktopSettings);
   updateTrayMenu();
-  return app.getLoginItemSettings().openAtLogin;
+  return desktopSettings.startWithWindows;
 });
 
 ipcMain.on('show-notification', (event, { title, body, icon, conversationId }) => {

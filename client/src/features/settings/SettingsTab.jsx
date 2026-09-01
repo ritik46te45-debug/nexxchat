@@ -24,20 +24,30 @@ export default function SettingsTab({ onOpenProfile }) {
   const [activeSection, setActiveSection] = useState('main'); // 'main', 'privacy', 'sounds', 'notifications', 'sessions', '2fa'
 
   // Electron Desktop State
-  const [isElectronAutoLaunch, setIsElectronAutoLaunch] = useState(true);
+  const [desktopSettings, setDesktopSettings] = useState({
+    backgroundConsent: null,
+    closeToTray: false,
+    startWithWindows: false,
+  });
   const [showBatteryGuideModal, setShowBatteryGuideModal] = useState(false);
 
   useEffect(() => {
-    if (window.electronAPI?.getAutoLaunch) {
-      window.electronAPI.getAutoLaunch().then((res) => setIsElectronAutoLaunch(Boolean(res)));
+    if (window.electronAPI?.getDesktopSettings) {
+      window.electronAPI.getDesktopSettings().then((res) => {
+        if (res) setDesktopSettings(res);
+      });
     }
   }, []);
 
-  const handleToggleAutoLaunch = async (enabled) => {
-    setIsElectronAutoLaunch(enabled);
-    if (window.electronAPI?.setAutoLaunch) {
-      await window.electronAPI.setAutoLaunch(enabled);
-      toast.success(enabled ? 'NexChat will start automatically with Windows' : 'Windows auto-launch disabled');
+  const handleUpdateDesktopSetting = async (key, val) => {
+    const updated = { ...desktopSettings, [key]: val };
+    if (key === 'closeToTray' && val && desktopSettings.backgroundConsent === null) {
+      updated.backgroundConsent = 'yes';
+    }
+    setDesktopSettings(updated);
+    if (window.electronAPI?.setDesktopSettings) {
+      await window.electronAPI.setDesktopSettings(updated);
+      toast.success('Desktop preferences updated');
     }
   };
 
@@ -1011,14 +1021,27 @@ export default function SettingsTab({ onOpenProfile }) {
                 </div>
                 <input
                   type="checkbox"
-                  checked={isElectronAutoLaunch}
-                  onChange={(e) => handleToggleAutoLaunch(e.target.checked)}
+                  checked={desktopSettings.startWithWindows === true}
+                  onChange={(e) => handleUpdateDesktopSetting('startWithWindows', e.target.checked)}
+                  className="w-5 h-5 accent-primary-500 rounded cursor-pointer"
+                />
+              </div>
+
+              <div className="flex items-center justify-between py-1 border-t border-dark-border/40 pt-2">
+                <div>
+                  <p className="text-sm font-semibold text-white">Close to System Tray</p>
+                  <p className="text-xs text-surface-500">Keep running in background when window is closed</p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={desktopSettings.closeToTray === true}
+                  onChange={(e) => handleUpdateDesktopSetting('closeToTray', e.target.checked)}
                   className="w-5 h-5 accent-primary-500 rounded cursor-pointer"
                 />
               </div>
 
               <div className="p-3 rounded-xl bg-dark-bg/60 border border-dark-border/40 text-[11px] text-surface-400 leading-relaxed">
-                Closing the window minimizes to your Windows system tray near the clock so you never miss incoming calls or messages.
+                When "Close to System Tray" is enabled, closing the window minimizes to your Windows system tray near the clock so you never miss incoming calls or messages.
               </div>
             </div>
 

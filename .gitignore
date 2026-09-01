@@ -6,5 +6,9 @@ dist/
 .DS_Store
 Thumbs.db
 *.apk
+*.exe
+*.blockmap
+release/
+dist-electron/
 firebase-service-account.json
 .kotlin/

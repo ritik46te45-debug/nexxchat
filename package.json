@@ -1,12 +1,50 @@
 {
-  "name": "nexchat-monorepo",
+  "name": "nexchat-desktop",
   "version": "1.0.0",
+  "description": "NexChat WhatsApp-Parity Real-Time Desktop Messenger",
+  "author": "NexChat Team",
   "private": true,
   "main": "electron/main.cjs",
   "scripts": {
-    "build": "cd client && npm install && npm run build",
+    "build": "cd client && npm run build",
     "electron:dev": "electron electron/main.cjs",
-    "electron:build": "cd client && npm run build && cd .. && electron-builder"
+    "electron:build": "cd client && npm run build && cd .. && electron-builder --win"
+  },
+  "build": {
+    "appId": "app.nexchat.desktop",
+    "productName": "NexChat",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron/**/*",
+      "client/dist/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "electron/app-icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "NexChat"
+    }
   },
   "devDependencies": {
     "electron": "^44.0.0",
