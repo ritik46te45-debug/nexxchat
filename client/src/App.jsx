@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import useAuthStore from './stores/authStore';
 import useChatStore from './stores/chatStore';
@@ -12,6 +12,14 @@ import LoginPage from './features/auth/LoginPage';
 import RegisterPage from './features/auth/RegisterPage';
 import ResetPasswordPage from './features/auth/ResetPasswordPage';
 import MainLayout from './components/layout/MainLayout';
+
+const isDesktopOrNative = typeof window !== 'undefined' && (
+  Boolean(window.electronAPI?.isElectron) ||
+  Boolean(window.Capacitor?.isNativePlatform?.()) ||
+  window.location.protocol === 'file:'
+);
+
+const AppRouter = isDesktopOrNative ? HashRouter : BrowserRouter;
 
 // Protected Route wrapper
 function ProtectedRoute({ children }) {
@@ -380,7 +388,7 @@ function App() {
   }, [isAuthenticated]);
 
   return (
-    <BrowserRouter>
+    <AppRouter>
       <Toaster
         position="top-center"
         toastOptions={{
@@ -401,7 +409,7 @@ function App() {
         <Route path="/reset-password/:token" element={<PublicRoute><ResetPasswordPage /></PublicRoute>} />
         <Route path="/*" element={<ProtectedRoute><MainLayout /></ProtectedRoute>} />
       </Routes>
-    </BrowserRouter>
+    </AppRouter>
   );
 }
 
