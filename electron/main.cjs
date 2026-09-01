@@ -97,56 +97,12 @@ function createWindow() {
     mainWindow.show();
   });
 
-  // Handle window close with explicit consent prompt
-  mainWindow.on('close', async (event) => {
-    if (isQuitting) return;
-
-    // Prompt user on first close if consent is not yet given or declined
-    if (desktopSettings.backgroundConsent === null) {
-      event.preventDefault();
-      const choice = await dialog.showMessageBox(mainWindow, {
-        type: 'question',
-        buttons: ['Yes, Keep Running', 'Not Now (Quit App)'],
-        defaultId: 0,
-        cancelId: 1,
-        title: 'Background Notifications & Calls',
-        message: 'Keep NexChat running in the background so you don\'t miss messages and calls?',
-        detail: 'When enabled, NexChat stays active in your Windows system tray and starts when you sign in to Windows. You can change this anytime in Settings.',
-      });
-
-      if (choice.response === 0) {
-        desktopSettings.backgroundConsent = 'yes';
-        desktopSettings.closeToTray = true;
-        desktopSettings.startWithWindows = true;
-        app.setLoginItemSettings({ openAtLogin: true, openAsHidden: true });
-        saveSettings(desktopSettings);
-        updateTrayMenu();
-        mainWindow.hide();
-        if (tray) {
-          tray.displayBalloon?.({
-            title: 'NexChat is running in background',
-            content: 'You will continue receiving instant message and call notifications.',
-          });
-        }
-      } else {
-        desktopSettings.backgroundConsent = 'no';
-        desktopSettings.closeToTray = false;
-        desktopSettings.startWithWindows = false;
-        app.setLoginItemSettings({ openAtLogin: false });
-        saveSettings(desktopSettings);
-        updateTrayMenu();
-        isQuitting = true;
-        app.quit();
-      }
-      return;
-    }
-
-    if (desktopSettings.closeToTray) {
+  // Intercept window close — do NOT let it quit the app
+  mainWindow.on('close', (event) => {
+    if (!isQuitting) {
       event.preventDefault();
       mainWindow.hide();
-    } else {
-      isQuitting = true;
-      app.quit();
+      return;
     }
   });
 
@@ -215,6 +171,14 @@ function createTray() {
   tray = new Tray(trayIcon);
   tray.setToolTip('NexChat Messenger');
   updateTrayMenu();
+
+  // Clicking tray icon re-opens the window
+  tray.on('click', () => {
+    if (mainWindow) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
 
   tray.on('double-click', () => {
     if (mainWindow) {
@@ -303,8 +267,7 @@ app.on('before-quit', () => {
   isQuitting = true;
 });
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
+// This ensures app does NOT quit when all windows are hidden (macOS + Windows)
+app.on('window-all-closed', (event) => {
+  event.preventDefault();
 });

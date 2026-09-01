@@ -222,17 +222,17 @@ export default function MainLayout() {
             ${isMobile && !showChatOnMobile ? 'pb-[56px]' : ''}
           `}
           >
-            {sidebarView === 'chats' && <ChatList onOpenProfile={() => setShowProfileModal(true)} />}
+            {sidebarView === 'chats' && <ErrorBoundary><ChatList onOpenProfile={() => setShowProfileModal(true)} /></ErrorBoundary>}
             {sidebarView === 'calls' && (
-              <CallsTab onStartCall={(friend, type) => handleStartCall(friend, type)} />
+              <ErrorBoundary><CallsTab onStartCall={(friend, type) => handleStartCall(friend, type)} /></ErrorBoundary>
             )}
-            {sidebarView === 'status' && <StatusTab />}
+            {sidebarView === 'status' && <ErrorBoundary><StatusTab /></ErrorBoundary>}
             {sidebarView === 'contacts' && (
-              <ContactsTab onStartCall={(friend, type) => handleStartCall(friend, type)} />
+              <ErrorBoundary><ContactsTab onStartCall={(friend, type) => handleStartCall(friend, type)} /></ErrorBoundary>
             )}
-            {sidebarView === 'notifications' && <NotificationsTab />}
+            {sidebarView === 'notifications' && <ErrorBoundary><NotificationsTab /></ErrorBoundary>}
             {sidebarView === 'settings' && (
-              <SettingsTab onOpenProfile={() => setShowProfileModal(true)} />
+              <ErrorBoundary><SettingsTab onOpenProfile={() => setShowProfileModal(true)} /></ErrorBoundary>
             )}
           </div>
 
