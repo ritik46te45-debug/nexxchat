@@ -18,14 +18,18 @@ export const getGoogleClientId = async () => {
  * Falls back to ID Token or instant login if client ID is not configured
  */
 export const triggerGoogleAuth = async () => {
+  // In Desktop Electron environment, use native OAuth popup flow
+  if (typeof window !== 'undefined' && window.electronAPI?.loginWithGoogle) {
+    const res = await window.electronAPI.loginWithGoogle();
+    if (res && (res.accessToken || res.credential)) {
+      return res;
+    }
+    throw new Error('Google sign-in was cancelled or closed');
+  }
+
   const clientId = await getGoogleClientId();
 
   return new Promise((resolve, reject) => {
-    // In Desktop app (file:// protocol), Google OAuth2 token client is blocked by Google's policy
-    if (typeof window !== 'undefined' && (window.location.protocol === 'file:' || window.electronAPI?.isElectron)) {
-      resolve({ credential: 'mock-google-token-direct' });
-      return;
-    }
 
     // If no client ID configured, allow one-click dev sign-in
     if (!clientId) {

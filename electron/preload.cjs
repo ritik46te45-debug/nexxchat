@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setAutoLaunch: (enabled) => ipcRenderer.invoke('set-auto-launch', enabled),
   getDesktopSettings: () => ipcRenderer.invoke('get-desktop-settings'),
   setDesktopSettings: (settings) => ipcRenderer.invoke('set-desktop-settings', settings),
+  loginWithGoogle: () => ipcRenderer.invoke('electron-google-oauth'),
   onNavigateConversation: (callback) => {
     ipcRenderer.on('navigate-conversation', (event, conversationId) => {
       if (typeof callback === 'function') {

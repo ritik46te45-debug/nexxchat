@@ -226,6 +226,68 @@ ipcMain.handle('set-auto-launch', (event, enabled) => {
   return desktopSettings.startWithWindows;
 });
 
+ipcMain.handle('electron-google-oauth', async () => {
+  const clientId = '981601345477-vohruribb3i07iegvas4dtsbqo5k9n7q.apps.googleusercontent.com';
+  const redirectUri = 'https://nexxchat-zeta.vercel.app';
+  const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token%20id_token&scope=openid%20email%20profile&nonce=${Date.now()}`;
+
+  return new Promise((resolve) => {
+    const authWin = new BrowserWindow({
+      width: 500,
+      height: 650,
+      modal: true,
+      parent: mainWindow || undefined,
+      backgroundColor: '#ffffff',
+      title: 'Sign in with Google',
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+      },
+    });
+
+    authWin.webContents.setUserAgent(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
+    );
+
+    let resolved = false;
+
+    const handleCallback = (url) => {
+      if (resolved) return;
+      if (url.startsWith(redirectUri)) {
+        const hash = url.split('#')[1] || '';
+        const params = new URLSearchParams(hash);
+        const accessToken = params.get('access_token');
+        const idToken = params.get('id_token');
+
+        if (accessToken || idToken) {
+          resolved = true;
+          resolve({ accessToken, credential: idToken });
+          setImmediate(() => {
+            if (!authWin.isDestroyed()) authWin.destroy();
+          });
+        }
+      }
+    };
+
+    authWin.webContents.on('will-redirect', (event, url) => {
+      handleCallback(url);
+    });
+
+    authWin.webContents.on('did-navigate', (event, url) => {
+      handleCallback(url);
+    });
+
+    authWin.on('closed', () => {
+      if (!resolved) {
+        resolved = true;
+        resolve(null);
+      }
+    });
+
+    authWin.loadURL(authUrl);
+  });
+});
+
 ipcMain.on('show-notification', (event, { title, body, icon, conversationId }) => {
   if (Notification.isSupported()) {
     const notif = new Notification({
