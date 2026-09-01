@@ -21,7 +21,9 @@ import GlobalSearchModal from '../../features/search/GlobalSearchModal';
 import CommandPalette from '../../features/command/CommandPalette';
 import NewChatModal from '../../features/chat/NewChatModal';
 import NewGroupModal from '../../features/groups/NewGroupModal';
+import BatteryOnboardingModal from '../../features/auth/BatteryOnboardingModal';
 import ErrorBoundary from '../common/ErrorBoundary';
+import { isNativePlatform, getPlatformName } from '../../lib/capacitorPush';
 
 export default function MainLayout() {
   const {
@@ -35,7 +37,17 @@ export default function MainLayout() {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showNewChat, setShowNewChat] = useState(false);
   const [showNewGroup, setShowNewGroup] = useState(false);
+  const [showBatteryModal, setShowBatteryModal] = useState(false);
   const [activeCall, setActiveCall] = useState(null);
+
+  // Check if first-time mobile/android user needs battery onboarding
+  useEffect(() => {
+    const isAndroid = getPlatformName() === 'android' || isMobile;
+    const isAlreadyOnboarded = localStorage.getItem('nexchat_battery_onboarded') === 'true';
+    if (isAndroid && !isAlreadyOnboarded) {
+      setShowBatteryModal(true);
+    }
+  }, [isMobile]);
 
   // Global Keyboard Shortcuts (Ctrl+K / Cmd+K)
   useEffect(() => {
@@ -289,6 +301,12 @@ export default function MainLayout() {
           onCallIdUpdate={handleCallIdUpdate}
         />
       )}
+
+      {/* Android Battery Whitelist & Reliability Onboarding */}
+      <BatteryOnboardingModal
+        isOpen={showBatteryModal}
+        onClose={() => setShowBatteryModal(false)}
+      />
 
       {/* App Lock / PIN Screen Overlay */}
       <AppLockOverlay />

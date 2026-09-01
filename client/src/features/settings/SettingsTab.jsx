@@ -1,15 +1,16 @@
-import { useState, useEffect } from 'react';
 import {
   Shield, Bell, Lock, Smartphone, Moon, Sun, Trash2, LogOut,
   Check, ChevronRight, Volume2, Music, Play, QrCode, Key,
   Radio, Send, AlertTriangle, Fingerprint, Sparkles, Palette,
-  Search, Clock, MoonStar, Eye, PhoneCall, Users, AtSign, Vibrate, CheckCheck
+  Search, Clock, MoonStar, Eye, PhoneCall, Users, AtSign, Vibrate, CheckCheck,
+  BatteryCharging, Monitor, Zap
 } from 'lucide-react';
 import api from '../../lib/api';
 import useAuthStore from '../../stores/authStore';
 import useUIStore from '../../stores/uiStore';
 import { playIncomingMessageSound, playSentMessageSound, showSystemNotification } from '../../lib/notifications';
 import { registerPushNotifications } from '../../lib/pushNotifications';
+import BatteryOnboardingModal from '../auth/BatteryOnboardingModal';
 import toast from 'react-hot-toast';
 
 export default function SettingsTab({ onOpenProfile }) {
@@ -21,6 +22,24 @@ export default function SettingsTab({ onOpenProfile }) {
   const [notifications, setNotifications] = useState(user?.notificationSettings || {});
   const [sessions, setSessions] = useState([]);
   const [activeSection, setActiveSection] = useState('main'); // 'main', 'privacy', 'sounds', 'notifications', 'sessions', '2fa'
+
+  // Electron Desktop State
+  const [isElectronAutoLaunch, setIsElectronAutoLaunch] = useState(true);
+  const [showBatteryGuideModal, setShowBatteryGuideModal] = useState(false);
+
+  useEffect(() => {
+    if (window.electronAPI?.getAutoLaunch) {
+      window.electronAPI.getAutoLaunch().then((res) => setIsElectronAutoLaunch(Boolean(res)));
+    }
+  }, []);
+
+  const handleToggleAutoLaunch = async (enabled) => {
+    setIsElectronAutoLaunch(enabled);
+    if (window.electronAPI?.setAutoLaunch) {
+      await window.electronAPI.setAutoLaunch(enabled);
+      toast.success(enabled ? 'NexChat will start automatically with Windows' : 'Windows auto-launch disabled');
+    }
+  };
 
   // Sound preferences state
   const [soundEnabled, setSoundEnabled] = useState(localStorage.getItem('nexchat_sound_enabled') !== 'false');
@@ -977,8 +996,60 @@ export default function SettingsTab({ onOpenProfile }) {
                 )}
               </div>
             </div>
+
+            {/* Windows Desktop & Startup Settings */}
+            <div className="p-4 rounded-2xl bg-dark-card border border-dark-border space-y-3">
+              <div className="flex items-center gap-2 border-b border-dark-border/60 pb-2">
+                <Monitor className="w-4 h-4 text-primary-400" />
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider">Windows Desktop App</h3>
+              </div>
+
+              <div className="flex items-center justify-between py-1">
+                <div>
+                  <p className="text-sm font-semibold text-white">Start with Windows</p>
+                  <p className="text-xs text-surface-500">Auto-launch NexChat in system tray on computer boot</p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={isElectronAutoLaunch}
+                  onChange={(e) => handleToggleAutoLaunch(e.target.checked)}
+                  className="w-5 h-5 accent-primary-500 rounded cursor-pointer"
+                />
+              </div>
+
+              <div className="p-3 rounded-xl bg-dark-bg/60 border border-dark-border/40 text-[11px] text-surface-400 leading-relaxed">
+                Closing the window minimizes to your Windows system tray near the clock so you never miss incoming calls or messages.
+              </div>
+            </div>
+
+            {/* Android Battery Optimization Whitelist Guide */}
+            <div className="p-4 rounded-2xl bg-dark-card border border-dark-border space-y-3">
+              <div className="flex items-center gap-2 border-b border-dark-border/60 pb-2">
+                <BatteryCharging className="w-4 h-4 text-amber-400" />
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider">Android Background Reliability</h3>
+              </div>
+
+              <p className="text-xs text-surface-400 leading-relaxed">
+                Ensure aggressive battery savers on Xiaomi (MIUI), Oppo (ColorOS), and Samsung don't kill background calls and notifications.
+              </p>
+
+              <button
+                type="button"
+                onClick={() => setShowBatteryGuideModal(true)}
+                className="w-full py-2.5 rounded-xl bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/30 text-xs font-bold flex items-center justify-center gap-2 transition-all active:scale-95"
+              >
+                <Zap className="w-4 h-4" />
+                Open Battery Whitelist & OEM Guide
+              </button>
+            </div>
           </div>
         )}
+
+        {/* Battery Guide Modal */}
+        <BatteryOnboardingModal
+          isOpen={showBatteryGuideModal}
+          onClose={() => setShowBatteryGuideModal(false)}
+        />
 
         {/* Sessions Section */}
         {activeSection === 'sessions' && (

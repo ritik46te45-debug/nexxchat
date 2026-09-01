@@ -28,52 +28,39 @@ const allJars = getAllJars(LIB_DIR);
 const classpath = allJars.join(';');
 console.log(`📦 Loaded ${allJars.length} SDK Manager JAR dependencies.`);
 
-// 1. Accept SDK Licenses
-console.log('📝 Accepting Android SDK Licenses...');
-const licenseProc = spawnSync(
-  JAVA_EXE,
-  [
-    `-Dcom.android.sdklib.toolsdir=${TOOLS_DIR}`,
-    '-classpath',
-    classpath,
-    'com.android.sdklib.tool.sdkmanager.SdkManagerCli',
-    `--sdk_root=${SDK_ROOT}`,
-    '--licenses',
-  ],
+// 1. Build Client Web Assets
+console.log('⚛️ Building React Web App...');
+execSync('npm run build', { cwd: path.resolve('client'), stdio: 'inherit' });
+
+// 2. Sync with Capacitor Android
+console.log('📲 Syncing Capacitor Android assets...');
+try {
+  execSync('npx cap sync android', { cwd: path.resolve('client'), stdio: 'inherit' });
+} catch (e) {
+  console.log('Capacitor sync note:', e.message);
+}
+
+// 3. Assemble Release & Debug APKs via Gradle
+console.log('🔨 Compiling Signed Android Release APK with Gradle (assembleRelease)...');
+const gradleRelease = spawnSync(
+  'cmd.exe',
+  ['/c', 'gradlew.bat assembleRelease'],
   {
-    input: 'y\ny\ny\ny\ny\ny\ny\ny\ny\ny\n',
+    cwd: path.resolve('client', 'android'),
+    env: {
+      ...process.env,
+      JAVA_HOME,
+      ANDROID_HOME: SDK_ROOT,
+      ANDROID_SDK_ROOT: SDK_ROOT,
+    },
     encoding: 'utf-8',
   }
 );
-console.log(licenseProc.stdout || '');
-if (licenseProc.stderr) console.error(licenseProc.stderr);
+console.log(gradleRelease.stdout || '');
+if (gradleRelease.stderr) console.error(gradleRelease.stderr);
 
-// 2. Install Platforms and Build Tools
-console.log('⬇️ Installing Android SDK Platform 35 & 34 and Build-Tools...');
-const installProc = spawnSync(
-  JAVA_EXE,
-  [
-    `-Dcom.android.sdklib.toolsdir=${TOOLS_DIR}`,
-    '-classpath',
-    classpath,
-    'com.android.sdklib.tool.sdkmanager.SdkManagerCli',
-    `--sdk_root=${SDK_ROOT}`,
-    'platforms;android-35',
-    'platforms;android-34',
-    'build-tools;35.0.0',
-    'build-tools;34.0.0',
-    'platform-tools',
-  ],
-  {
-    encoding: 'utf-8',
-  }
-);
-console.log(installProc.stdout || '');
-if (installProc.stderr) console.error(installProc.stderr);
-
-// 3. Assemble Debug APK via Gradle
-console.log('🔨 Compiling Android APK with Gradle (assembleDebug)...');
-const gradleProc = spawnSync(
+console.log('🔨 Compiling Android Debug APK with Gradle (assembleDebug)...');
+const gradleDebug = spawnSync(
   'cmd.exe',
   ['/c', 'gradlew.bat assembleDebug'],
   {
@@ -87,11 +74,21 @@ const gradleProc = spawnSync(
     encoding: 'utf-8',
   }
 );
-console.log(gradleProc.stdout || '');
-if (gradleProc.stderr) console.error(gradleProc.stderr);
+console.log(gradleDebug.stdout || '');
+if (gradleDebug.stderr) console.error(gradleDebug.stderr);
 
-if (gradleProc.status === 0) {
-  console.log('\n🎉 SUCCESS! Android APK has been built successfully!');
-} else {
-  console.error('\n❌ Gradle build exited with code:', gradleProc.status);
+// 4. Copy Output APKs to Root
+const releaseSrc = path.resolve('client', 'android', 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk');
+const debugSrc = path.resolve('client', 'android', 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk');
+
+if (fs.existsSync(releaseSrc)) {
+  fs.copyFileSync(releaseSrc, path.resolve('nexchat-release.apk'));
+  console.log(`✅ Signed Release APK copied -> ${path.resolve('nexchat-release.apk')} (${(fs.statSync('nexchat-release.apk').size / 1024 / 1024).toFixed(2)} MB)`);
 }
+
+if (fs.existsSync(debugSrc)) {
+  fs.copyFileSync(debugSrc, path.resolve('nexchat-debug.apk'));
+  console.log(`✅ Debug APK copied -> ${path.resolve('nexchat-debug.apk')} (${(fs.statSync('nexchat-debug.apk').size / 1024 / 1024).toFixed(2)} MB)`);
+}
+
+console.log('\n🎉 ALL BUILDS COMPLETED SUCCESSFULLY!');

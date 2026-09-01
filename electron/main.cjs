@@ -63,6 +63,42 @@ function createWindow() {
   });
 }
 
+// Update Tray context menu dynamically
+function updateTrayMenu() {
+  if (!tray) return;
+  const isAutoLaunch = app.getLoginItemSettings().openAtLogin;
+
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: 'Open NexChat',
+      click: () => {
+        if (mainWindow) {
+          mainWindow.show();
+          mainWindow.focus();
+        }
+      },
+    },
+    {
+      label: 'Start with Windows',
+      type: 'checkbox',
+      checked: isAutoLaunch,
+      click: (item) => {
+        app.setLoginItemSettings({ openAtLogin: item.checked, openAsHidden: true });
+      },
+    },
+    { type: 'separator' },
+    {
+      label: 'Quit NexChat',
+      click: () => {
+        isQuitting = true;
+        app.quit();
+      },
+    },
+  ]);
+
+  tray.setContextMenu(contextMenu);
+}
+
 // Create Windows System Tray
 function createTray() {
   const iconPath = path.join(__dirname, '../client/public/favicon.png');
@@ -75,28 +111,8 @@ function createTray() {
 
   tray = new Tray(trayIcon);
   tray.setToolTip('NexChat Messenger');
+  updateTrayMenu();
 
-  const contextMenu = Menu.buildFromTemplate([
-    {
-      label: 'Open NexChat',
-      click: () => {
-        if (mainWindow) {
-          mainWindow.show();
-          mainWindow.focus();
-        }
-      },
-    },
-    { type: 'separator' },
-    {
-      label: 'Quit',
-      click: () => {
-        isQuitting = true;
-        app.quit();
-      },
-    },
-  ]);
-
-  tray.setContextMenu(contextMenu);
   tray.on('double-click', () => {
     if (mainWindow) {
       mainWindow.show();
@@ -111,8 +127,18 @@ ipcMain.on('set-badge-count', (event, count) => {
     app.setBadgeCount(count || 0);
   }
   if (tray) {
-    tray.setToolTip(count > 0 ? `NexChat (${count} unread)` : 'NexChat');
+    tray.setToolTip(count > 0 ? `NexChat (${count} unread)` : 'NexChat Messenger');
   }
+});
+
+ipcMain.handle('get-auto-launch', () => {
+  return app.getLoginItemSettings().openAtLogin;
+});
+
+ipcMain.handle('set-auto-launch', (event, enabled) => {
+  app.setLoginItemSettings({ openAtLogin: Boolean(enabled), openAsHidden: true });
+  updateTrayMenu();
+  return app.getLoginItemSettings().openAtLogin;
 });
 
 ipcMain.on('show-notification', (event, { title, body, icon, conversationId }) => {
