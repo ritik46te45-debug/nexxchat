@@ -2,17 +2,12 @@ import webPush from 'web-push';
 import dotenv from 'dotenv';
 dotenv.config();
 
-// VAPID keys — check environment or use pre-generated production keys
-let vapidPublicKey = process.env.VAPID_PUBLIC_KEY;
-let vapidPrivateKey = process.env.VAPID_PRIVATE_KEY;
+// Stable permanent VAPID keys so push subscriptions never break across server restarts
+const DEFAULT_VAPID_PUBLIC_KEY = 'BAx4nhchItRZUwG2labo03mFeHdmCH9y6TFn3mxT69lMm9ELOZ24S_K5WsjLbVS0iARZZQM2svINqQnXYD4zGO4';
+const DEFAULT_VAPID_PRIVATE_KEY = 'walG8pWdUt6XFstodPG9oWAUVW_bevy9-l65g2-wUW0';
 
-if (!vapidPublicKey || !vapidPrivateKey) {
-  // Generate a stable pair if not provided in environment
-  const vapidKeys = webPush.generateVAPIDKeys();
-  vapidPublicKey = vapidKeys.publicKey;
-  vapidPrivateKey = vapidKeys.privateKey;
-  console.log('🔑 Generated VAPID Keys for Web Push Notifications');
-}
+const vapidPublicKey = process.env.VAPID_PUBLIC_KEY || DEFAULT_VAPID_PUBLIC_KEY;
+const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY || DEFAULT_VAPID_PRIVATE_KEY;
 
 webPush.setVapidDetails(
   process.env.VAPID_SUBJECT || 'mailto:support@nexchat.app',

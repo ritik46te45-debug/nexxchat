@@ -2,6 +2,7 @@ import cloudinary from '../config/cloudinary.js';
 import path from 'path';
 import fs from 'fs';
 import mime from 'mime-types';
+import fetch from 'node-fetch';
 
 // Allowed MIME types
 const ALLOWED_TYPES = {
@@ -263,71 +264,42 @@ export const deleteFile = async (req, res) => {
   }
 };
 
-// DOWNLOAD / PROXY FILE WITH FORCED ATTACHMENT HEADER & CLOUDINARY AUTHENTICATION
-export const downloadProxy = async (req, res) => {
+export const downloadFileProxy = async (req, res) => {
   try {
-    const fileUrl = req.query.url;
-    const requestedName = req.query.filename || 'document.pdf';
+    const { url, filename } = req.query;
 
-    if (!fileUrl) {
-      return res.status(400).json({ error: 'URL parameter is required' });
+    if (!url) {
+      return res.status(400).json({ error: 'URL is required' });
     }
 
-    // Sanitize requested filename
-    const sanitizedName = requestedName.replace(/[^a-zA-Z0-9._-]/g, '_');
-
-    // 1. Local file on disk
-    if (fileUrl.startsWith('/uploads/')) {
-      const localPath = path.join(process.cwd(), 'public', fileUrl);
-      if (fs.existsSync(localPath)) {
-        return res.download(localPath, sanitizedName);
+    // Generate a signed URL using Cloudinary credentials
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Basic ${Buffer.from(
+          `${process.env.CLOUDINARY_API_KEY}:${process.env.CLOUDINARY_API_SECRET}`
+        ).toString('base64')}`
       }
-    }
-
-    // 2. Fetch from Cloudinary or remote URL
-    const targetUrl = fileUrl.startsWith('http') ? fileUrl : `${req.protocol}://${req.get('host')}${fileUrl}`;
-
-    // Build headers with Basic Auth for Cloudinary if keys are available
-    const headers = {};
-    if (targetUrl.includes('cloudinary.com') && hasValidCloudinaryConfig()) {
-      const authString = `${process.env.CLOUDINARY_API_KEY}:${process.env.CLOUDINARY_API_SECRET}`;
-      headers['Authorization'] = 'Basic ' + Buffer.from(authString).toString('base64');
-    }
-
-    let response = await fetch(targetUrl, { headers });
-
-    // If Cloudinary returned 401/403 for raw assets, generate a signed URL
-    if (!response.ok && targetUrl.includes('cloudinary.com') && hasValidCloudinaryConfig()) {
-      try {
-        const urlMatch = targetUrl.match(/\/upload\/(?:v\d+\/)?(.+?)(?:\?|$)/);
-        if (urlMatch && urlMatch[1]) {
-          const publicId = urlMatch[1];
-          const isRaw = targetUrl.includes('/raw/');
-          const signedUrl = cloudinary.url(publicId, {
-            resource_type: isRaw ? 'raw' : 'image',
-            type: 'upload',
-            sign_url: true,
-            secure: true,
-          });
-          response = await fetch(signedUrl);
-        }
-      } catch (signErr) {
-        console.warn('Signed URL fallback error:', signErr);
-      }
-    }
+    });
 
     if (!response.ok) {
-      return res.status(response.status).json({ error: `Failed to fetch file (${response.status})` });
+      // If auth fails, try fetching directly (for public files)
+      const directResponse = await fetch(url);
+      if (!directResponse.ok) {
+        return res.status(400).json({ error: 'Failed to fetch file' });
+      }
+      const contentType = directResponse.headers.get('content-type') || 'application/octet-stream';
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Disposition', `attachment; filename="${filename || 'download'}"`);
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      return directResponse.body.pipe(res);
     }
 
-    const contentType = response.headers.get('content-type') || (sanitizedName.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream');
+    const contentType = response.headers.get('content-type') || 'application/octet-stream';
     res.setHeader('Content-Type', contentType);
-    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(sanitizedName)}"; filename*=UTF-8''${encodeURIComponent(sanitizedName)}`);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename || 'download'}"`);
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+    response.body.pipe(res);
 
-    const buffer = Buffer.from(await response.arrayBuffer());
-    return res.send(buffer);
   } catch (error) {
     console.error('Download proxy error:', error);
     res.status(500).json({ error: 'Download failed' });
