@@ -84,30 +84,7 @@ export const downloadFile = async (rawUrl, originalFileName, mimeType) => {
 
   toast.loading(`Downloading ${fileName}...`, { id: 'file-download', duration: 4000 });
 
-  // Strategy 1: Direct Fetch from source URL
-  try {
-    const response = await fetch(fullUrl, { mode: 'cors' });
-    if (response.ok) {
-      const blob = await response.blob();
-      const blobUrl = window.URL.createObjectURL(blob);
-
-      const a = document.createElement('a');
-      a.style.display = 'none';
-      a.href = blobUrl;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => window.URL.revokeObjectURL(blobUrl), 1000);
-
-      toast.success(`Saved ${fileName}`, { id: 'file-download', duration: 2500 });
-      return;
-    }
-  } catch (directErr) {
-    console.warn('Direct fetch failed, falling back to backend download stream:', directErr);
-  }
-
-  // Strategy 2: Backend Download Proxy via Axios (authenticated & CORS enabled)
+  // Strategy 1: Backend Download Proxy via Axios (authenticated, signed, & CORS enabled)
   try {
     const response = await api.get(
       `/upload/download?url=${encodeURIComponent(fullUrl)}&filename=${encodeURIComponent(fileName)}`,
@@ -125,27 +102,49 @@ export const downloadFile = async (rawUrl, originalFileName, mimeType) => {
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      setTimeout(() => window.URL.revokeObjectURL(blobUrl), 1000);
+      setTimeout(() => window.URL.revokeObjectURL(blobUrl), 2000);
 
       toast.success(`Saved ${fileName}`, { id: 'file-download', duration: 2500 });
       return;
     }
   } catch (apiErr) {
-    console.warn('Axios download failed, attempting direct window download:', apiErr);
+    console.warn('Backend download proxy failed, trying direct blob fetch:', apiErr);
   }
 
-  // Strategy 3: Direct download trigger
+  // Strategy 2: Direct Fetch from source URL
+  try {
+    const response = await fetch(fullUrl, { mode: 'cors' });
+    if (response.ok) {
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = blobUrl;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => window.URL.revokeObjectURL(blobUrl), 2000);
+
+      toast.success(`Saved ${fileName}`, { id: 'file-download', duration: 2500 });
+      return;
+    }
+  } catch (directErr) {
+    console.warn('Direct fetch failed:', directErr);
+  }
+
+  // Strategy 3: Hidden background iframe download (NEVER opens blank tabs or redirects to Cloudinary)
   try {
     const proxyUrl = `${backendBase}/api/upload/download?url=${encodeURIComponent(fullUrl)}&filename=${encodeURIComponent(fileName)}${token ? `&token=${encodeURIComponent(token)}` : ''}`;
-    const a = document.createElement('a');
-    a.href = proxyUrl;
-    a.download = fileName;
-    a.target = '_blank';
-    a.rel = 'noopener noreferrer';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    toast.success(`Download started for ${fileName}`, { id: 'file-download', duration: 2500 });
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    iframe.src = proxyUrl;
+    document.body.appendChild(iframe);
+    setTimeout(() => {
+      try { document.body.removeChild(iframe); } catch(e){}
+    }, 30000);
+    toast.success(`Downloading ${fileName}...`, { id: 'file-download', duration: 2500 });
   } catch (err) {
     toast.error('Failed to download file', { id: 'file-download' });
   }
