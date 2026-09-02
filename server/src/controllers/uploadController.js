@@ -272,34 +272,66 @@ export const downloadFileProxy = async (req, res) => {
       return res.status(400).json({ error: 'URL is required' });
     }
 
-    // Generate a signed URL using Cloudinary credentials
-    const response = await fetch(url, {
-      headers: {
-        'Authorization': `Basic ${Buffer.from(
-          `${process.env.CLOUDINARY_API_KEY}:${process.env.CLOUDINARY_API_SECRET}`
-        ).toString('base64')}`
-      }
-    });
+    const safeFilename = filename || 'download';
 
-    if (!response.ok) {
-      // If auth fails, try fetching directly (for public files)
-      const directResponse = await fetch(url);
-      if (!directResponse.ok) {
-        return res.status(400).json({ error: 'Failed to fetch file' });
+    // 1. Local disk uploads
+    if (url.startsWith('/uploads/')) {
+      const localPath = path.join(process.cwd(), 'public', url);
+      if (fs.existsSync(localPath)) {
+        return res.download(localPath, safeFilename);
       }
-      const contentType = directResponse.headers.get('content-type') || 'application/octet-stream';
-      res.setHeader('Content-Type', contentType);
-      res.setHeader('Content-Disposition', `attachment; filename="${filename || 'download'}"`);
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      return directResponse.body.pipe(res);
     }
 
-    const contentType = response.headers.get('content-type') || 'application/octet-stream';
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Content-Disposition', `attachment; filename="${filename || 'download'}"`);
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    response.body.pipe(res);
+    let targetFetchUrl = url.startsWith('http') ? url : `${req.protocol}://${req.get('host')}${url}`;
 
+    // 2. If it's a Cloudinary URL, use Cloudinary signed download API to bypass CDN 401 ACL restrictions
+    if (targetFetchUrl.includes('cloudinary.com') && hasValidCloudinaryConfig()) {
+      try {
+        const urlMatch = targetFetchUrl.match(/\/upload\/(?:v\d+\/)?(.+?)(?:\?|$)/);
+        if (urlMatch && urlMatch[1]) {
+          const fullPublicId = urlMatch[1];
+          const isRaw = targetFetchUrl.includes('/raw/');
+          const isVideo = targetFetchUrl.includes('/video/');
+          const resourceType = isRaw ? 'raw' : (isVideo ? 'video' : 'image');
+          const extMatch = fullPublicId.match(/\.([a-zA-Z0-9]+)$/);
+          const format = extMatch ? extMatch[1] : (safeFilename.split('.').pop() || 'pdf');
+
+          const signedUrl = cloudinary.utils.private_download_url(fullPublicId, format, {
+            resource_type: resourceType,
+            type: 'upload',
+          });
+
+          if (signedUrl) {
+            targetFetchUrl = signedUrl;
+          }
+        }
+      } catch (signErr) {
+        console.warn('Cloudinary private download url signing error:', signErr);
+      }
+    }
+
+    // 3. Fetch from target URL (signed Cloudinary API or direct)
+    let response = await fetch(targetFetchUrl);
+
+    // Fallback: If signed fetch failed and target was rewritten, retry original URL
+    if (!response.ok && targetFetchUrl !== url) {
+      const fallbackResponse = await fetch(url);
+      if (fallbackResponse.ok) {
+        response = fallbackResponse;
+      }
+    }
+
+    if (!response.ok) {
+      return res.status(400).json({ error: `Failed to fetch file (status ${response.status})` });
+    }
+
+    const contentType = response.headers.get('content-type') || (safeFilename.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream');
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(safeFilename)}"`);
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, Content-Type');
+
+    response.body.pipe(res);
   } catch (error) {
     console.error('Download proxy error:', error);
     res.status(500).json({ error: 'Download failed' });
