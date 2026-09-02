@@ -52,6 +52,7 @@ export const downloadFile = async (rawUrl, originalFileName, mimeType) => {
   if (!rawUrl) return;
 
   const backendBase = getBackendBase();
+  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('accessToken') : null;
 
   // 1. Resolve absolute URL
   let fullUrl = rawUrl;
@@ -83,15 +84,9 @@ export const downloadFile = async (rawUrl, originalFileName, mimeType) => {
 
   toast.loading(`Downloading ${fileName}...`, { id: 'file-download', duration: 4000 });
 
-  // 3. Strategy A: Direct blob fetch
+  // Strategy 1: Direct Fetch from source URL
   try {
-    let fetchTarget = fullUrl;
-    // For Cloudinary files, inject fl_attachment transformation if possible
-    if (fullUrl.includes('cloudinary.com') && fullUrl.includes('/upload/') && !fullUrl.includes('fl_attachment')) {
-      fetchTarget = fullUrl.replace('/upload/', `/upload/fl_attachment:${encodeURIComponent(fileName)}/`);
-    }
-
-    const response = await fetch(fetchTarget, { mode: 'cors' });
+    const response = await fetch(fullUrl, { mode: 'cors' });
     if (response.ok) {
       const blob = await response.blob();
       const blobUrl = window.URL.createObjectURL(blob);
@@ -109,13 +104,16 @@ export const downloadFile = async (rawUrl, originalFileName, mimeType) => {
       return;
     }
   } catch (directErr) {
-    console.warn('Direct fetch failed, falling back to server download proxy:', directErr);
+    console.warn('Direct fetch failed, trying backend download proxy:', directErr);
   }
 
-  // 4. Strategy B: Backend Download Proxy (handles CORS, custom headers & attachment streaming)
+  // Strategy 2: Backend Proxy Streaming Fetch (includes auth token and CORS bypass)
   try {
-    const proxyUrl = `${backendBase}/api/upload/download?url=${encodeURIComponent(fullUrl)}&filename=${encodeURIComponent(fileName)}`;
-    const proxyRes = await fetch(proxyUrl);
+    const proxyUrl = `${backendBase}/api/upload/download?url=${encodeURIComponent(fullUrl)}&filename=${encodeURIComponent(fileName)}${token ? `&token=${encodeURIComponent(token)}` : ''}`;
+    const headers = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const proxyRes = await fetch(proxyUrl, { headers });
     if (proxyRes.ok) {
       const blob = await proxyRes.blob();
       const blobUrl = window.URL.createObjectURL(blob);
@@ -133,20 +131,19 @@ export const downloadFile = async (rawUrl, originalFileName, mimeType) => {
       return;
     }
   } catch (proxyErr) {
-    console.warn('Proxy download failed, attempting window open fallback:', proxyErr);
+    console.warn('Proxy download failed, attempting hidden iframe fallback:', proxyErr);
   }
 
-  // 5. Strategy C: Direct iframe / anchor fallback
+  // Strategy 3: Hidden iframe download trigger (doesn't open blank tabs or trigger popup blocker)
   try {
-    const proxyUrl = `${backendBase}/api/upload/download?url=${encodeURIComponent(fullUrl)}&filename=${encodeURIComponent(fileName)}`;
-    const a = document.createElement('a');
-    a.href = proxyUrl;
-    a.download = fileName;
-    a.target = '_blank';
-    a.rel = 'noopener noreferrer';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    const proxyUrl = `${backendBase}/api/upload/download?url=${encodeURIComponent(fullUrl)}&filename=${encodeURIComponent(fileName)}${token ? `&token=${encodeURIComponent(token)}` : ''}`;
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    iframe.src = proxyUrl;
+    document.body.appendChild(iframe);
+    setTimeout(() => {
+      try { document.body.removeChild(iframe); } catch(e){}
+    }, 60000);
     toast.success(`Download started for ${fileName}`, { id: 'file-download', duration: 2500 });
   } catch (err) {
     toast.error('Failed to download file', { id: 'file-download' });

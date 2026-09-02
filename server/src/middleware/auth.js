@@ -24,6 +24,10 @@ export const authenticate = async (req, res, next) => {
     if (req.headers.authorization?.startsWith('Bearer ')) {
       token = req.headers.authorization.split(' ')[1];
     }
+    // Check query param (for direct browser file downloads and media streaming)
+    else if (req.query?.token) {
+      token = req.query.token;
+    }
     // Check cookies
     else if (req.cookies?.accessToken) {
       token = req.cookies.accessToken;
