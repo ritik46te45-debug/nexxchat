@@ -106,7 +106,9 @@ export const uploadFile = async (req, res) => {
     // If Cloudinary keys are configured, try Cloudinary
     if (hasValidCloudinaryConfig()) {
       try {
-        const resourceType = category === 'image' ? 'image' : category === 'video' ? 'video' : 'raw';
+        // PDFs in Cloudinary must use resource_type: 'image' or 'auto' to enable public delivery & thumbnailing
+        const isPdf = ext === '.pdf' || effectiveMime === 'application/pdf';
+        const resourceType = (category === 'image' || isPdf) ? 'image' : (category === 'video' ? 'video' : 'raw');
         const folder = `nexchat/${category}s`;
 
         const result = await new Promise((resolve, reject) => {
@@ -116,9 +118,11 @@ export const uploadFile = async (req, res) => {
             public_id: `${Date.now()}_${sanitizedName}`,
             use_filename: true,
             unique_filename: false,
+            access_mode: 'public',
+            type: 'upload',
           };
 
-          if (category === 'image' && !effectiveMime.includes('gif') && !effectiveMime.includes('svg')) {
+          if (category === 'image' && !isPdf && !effectiveMime.includes('gif') && !effectiveMime.includes('svg')) {
             options.transformation = [{ quality: 'auto', fetch_format: 'auto' }];
           }
 
@@ -191,7 +195,8 @@ export const uploadMultipleFiles = async (req, res) => {
 
         if (hasValidCloudinaryConfig()) {
           try {
-            const resourceType = category === 'image' ? 'image' : category === 'video' ? 'video' : 'raw';
+            const isPdf = ext === '.pdf' || effectiveMime === 'application/pdf';
+            const resourceType = (category === 'image' || isPdf) ? 'image' : (category === 'video' ? 'video' : 'raw');
             const result = await new Promise((resolve, reject) => {
               const stream = cloudinary.uploader.upload_stream(
                 {
@@ -200,6 +205,8 @@ export const uploadMultipleFiles = async (req, res) => {
                   public_id: `${Date.now()}_${sanitizedName}`,
                   use_filename: true,
                   unique_filename: false,
+                  access_mode: 'public',
+                  type: 'upload',
                 },
                 (error, result) => {
                   if (error) reject(error);
@@ -256,7 +263,7 @@ export const deleteFile = async (req, res) => {
   }
 };
 
-// DOWNLOAD / PROXY FILE WITH FORCED ATTACHMENT HEADER
+// DOWNLOAD / PROXY FILE WITH FORCED ATTACHMENT HEADER & CLOUDINARY AUTHENTICATION
 export const downloadProxy = async (req, res) => {
   try {
     const fileUrl = req.query.url;
@@ -269,7 +276,7 @@ export const downloadProxy = async (req, res) => {
     // Sanitize requested filename
     const sanitizedName = requestedName.replace(/[^a-zA-Z0-9._-]/g, '_');
 
-    // If local file on disk
+    // 1. Local file on disk
     if (fileUrl.startsWith('/uploads/')) {
       const localPath = path.join(process.cwd(), 'public', fileUrl);
       if (fs.existsSync(localPath)) {
@@ -277,15 +284,43 @@ export const downloadProxy = async (req, res) => {
       }
     }
 
-    // Remote URL (Cloudinary, external storage, etc.)
+    // 2. Fetch from Cloudinary or remote URL
     const targetUrl = fileUrl.startsWith('http') ? fileUrl : `${req.protocol}://${req.get('host')}${fileUrl}`;
-    const response = await fetch(targetUrl);
 
-    if (!response.ok) {
-      return res.status(response.status).json({ error: 'Failed to fetch source file' });
+    // Build headers with Basic Auth for Cloudinary if keys are available
+    const headers = {};
+    if (targetUrl.includes('cloudinary.com') && hasValidCloudinaryConfig()) {
+      const authString = `${process.env.CLOUDINARY_API_KEY}:${process.env.CLOUDINARY_API_SECRET}`;
+      headers['Authorization'] = 'Basic ' + Buffer.from(authString).toString('base64');
     }
 
-    const contentType = response.headers.get('content-type') || 'application/octet-stream';
+    let response = await fetch(targetUrl, { headers });
+
+    // If Cloudinary returned 401/403 for raw assets, generate a signed URL
+    if (!response.ok && targetUrl.includes('cloudinary.com') && hasValidCloudinaryConfig()) {
+      try {
+        const urlMatch = targetUrl.match(/\/upload\/(?:v\d+\/)?(.+?)(?:\?|$)/);
+        if (urlMatch && urlMatch[1]) {
+          const publicId = urlMatch[1];
+          const isRaw = targetUrl.includes('/raw/');
+          const signedUrl = cloudinary.url(publicId, {
+            resource_type: isRaw ? 'raw' : 'image',
+            type: 'upload',
+            sign_url: true,
+            secure: true,
+          });
+          response = await fetch(signedUrl);
+        }
+      } catch (signErr) {
+        console.warn('Signed URL fallback error:', signErr);
+      }
+    }
+
+    if (!response.ok) {
+      return res.status(response.status).json({ error: `Failed to fetch file (${response.status})` });
+    }
+
+    const contentType = response.headers.get('content-type') || (sanitizedName.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream');
     res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(sanitizedName)}"; filename*=UTF-8''${encodeURIComponent(sanitizedName)}`);
     res.setHeader('Access-Control-Allow-Origin', '*');

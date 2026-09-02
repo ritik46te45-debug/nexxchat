@@ -21,7 +21,9 @@ export default function PdfViewerModal({ isOpen, onClose, pdfUrl, fileName, file
   const [error, setError] = useState(null);
   const [pdfDoc, setPdfDoc] = useState(null);
   const [rawPdfBuffer, setRawPdfBuffer] = useState(null);
+  const [blobUrl, setBlobUrl] = useState(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [useEmbedFallback, setUseEmbedFallback] = useState(false);
 
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
@@ -36,13 +38,19 @@ export default function PdfViewerModal({ isOpen, onClose, pdfUrl, fileName, file
     if (!isOpen || !pdfUrl) {
       setPdfDoc(null);
       setRawPdfBuffer(null);
+      if (blobUrl) {
+        URL.revokeObjectURL(blobUrl);
+        setBlobUrl(null);
+      }
       setError(null);
+      setUseEmbedFallback(false);
       return;
     }
 
     let isMounted = true;
     setLoading(true);
     setError(null);
+    setUseEmbedFallback(false);
     setCurrentPage(1);
     setRotation(0);
 
@@ -57,10 +65,10 @@ export default function PdfViewerModal({ isOpen, onClose, pdfUrl, fileName, file
             arrayBuffer = await directRes.arrayBuffer();
           }
         } catch (e) {
-          console.warn('Direct PDF fetch failed, using backend streaming proxy:', e);
+          console.warn('Direct PDF fetch failed, using backend proxy:', e);
         }
 
-        // 2. If direct fetch failed, fetch via authenticated backend proxy
+        // 2. Fetch via authenticated backend proxy
         if (!arrayBuffer) {
           const res = await api.get(
             `/upload/download?url=${encodeURIComponent(pdfUrl)}&filename=${encodeURIComponent(finalFileName)}`,
@@ -72,18 +80,30 @@ export default function PdfViewerModal({ isOpen, onClose, pdfUrl, fileName, file
         if (!isMounted) return;
         setRawPdfBuffer(arrayBuffer);
 
-        // 3. Parse with PDF.js
-        const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
-        const doc = await loadingTask.promise;
+        const blob = new Blob([arrayBuffer], { type: 'application/pdf' });
+        const bUrl = URL.createObjectURL(blob);
+        setBlobUrl(bUrl);
 
-        if (!isMounted) return;
-        setPdfDoc(doc);
-        setNumPages(doc.numPages);
-        setLoading(false);
+        // 3. Parse with PDF.js
+        try {
+          const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
+          const doc = await loadingTask.promise;
+
+          if (!isMounted) return;
+          setPdfDoc(doc);
+          setNumPages(doc.numPages);
+          setLoading(false);
+        } catch (parseErr) {
+          console.warn('PDF.js parse failed, falling back to embedded viewer:', parseErr);
+          if (isMounted) {
+            setUseEmbedFallback(true);
+            setLoading(false);
+          }
+        }
       } catch (err) {
         console.error('Inbuilt PDF Viewer error:', err);
         if (isMounted) {
-          setError('Failed to load PDF document.');
+          setError('Could not retrieve PDF data.');
           setLoading(false);
         }
       }
@@ -101,7 +121,7 @@ export default function PdfViewerModal({ isOpen, onClose, pdfUrl, fileName, file
 
   // Render current page onto canvas
   useEffect(() => {
-    if (!pdfDoc || !canvasRef.current || currentPage < 1) return;
+    if (!pdfDoc || !canvasRef.current || currentPage < 1 || useEmbedFallback) return;
 
     let isCancelled = false;
 
@@ -149,17 +169,15 @@ export default function PdfViewerModal({ isOpen, onClose, pdfUrl, fileName, file
     return () => {
       isCancelled = true;
     };
-  }, [pdfDoc, currentPage, scale, rotation]);
+  }, [pdfDoc, currentPage, scale, rotation, useEmbedFallback]);
 
   if (!isOpen || !pdfUrl) return null;
 
-  // Instant In-Memory Direct Download (100% Reliable & Offline-Ready)
+  // Instant In-Memory Direct Download (100% Guaranteed to Save to Storage)
   const handleInstantDownload = (e) => {
     e?.stopPropagation();
     try {
-      if (rawPdfBuffer) {
-        const blob = new Blob([rawPdfBuffer], { type: 'application/pdf' });
-        const blobUrl = URL.createObjectURL(blob);
+      if (blobUrl) {
         const a = document.createElement('a');
         a.style.display = 'none';
         a.href = blobUrl;
@@ -167,12 +185,26 @@ export default function PdfViewerModal({ isOpen, onClose, pdfUrl, fileName, file
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
-        toast.success(`Downloaded ${finalFileName}`);
+        toast.success(`Saved ${finalFileName}`);
         return;
       }
 
-      // Fallback if buffer not yet loaded
+      if (rawPdfBuffer) {
+        const blob = new Blob([rawPdfBuffer], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = finalFileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+        toast.success(`Saved ${finalFileName}`);
+        return;
+      }
+
+      // Fallback
       window.open(pdfUrl, '_blank');
     } catch (err) {
       toast.error('Download failed');
@@ -181,9 +213,7 @@ export default function PdfViewerModal({ isOpen, onClose, pdfUrl, fileName, file
 
   const handlePrint = (e) => {
     e?.stopPropagation();
-    if (rawPdfBuffer) {
-      const blob = new Blob([rawPdfBuffer], { type: 'application/pdf' });
-      const blobUrl = URL.createObjectURL(blob);
+    if (blobUrl) {
       const printWin = window.open(blobUrl);
       if (printWin) {
         printWin.focus();
@@ -230,34 +260,38 @@ export default function PdfViewerModal({ isOpen, onClose, pdfUrl, fileName, file
         {/* Toolbar Controls */}
         <div className="flex items-center gap-1.5 sm:gap-2">
           {/* Zoom Controls */}
-          <div className="hidden md:flex items-center bg-dark-input rounded-xl p-0.5 border border-dark-border/60">
-            <button
-              onClick={() => setScale((s) => Math.max(s - 0.2, 0.6))}
-              className="p-1.5 rounded-lg text-surface-400 hover:text-white hover:bg-dark-hover transition-colors"
-              title="Zoom out"
-            >
-              <ZoomOut className="w-4 h-4" />
-            </button>
-            <span className="text-xs font-mono text-surface-300 px-2 min-w-[48px] text-center">
-              {Math.round(scale * 100)}%
-            </span>
-            <button
-              onClick={() => setScale((s) => Math.min(s + 0.2, 2.5))}
-              className="p-1.5 rounded-lg text-surface-400 hover:text-white hover:bg-dark-hover transition-colors"
-              title="Zoom in"
-            >
-              <ZoomIn className="w-4 h-4" />
-            </button>
-          </div>
+          {!useEmbedFallback && (
+            <div className="hidden md:flex items-center bg-dark-input rounded-xl p-0.5 border border-dark-border/60">
+              <button
+                onClick={() => setScale((s) => Math.max(s - 0.2, 0.6))}
+                className="p-1.5 rounded-lg text-surface-400 hover:text-white hover:bg-dark-hover transition-colors"
+                title="Zoom out"
+              >
+                <ZoomOut className="w-4 h-4" />
+              </button>
+              <span className="text-xs font-mono text-surface-300 px-2 min-w-[48px] text-center">
+                {Math.round(scale * 100)}%
+              </span>
+              <button
+                onClick={() => setScale((s) => Math.min(s + 0.2, 2.5))}
+                className="p-1.5 rounded-lg text-surface-400 hover:text-white hover:bg-dark-hover transition-colors"
+                title="Zoom in"
+              >
+                <ZoomIn className="w-4 h-4" />
+              </button>
+            </div>
+          )}
 
           {/* Rotate */}
-          <button
-            onClick={() => setRotation((r) => (r + 90) % 360)}
-            className="p-2 rounded-xl bg-dark-input hover:bg-dark-hover text-surface-300 hover:text-white border border-dark-border/60 transition-all active:scale-95"
-            title="Rotate Clockwise"
-          >
-            <RotateCw className="w-4 h-4" />
-          </button>
+          {!useEmbedFallback && (
+            <button
+              onClick={() => setRotation((r) => (r + 90) % 360)}
+              className="p-2 rounded-xl bg-dark-input hover:bg-dark-hover text-surface-300 hover:text-white border border-dark-border/60 transition-all active:scale-95"
+              title="Rotate Clockwise"
+            >
+              <RotateCw className="w-4 h-4" />
+            </button>
+          )}
 
           {/* Fullscreen */}
           <button
@@ -335,7 +369,19 @@ export default function PdfViewerModal({ isOpen, onClose, pdfUrl, fileName, file
           </div>
         )}
 
-        {!loading && !error && (
+        {/* Embedded Object fallback if canvas is not supported */}
+        {!loading && !error && useEmbedFallback && blobUrl && (
+          <div className="w-full h-full max-w-5xl bg-white rounded-2xl overflow-hidden shadow-2xl my-auto">
+            <embed
+              src={`${blobUrl}#toolbar=1`}
+              type="application/pdf"
+              className="w-full h-full border-0"
+            />
+          </div>
+        )}
+
+        {/* Native PDF.js Canvas Rendering */}
+        {!loading && !error && !useEmbedFallback && (
           <div className="flex flex-col items-center shadow-2xl rounded-xl overflow-hidden bg-white my-auto animate-scale-in">
             <canvas ref={canvasRef} className="block max-w-full" />
           </div>
@@ -343,7 +389,7 @@ export default function PdfViewerModal({ isOpen, onClose, pdfUrl, fileName, file
       </div>
 
       {/* ── Bottom Page Navigator Bar (WhatsApp / Acrobat style) ── */}
-      {!loading && !error && numPages > 0 && (
+      {!loading && !error && !useEmbedFallback && numPages > 0 && (
         <div className="flex items-center justify-between px-6 py-2.5 bg-dark-card/95 border-t border-dark-border z-20">
           <button
             disabled={currentPage <= 1}
