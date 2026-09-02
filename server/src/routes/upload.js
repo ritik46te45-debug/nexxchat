@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { authenticate } from '../middleware/auth.js';
-import { uploadFile, uploadMultipleFiles, deleteFile } from '../controllers/uploadController.js';
+import { uploadFile, uploadMultipleFiles, deleteFile, downloadProxy } from '../controllers/uploadController.js';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -9,6 +9,10 @@ const upload = multer({
 });
 
 const router = Router();
+
+// Public download proxy for forced attachment downloading across all browsers
+router.get('/download', downloadProxy);
+
 router.use(authenticate);
 
 router.post('/single', upload.single('file'), uploadFile);

@@ -255,3 +255,46 @@ export const deleteFile = async (req, res) => {
     res.status(500).json({ error: 'Delete failed' });
   }
 };
+
+// DOWNLOAD / PROXY FILE WITH FORCED ATTACHMENT HEADER
+export const downloadProxy = async (req, res) => {
+  try {
+    const fileUrl = req.query.url;
+    const requestedName = req.query.filename || 'document.pdf';
+
+    if (!fileUrl) {
+      return res.status(400).json({ error: 'URL parameter is required' });
+    }
+
+    // Sanitize requested filename
+    const sanitizedName = requestedName.replace(/[^a-zA-Z0-9._-]/g, '_');
+
+    // If local file on disk
+    if (fileUrl.startsWith('/uploads/')) {
+      const localPath = path.join(process.cwd(), 'public', fileUrl);
+      if (fs.existsSync(localPath)) {
+        return res.download(localPath, sanitizedName);
+      }
+    }
+
+    // Remote URL (Cloudinary, external storage, etc.)
+    const targetUrl = fileUrl.startsWith('http') ? fileUrl : `${req.protocol}://${req.get('host')}${fileUrl}`;
+    const response = await fetch(targetUrl);
+
+    if (!response.ok) {
+      return res.status(response.status).json({ error: 'Failed to fetch source file' });
+    }
+
+    const contentType = response.headers.get('content-type') || 'application/octet-stream';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(sanitizedName)}"; filename*=UTF-8''${encodeURIComponent(sanitizedName)}`);
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    return res.send(buffer);
+  } catch (error) {
+    console.error('Download proxy error:', error);
+    res.status(500).json({ error: 'Download failed' });
+  }
+};
