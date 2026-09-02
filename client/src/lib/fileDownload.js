@@ -98,24 +98,24 @@ export const downloadFile = async (rawUrl, originalFileName, mimeType) => {
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      window.URL.revokeObjectURL(blobUrl);
+      setTimeout(() => window.URL.revokeObjectURL(blobUrl), 1000);
 
       toast.success(`Saved ${fileName}`, { id: 'file-download', duration: 2500 });
       return;
     }
   } catch (directErr) {
-    console.warn('Direct fetch failed, trying backend download proxy:', directErr);
+    console.warn('Direct fetch failed, falling back to backend download stream:', directErr);
   }
 
-  // Strategy 2: Backend Proxy Streaming Fetch (includes auth token and CORS bypass)
+  // Strategy 2: Backend Download Proxy via Axios (authenticated & CORS enabled)
   try {
-    const proxyUrl = `${backendBase}/api/upload/download?url=${encodeURIComponent(fullUrl)}&filename=${encodeURIComponent(fileName)}${token ? `&token=${encodeURIComponent(token)}` : ''}`;
-    const headers = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const response = await api.get(
+      `/upload/download?url=${encodeURIComponent(fullUrl)}&filename=${encodeURIComponent(fileName)}`,
+      { responseType: 'blob' }
+    );
 
-    const proxyRes = await fetch(proxyUrl, { headers });
-    if (proxyRes.ok) {
-      const blob = await proxyRes.blob();
+    if (response.data) {
+      const blob = new Blob([response.data], { type: mimeType || 'application/octet-stream' });
       const blobUrl = window.URL.createObjectURL(blob);
 
       const a = document.createElement('a');
@@ -125,25 +125,26 @@ export const downloadFile = async (rawUrl, originalFileName, mimeType) => {
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      window.URL.revokeObjectURL(blobUrl);
+      setTimeout(() => window.URL.revokeObjectURL(blobUrl), 1000);
 
       toast.success(`Saved ${fileName}`, { id: 'file-download', duration: 2500 });
       return;
     }
-  } catch (proxyErr) {
-    console.warn('Proxy download failed, attempting hidden iframe fallback:', proxyErr);
+  } catch (apiErr) {
+    console.warn('Axios download failed, attempting direct window download:', apiErr);
   }
 
-  // Strategy 3: Hidden iframe download trigger (doesn't open blank tabs or trigger popup blocker)
+  // Strategy 3: Direct download trigger
   try {
     const proxyUrl = `${backendBase}/api/upload/download?url=${encodeURIComponent(fullUrl)}&filename=${encodeURIComponent(fileName)}${token ? `&token=${encodeURIComponent(token)}` : ''}`;
-    const iframe = document.createElement('iframe');
-    iframe.style.display = 'none';
-    iframe.src = proxyUrl;
-    document.body.appendChild(iframe);
-    setTimeout(() => {
-      try { document.body.removeChild(iframe); } catch(e){}
-    }, 60000);
+    const a = document.createElement('a');
+    a.href = proxyUrl;
+    a.download = fileName;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
     toast.success(`Download started for ${fileName}`, { id: 'file-download', duration: 2500 });
   } catch (err) {
     toast.error('Failed to download file', { id: 'file-download' });
