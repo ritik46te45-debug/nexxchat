@@ -4,6 +4,7 @@ import {
   ChevronLeft, ChevronRight, Maximize2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { downloadFile } from '../../lib/fileDownload';
 
 export default function ImageViewerModal({
   images = [],
@@ -18,15 +19,15 @@ export default function ImageViewerModal({
   const currentImage = images[currentIndex] || { url: '' };
 
   const handlePrev = useCallback(() => {
+    setCurrentIndex((prev) => (prev > 0 ? prev - 1 : images.length - 1));
     setZoom(1);
     setRotation(0);
-    setCurrentIndex((prev) => (prev > 0 ? prev - 1 : images.length - 1));
   }, [images.length]);
 
   const handleNext = useCallback(() => {
+    setCurrentIndex((prev) => (prev < images.length - 1 ? prev + 1 : 0));
     setZoom(1);
     setRotation(0);
-    setCurrentIndex((prev) => (prev < images.length - 1 ? prev + 1 : 0));
   }, [images.length]);
 
   // Keyboard navigation
@@ -42,23 +43,13 @@ export default function ImageViewerModal({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handlePrev, handleNext, onClose]);
 
-  const handleDownload = async () => {
+  const handleDownload = () => {
     if (!currentImage.url) return;
-    try {
-      const response = await fetch(currentImage.url);
-      const blob = await response.blob();
-      const blobUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = currentImage.fileName || `nexchat_image_${Date.now()}.jpg`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(blobUrl);
-      toast.success('Image saved!');
-    } catch {
-      window.open(currentImage.url, '_blank');
-    }
+    downloadFile(
+      currentImage.url,
+      currentImage.fileName || `nexchat_image_${Date.now()}.jpg`,
+      'image/jpeg'
+    );
   };
 
   return (

@@ -62,6 +62,8 @@ export const updateAvatar = async (req, res) => {
                 { quality: 'auto', fetch_format: 'auto' },
               ],
               resource_type: 'image',
+              type: 'upload',
+              access_mode: 'public',
             },
             (error, result) => {
               if (error) reject(error);
