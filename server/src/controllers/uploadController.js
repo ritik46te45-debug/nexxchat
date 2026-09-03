@@ -284,6 +284,17 @@ export const downloadFileProxy = async (req, res) => {
 
     let targetFetchUrl = url.startsWith('http') ? url : `${req.protocol}://${req.get('host')}${url}`;
 
+    // SSRF Protection: Only allow fetching from whitelisted domains
+    const ALLOWED_DOMAINS = ['res.cloudinary.com', 'api.cloudinary.com', req.get('host')].filter(Boolean);
+    try {
+      const parsed = new URL(targetFetchUrl);
+      if (!ALLOWED_DOMAINS.some(d => parsed.hostname === d || parsed.hostname.endsWith(`.${d}`))) {
+        return res.status(403).json({ error: 'Download from this domain is not allowed' });
+      }
+    } catch {
+      return res.status(400).json({ error: 'Invalid URL' });
+    }
+
     // 2. Direct fetch first (for raw uploads like BRCCO, this returns 200 directly from CDN)
     let response = await fetch(targetFetchUrl);
 

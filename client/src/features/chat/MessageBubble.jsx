@@ -74,6 +74,13 @@ export default function MessageBubble({
     };
   }, [showContextMenu]);
 
+  // Clean up long press timer on unmount
+  useEffect(() => {
+    return () => {
+      if (longPressTimer.current) clearTimeout(longPressTimer.current);
+    };
+  }, []);
+
   const {
     reactToMessage, deleteMessage, toggleStarMessage,
     setEditingMessage, setReplyingMessage, votePoll

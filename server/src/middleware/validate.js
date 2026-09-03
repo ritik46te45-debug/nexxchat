@@ -46,7 +46,7 @@ export const validateMessage = [
     .isLength({ max: 10000 }).withMessage('Message too long (max 10000 chars)'),
   body('type')
     .optional()
-    .isIn(['text', 'image', 'video', 'audio', 'voice', 'document', 'file', 'gif', 'sticker', 'location', 'contact', 'poll', 'link', 'forwarded'])
+    .isIn(['text', 'image', 'video', 'audio', 'voice', 'document', 'file', 'gif', 'sticker', 'location', 'contact', 'poll', 'link', 'forwarded', 'video_note'])
     .withMessage('Invalid message type'),
   handleValidationErrors,
 ];

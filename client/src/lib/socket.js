@@ -88,7 +88,8 @@ export const connectSocket = (token) => {
               if (data.refreshToken) {
                 localStorage.setItem('refreshToken', data.refreshToken);
               }
-              socket.auth = { token: data.accessToken };
+              const deviceId = getOrCreateDeviceId();
+              socket.auth = { token: data.accessToken, deviceId };
               socket.connect();
             }
           }
@@ -108,7 +109,8 @@ export const connectSocket = (token) => {
 
 export const updateSocketToken = (newToken) => {
   if (socket && newToken) {
-    socket.auth = { token: newToken };
+    const deviceId = getOrCreateDeviceId();
+    socket.auth = { token: newToken, deviceId };
     if (!socket.connected) {
       socket.connect();
     }

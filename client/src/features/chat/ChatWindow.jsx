@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
+import { useRef, useEffect, useLayoutEffect, useState, useCallback, useMemo } from 'react';
 import {
   ArrowLeft, Phone, Video, MoreVertical, Search, Loader2,
   ChevronDown, Info, Clock, Timer, Check, Star, Pin,
@@ -48,6 +48,7 @@ export default function ChatWindow({ onStartCall }) {
   const initialScrollTimersRef = useRef([]);
 
   const [isAtBottom, setIsAtBottom] = useState(true);
+  const [isChatReady, setIsChatReady] = useState(false);
   const [showScrollDown, setShowScrollDown] = useState(false);
   const [unreadNewCount, setUnreadNewCount] = useState(0);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
@@ -208,6 +209,7 @@ export default function ChatWindow({ onStartCall }) {
     if (!convId) return;
 
     clearInitialTimers();
+    setIsChatReady(false);
     isInitialLoadRef.current = true;
     userScrolledUpRef.current = false;
     prevConvIdRef.current = convId;
@@ -225,10 +227,18 @@ export default function ChatWindow({ onStartCall }) {
     scrollToBottom(false);
   }, [activeConversation?._id, scrollToBottom, clearSelectedMessages, clearInitialTimers]);
 
-  // Handle messages changes (initial load, older pagination, or incoming message)
-  useEffect(() => {
+  // Synchronously position messages container directly to latest message BEFORE browser paint
+  useLayoutEffect(() => {
     const el = messagesContainerRef.current;
-    if (!el || !messages || messages.length === 0) return;
+    if (!el || !messages) return;
+
+    if (messages.length === 0) {
+      if (!isLoadingMessages) {
+        setIsChatReady(true);
+        isInitialLoadRef.current = false;
+      }
+      return;
+    }
 
     const lastMsg = messages[messages.length - 1];
     const lastMsgId = lastMsg?._id?.toString();
@@ -243,33 +253,27 @@ export default function ChatWindow({ onStartCall }) {
       return;
     }
 
-    // 2. Initial load for this conversation: scroll to bottom once so it opens at latest
+    // 2. Initial load for this conversation: position directly to bottom synchronously
     if (isInitialLoadRef.current) {
-      const forceBottom = () => {
-        if (!userScrolledUpRef.current && messagesContainerRef.current) {
-          messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
-          messagesEndRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
-        }
-      };
+      el.scrollTop = el.scrollHeight;
+      messagesEndRef.current?.scrollIntoView({ behavior: 'instant', block: 'end' });
 
-      forceBottom();
       clearInitialTimers();
 
-      const t1 = setTimeout(forceBottom, 50);
-      const t2 = setTimeout(forceBottom, 150);
-      const t3 = setTimeout(() => {
-        forceBottom();
-        isInitialLoadRef.current = false;
-        if (!userScrolledUpRef.current) {
-          setIsAtBottom(true);
-          setShowScrollDown(false);
+      const frameId = requestAnimationFrame(() => {
+        if (el && !userScrolledUpRef.current) {
+          el.scrollTop = el.scrollHeight;
+          messagesEndRef.current?.scrollIntoView({ behavior: 'instant', block: 'end' });
         }
-      }, 300);
+        setIsChatReady(true);
+        isInitialLoadRef.current = false;
+        setIsAtBottom(true);
+        setShowScrollDown(false);
+      });
 
-      initialScrollTimersRef.current = [t1, t2, t3];
       prevMessagesCountRef.current = messages.length;
       prevLastMessageIdRef.current = lastMsgId;
-      return;
+      return () => cancelAnimationFrame(frameId);
     }
 
     // 3. Subsequent message updates: check if a genuinely NEW message was added at the bottom
@@ -279,7 +283,6 @@ export default function ChatWindow({ onStartCall }) {
       lastMsgId !== prevLastMessageIdRef.current
     );
 
-    // Update trackers
     prevLastMessageIdRef.current = lastMsgId;
     prevMessagesCountRef.current = messages.length;
 
@@ -308,7 +311,7 @@ export default function ChatWindow({ onStartCall }) {
         setUnreadNewCount(0);
       }
     }
-  }, [messages, activeConversation?._id, myId, scrollToBottom, clearInitialTimers]);
+  }, [messages, isLoadingMessages, myId, scrollToBottom, clearInitialTimers]);
 
   // Keep pinned to latest message as images, stickers, and media load — ONLY if user is already at the bottom
   useEffect(() => {
@@ -651,86 +654,89 @@ export default function ChatWindow({ onStartCall }) {
         )}
 
         {/* Messages Scroll Container */}
-        <div
-          ref={messagesContainerRef}
-          onScroll={handleScroll}
-          className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 sm:p-4 space-y-1 hide-scrollbar bg-dark-bg relative"
-        >
-
-          {/* Full-screen centered spinner during initial conversation load */}
-          {isLoadingMessages && messages.length === 0 && (
-            <div className="flex-1 flex items-center justify-center py-16">
-              <Loader2 className="w-7 h-7 animate-spin text-primary-400" />
+        <div className="flex-1 min-h-0 relative overflow-hidden flex flex-col">
+          {/* Centered smooth loader until messages are aligned at latest message */}
+          {(!isChatReady || (isLoadingMessages && messages.length === 0)) && (
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-dark-bg">
+              <Loader2 className="w-8 h-8 animate-spin text-primary-400" />
             </div>
           )}
 
-          {/* Top Loading Spinner for Infinite History Scroll (pagination) */}
-          {isLoadingMessages && messages.length > 0 && (
-            <div className="flex justify-center py-2">
-              <Loader2 className="w-5 h-5 animate-spin text-primary-400" />
-            </div>
-          )}
-
-          {/* Render Messages with Smart Grouping and Date Separators — hidden during initial load to prevent flash */}
-          {!(isLoadingMessages && messages.length === 0) && (messages || []).map((msg, index) => {
-            if (!msg) return null;
-            const prevMsg = messages[index - 1];
-            const nextMsg = messages[index + 1];
-
-            // Date separator check
-            const currentDate = safeFormat(msg.createdAt, 'yyyy-MM-dd');
-            const prevDate = safeFormat(prevMsg?.createdAt, 'yyyy-MM-dd');
-            const showDateHeader = Boolean(currentDate && currentDate !== prevDate);
-
-            // 5-minute consecutive sender grouping
-            const isOwn = (msg.sender?._id || msg.sender)?.toString() === myId;
-            const prevSenderId = (prevMsg?.sender?._id || prevMsg?.sender)?.toString();
-            const currSenderId = (msg.sender?._id || msg.sender)?.toString();
-            const timeDiffMins = prevMsg?.createdAt && msg.createdAt && !isNaN(new Date(msg.createdAt).getTime()) && !isNaN(new Date(prevMsg.createdAt).getTime())
-              ? Math.abs(new Date(msg.createdAt) - new Date(prevMsg.createdAt)) / 60000
-              : 999;
-
-            const isConsecutive = prevSenderId === currSenderId && timeDiffMins < 5 && !showDateHeader;
-            const isGroupStart = !isConsecutive;
-            const showName = isGroupStart && (activeConversation.type === 'group' || activeConversation.type === 'channel');
-            const showAvatar = isGroupStart;
-
-            const isPinned = Array.isArray(pinnedList) && pinnedList.some((p) => (p.message?._id || p.message)?.toString() === msg._id?.toString());
-            const isSelected = Array.isArray(selectedMessageIds) && selectedMessageIds.includes(msg._id);
-
-            return (
-              <div key={msg._id || msg.clientId || index}>
-                {/* Date Badge Separator */}
-                {showDateHeader && (
-                  <div className="flex justify-center my-3">
-                    <span className="px-3.5 py-1 rounded-full bg-dark-card/70 border border-dark-border/60 text-[10px] font-bold tracking-wider text-surface-400 shadow-sm backdrop-blur-md">
-                      {formatDateSeparator(msg.createdAt)}
-                    </span>
-                  </div>
-                )}
-
-                {/* Message Bubble */}
-                <MessageBubble
-                  message={msg}
-                  isOwn={isOwn}
-                  showAvatar={showAvatar}
-                  showName={showName}
-                  isGroupStart={isGroupStart}
-                  isPinned={isPinned}
-                  onPinMessage={handlePinMessage}
-                  onJumpToMessage={handleJumpToMessage}
-                  onOpenImageViewer={(imgs, idx) => setImageViewerData({ images: imgs, initialIndex: idx })}
-                  onForward={(m) => setForwardingMessage(m)}
-                  onRemind={(m) => setReminderMessage(m)}
-                  isSelectionMode={selectedMessageIds.length > 0}
-                  isSelected={isSelected}
-                  onToggleSelect={toggleSelectMessage}
-                />
+          <div
+            ref={messagesContainerRef}
+            onScroll={handleScroll}
+            className={`flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 sm:p-4 space-y-1 hide-scrollbar bg-dark-bg relative transition-opacity duration-150 ${
+              !isChatReady ? 'opacity-0 pointer-events-none' : 'opacity-100'
+            }`}
+          >
+            {/* Top Loading Spinner for Infinite History Scroll (pagination) */}
+            {isLoadingMessages && messages.length > 0 && (
+              <div className="flex justify-center py-2">
+                <Loader2 className="w-5 h-5 animate-spin text-primary-400" />
               </div>
-            );
-          })}
+            )}
 
-          <div ref={messagesEndRef} />
+            {/* Render Messages with Smart Grouping and Date Separators */}
+            {(messages || []).map((msg, index) => {
+              if (!msg) return null;
+              const prevMsg = messages[index - 1];
+              const nextMsg = messages[index + 1];
+
+              // Date separator check
+              const currentDate = safeFormat(msg.createdAt, 'yyyy-MM-dd');
+              const prevDate = safeFormat(prevMsg?.createdAt, 'yyyy-MM-dd');
+              const showDateHeader = Boolean(currentDate && currentDate !== prevDate);
+
+              // 5-minute consecutive sender grouping
+              const isOwn = (msg.sender?._id || msg.sender)?.toString() === myId;
+              const prevSenderId = (prevMsg?.sender?._id || prevMsg?.sender)?.toString();
+              const currSenderId = (msg.sender?._id || msg.sender)?.toString();
+              const timeDiffMins = prevMsg?.createdAt && msg.createdAt && !isNaN(new Date(msg.createdAt).getTime()) && !isNaN(new Date(prevMsg.createdAt).getTime())
+                ? Math.abs(new Date(msg.createdAt) - new Date(prevMsg.createdAt)) / 60000
+                : 999;
+
+              const isConsecutive = prevSenderId === currSenderId && timeDiffMins < 5 && !showDateHeader;
+              const isGroupStart = !isConsecutive;
+              const showName = isGroupStart && (activeConversation.type === 'group' || activeConversation.type === 'channel');
+              const showAvatar = isGroupStart;
+
+              const isPinned = Array.isArray(pinnedList) && pinnedList.some((p) => (p.message?._id || p.message)?.toString() === msg._id?.toString());
+              const isSelected = Array.isArray(selectedMessageIds) && selectedMessageIds.includes(msg._id);
+
+              return (
+                <div key={msg._id || msg.clientId || index}>
+                  {/* Date Badge Separator */}
+                  {showDateHeader && (
+                    <div className="flex justify-center my-3">
+                      <span className="px-3.5 py-1 rounded-full bg-dark-card/70 border border-dark-border/60 text-[10px] font-bold tracking-wider text-surface-400 shadow-sm backdrop-blur-md">
+                        {formatDateSeparator(msg.createdAt)}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Message Bubble */}
+                  <MessageBubble
+                    message={msg}
+                    isOwn={isOwn}
+                    showAvatar={showAvatar}
+                    showName={showName}
+                    isGroupStart={isGroupStart}
+                    isPinned={isPinned}
+                    onPinMessage={handlePinMessage}
+                    onJumpToMessage={handleJumpToMessage}
+                    onOpenImageViewer={(imgs, idx) => setImageViewerData({ images: imgs, initialIndex: idx })}
+                    onForward={(m) => setForwardingMessage(m)}
+                    onRemind={(m) => setReminderMessage(m)}
+                    isSelectionMode={selectedMessageIds.length > 0}
+                    isSelected={isSelected}
+                    onToggleSelect={toggleSelectMessage}
+                  />
+                </div>
+              );
+            })}
+
+            <div ref={messagesEndRef} />
+          </div>
         </div>
 
         {/* Floating "↓ X new messages" Badge */}

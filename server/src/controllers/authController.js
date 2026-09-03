@@ -396,14 +396,9 @@ export const forgotPassword = async (req, res) => {
 
     sendPasswordResetEmail(user.email, resetToken).catch(console.error);
 
-    const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
-    const resetUrl = `${clientUrl}/reset-password/${resetToken}`;
-
     res.json({
       success: true,
-      message: 'Password reset link generated successfully.',
-      resetToken,
-      resetUrl,
+      message: 'If the email is registered, a password reset link has been sent.',
     });
   } catch (error) {
     console.error('Forgot password error:', error);
