@@ -107,9 +107,9 @@ export const uploadFile = async (req, res) => {
     // If Cloudinary keys are configured, try Cloudinary
     if (hasValidCloudinaryConfig()) {
       try {
-        // PDFs in Cloudinary must use resource_type: 'image' or 'auto' to enable public delivery & thumbnailing
+        // PDFs and documents must use resource_type: 'raw' to enable direct public delivery without image ACL blocks
         const isPdf = ext === '.pdf' || effectiveMime === 'application/pdf';
-        const resourceType = (category === 'image' || isPdf) ? 'image' : (category === 'video' ? 'video' : 'raw');
+        const resourceType = isPdf ? 'raw' : (category === 'image' ? 'image' : (category === 'video' ? 'video' : 'raw'));
         const folder = `nexchat/${category}s`;
 
         const result = await new Promise((resolve, reject) => {
@@ -197,7 +197,7 @@ export const uploadMultipleFiles = async (req, res) => {
         if (hasValidCloudinaryConfig()) {
           try {
             const isPdf = ext === '.pdf' || effectiveMime === 'application/pdf';
-            const resourceType = (category === 'image' || isPdf) ? 'image' : (category === 'video' ? 'video' : 'raw');
+            const resourceType = isPdf ? 'raw' : (category === 'image' ? 'image' : (category === 'video' ? 'video' : 'raw'));
             const result = await new Promise((resolve, reject) => {
               const stream = cloudinary.uploader.upload_stream(
                 {
@@ -284,40 +284,42 @@ export const downloadFileProxy = async (req, res) => {
 
     let targetFetchUrl = url.startsWith('http') ? url : `${req.protocol}://${req.get('host')}${url}`;
 
-    // 2. If it's a Cloudinary URL, use Cloudinary signed download API to bypass CDN 401 ACL restrictions
-    if (targetFetchUrl.includes('cloudinary.com') && hasValidCloudinaryConfig()) {
+    // 2. Direct fetch first (for raw uploads like BRCCO, this returns 200 directly from CDN)
+    let response = await fetch(targetFetchUrl);
+
+    // 3. If direct fetch returned 401 or not ok and it's a Cloudinary URL, use private_download_url
+    if (!response.ok && targetFetchUrl.includes('cloudinary.com') && hasValidCloudinaryConfig()) {
       try {
         const urlMatch = targetFetchUrl.match(/\/upload\/(?:v\d+\/)?(.+?)(?:\?|$)/);
         if (urlMatch && urlMatch[1]) {
-          const fullPublicId = urlMatch[1];
+          let publicId = urlMatch[1];
           const isRaw = targetFetchUrl.includes('/raw/');
           const isVideo = targetFetchUrl.includes('/video/');
           const resourceType = isRaw ? 'raw' : (isVideo ? 'video' : 'image');
-          const extMatch = fullPublicId.match(/\.([a-zA-Z0-9]+)$/);
+
+          // Clean duplicate extensions (e.g. .pdf.pdf -> .pdf)
+          if (publicId.endsWith('.pdf.pdf')) {
+            publicId = publicId.slice(0, -4);
+          }
+
+          const extMatch = publicId.match(/\.([a-zA-Z0-9]+)$/);
           const format = extMatch ? extMatch[1] : (safeFilename.split('.').pop() || 'pdf');
 
-          const signedUrl = cloudinary.utils.private_download_url(fullPublicId, format, {
+          const signedUrl = cloudinary.utils.private_download_url(publicId, format, {
             resource_type: resourceType,
             type: 'upload',
+            expires_at: Math.floor(Date.now() / 1000) + 3600,
           });
 
           if (signedUrl) {
-            targetFetchUrl = signedUrl;
+            const signedRes = await fetch(signedUrl);
+            if (signedRes.ok) {
+              response = signedRes;
+            }
           }
         }
       } catch (signErr) {
-        console.warn('Cloudinary private download url signing error:', signErr);
-      }
-    }
-
-    // 3. Fetch from target URL (signed Cloudinary API or direct)
-    let response = await fetch(targetFetchUrl);
-
-    // Fallback: If signed fetch failed and target was rewritten, retry original URL
-    if (!response.ok && targetFetchUrl !== url) {
-      const fallbackResponse = await fetch(url);
-      if (fallbackResponse.ok) {
-        response = fallbackResponse;
+        console.warn('Cloudinary private download url error:', signErr.message);
       }
     }
 
@@ -327,7 +329,7 @@ export const downloadFileProxy = async (req, res) => {
 
     const contentType = response.headers.get('content-type') || (safeFilename.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream');
     res.setHeader('Content-Type', contentType);
-    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(safeFilename)}"`);
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(safeFilename)}"`);
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, Content-Type');
 
