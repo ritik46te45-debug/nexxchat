@@ -37,6 +37,11 @@ export default function ChatWindow({ onStartCall }) {
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const disappearingMenuRef = useRef(null);
+  const isInitialLoadRef = useRef(true);
+  const prevConvIdRef = useRef(null);
+  const prevMessagesCountRef = useRef(0);
+  const prevScrollHeightRef = useRef(0);
+  const isFetchingOlderRef = useRef(false);
 
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [showScrollDown, setShowScrollDown] = useState(false);
@@ -165,40 +170,146 @@ export default function ChatWindow({ onStartCall }) {
   const convRecording = (activeConversation?._id && recordingUsers?.[activeConversation._id]) || {};
   const recordingNames = Object.values(convRecording);
 
-  // Auto-scroll to bottom or increment unread counter
+  // Helper to scroll messages container directly to bottom
+  const scrollToBottom = useCallback((smooth = false) => {
+    const el = messagesContainerRef.current;
+    if (el) {
+      if (smooth) {
+        el.scrollTo({
+          top: el.scrollHeight,
+          behavior: 'smooth',
+        });
+      } else {
+        el.scrollTop = el.scrollHeight;
+      }
+    }
+    messagesEndRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'end' });
+    setIsAtBottom(true);
+    setShowScrollDown(false);
+    setUnreadNewCount(0);
+  }, []);
+
+  // Conversation switch: reset state and prepare for initial load
   useEffect(() => {
-    if (isAtBottom) {
-      scrollToBottom(false);
+    const convId = activeConversation?._id?.toString();
+    if (!convId) return;
+
+    isInitialLoadRef.current = true;
+    prevConvIdRef.current = convId;
+    prevMessagesCountRef.current = 0;
+    prevScrollHeightRef.current = 0;
+    isFetchingOlderRef.current = false;
+    setIsAtBottom(true);
+    setShowScrollDown(false);
+    setUnreadNewCount(0);
+    clearSelectedMessages();
+
+    // Immediate scroll on switch
+    scrollToBottom(false);
+  }, [activeConversation?._id, scrollToBottom, clearSelectedMessages]);
+
+  // Handle messages changes (initial load, older pagination, or incoming message)
+  useEffect(() => {
+    const el = messagesContainerRef.current;
+    if (!el || !messages || messages.length === 0) return;
+
+    // 1. Check if older messages were prepended via infinite scroll
+    if (isFetchingOlderRef.current && messages.length > prevMessagesCountRef.current) {
+      const heightDiff = el.scrollHeight - prevScrollHeightRef.current;
+      el.scrollTop = el.scrollTop + heightDiff;
+      isFetchingOlderRef.current = false;
+      prevMessagesCountRef.current = messages.length;
+      return;
+    }
+
+    // 2. Initial load for this conversation: force scroll to bottom across multiple render frames
+    if (isInitialLoadRef.current) {
+      const forceBottom = () => {
+        if (messagesContainerRef.current) {
+          messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+        }
+        messagesEndRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
+      };
+
+      forceBottom();
+      const raf1 = requestAnimationFrame(() => {
+        forceBottom();
+        const raf2 = requestAnimationFrame(forceBottom);
+        return () => cancelAnimationFrame(raf2);
+      });
+      const t1 = setTimeout(forceBottom, 40);
+      const t2 = setTimeout(forceBottom, 120);
+      const t3 = setTimeout(() => {
+        forceBottom();
+        isInitialLoadRef.current = false;
+        setIsAtBottom(true);
+        setShowScrollDown(false);
+      }, 250);
+
+      prevMessagesCountRef.current = messages.length;
+      return () => {
+        cancelAnimationFrame(raf1);
+        clearTimeout(t1);
+        clearTimeout(t2);
+        clearTimeout(t3);
+      };
+    }
+
+    // 3. New message arrived after initial load
+    const lastMsg = messages[messages.length - 1];
+    const isOwn = (lastMsg?.sender?._id || lastMsg?.sender)?.toString() === myId;
+
+    if (isOwn || isAtBottom) {
+      scrollToBottom(isOwn);
       setUnreadNewCount(0);
     } else {
       setUnreadNewCount((prev) => prev + 1);
+      setShowScrollDown(true);
     }
-  }, [messages.length]);
 
-  // Scroll to bottom on conversation switch
+    prevMessagesCountRef.current = messages.length;
+  }, [messages, activeConversation?._id, myId, isAtBottom, scrollToBottom]);
+
+  // Keep pinned to latest message as images, stickers, and media load
   useEffect(() => {
-    scrollToBottom(false);
-    setUnreadNewCount(0);
-    clearSelectedMessages();
-  }, [activeConversation?._id]);
+    const el = messagesContainerRef.current;
+    if (!el) return;
 
-  const scrollToBottom = (smooth = true) => {
-    messagesEndRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' });
-    setUnreadNewCount(0);
-  };
+    const resizeObserver = new ResizeObserver(() => {
+      if (isAtBottom || isInitialLoadRef.current) {
+        el.scrollTop = el.scrollHeight;
+      }
+    });
+
+    resizeObserver.observe(el);
+    return () => resizeObserver.disconnect();
+  }, [isAtBottom]);
 
   const handleScroll = () => {
     const el = messagesContainerRef.current;
     if (!el) return;
-    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const atBottom = distanceFromBottom < 80;
+
     setIsAtBottom(atBottom);
     setShowScrollDown(!atBottom);
     if (atBottom) setUnreadNewCount(0);
 
-    // Infinite scroll: fetch older messages
-    if (el.scrollTop < 50 && hasMoreMessages && !isLoadingMessages && messages.length > 0) {
+    // Infinite scroll: fetch older messages only if user actively scrolled near top
+    if (
+      !isInitialLoadRef.current &&
+      el.scrollTop < 60 &&
+      hasMoreMessages &&
+      !isLoadingMessages &&
+      messages.length > 0 &&
+      !isFetchingOlderRef.current
+    ) {
       const oldest = messages[0];
       if (oldest?.createdAt) {
+        isFetchingOlderRef.current = true;
+        prevScrollHeightRef.current = el.scrollHeight;
+        prevMessagesCountRef.current = messages.length;
         fetchMessages(activeConversation._id, oldest.createdAt);
       }
     }
