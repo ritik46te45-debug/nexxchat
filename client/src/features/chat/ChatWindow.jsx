@@ -38,10 +38,14 @@ export default function ChatWindow({ onStartCall }) {
   const messagesContainerRef = useRef(null);
   const disappearingMenuRef = useRef(null);
   const isInitialLoadRef = useRef(true);
+  const userScrolledUpRef = useRef(false);
   const prevConvIdRef = useRef(null);
   const prevMessagesCountRef = useRef(0);
   const prevScrollHeightRef = useRef(0);
+  const prevScrollTopRef = useRef(0);
+  const prevLastMessageIdRef = useRef(null);
   const isFetchingOlderRef = useRef(false);
+  const initialScrollTimersRef = useRef([]);
 
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [showScrollDown, setShowScrollDown] = useState(false);
@@ -187,6 +191,15 @@ export default function ChatWindow({ onStartCall }) {
     setIsAtBottom(true);
     setShowScrollDown(false);
     setUnreadNewCount(0);
+    userScrolledUpRef.current = false;
+  }, []);
+
+  // Clear any scheduled initial scroll timers
+  const clearInitialTimers = useCallback(() => {
+    if (initialScrollTimersRef.current && initialScrollTimersRef.current.length > 0) {
+      initialScrollTimersRef.current.forEach((t) => clearTimeout(t));
+      initialScrollTimersRef.current = [];
+    }
   }, []);
 
   // Conversation switch: reset state and prepare for initial load
@@ -194,10 +207,14 @@ export default function ChatWindow({ onStartCall }) {
     const convId = activeConversation?._id?.toString();
     if (!convId) return;
 
+    clearInitialTimers();
     isInitialLoadRef.current = true;
+    userScrolledUpRef.current = false;
     prevConvIdRef.current = convId;
     prevMessagesCountRef.current = 0;
     prevScrollHeightRef.current = 0;
+    prevScrollTopRef.current = 0;
+    prevLastMessageIdRef.current = null;
     isFetchingOlderRef.current = false;
     setIsAtBottom(true);
     setShowScrollDown(false);
@@ -206,100 +223,138 @@ export default function ChatWindow({ onStartCall }) {
 
     // Immediate scroll on switch
     scrollToBottom(false);
-  }, [activeConversation?._id, scrollToBottom, clearSelectedMessages]);
+  }, [activeConversation?._id, scrollToBottom, clearSelectedMessages, clearInitialTimers]);
 
   // Handle messages changes (initial load, older pagination, or incoming message)
   useEffect(() => {
     const el = messagesContainerRef.current;
     if (!el || !messages || messages.length === 0) return;
 
+    const lastMsg = messages[messages.length - 1];
+    const lastMsgId = lastMsg?._id?.toString();
+
     // 1. Check if older messages were prepended via infinite scroll
-    if (isFetchingOlderRef.current && messages.length > prevMessagesCountRef.current) {
+    if (isFetchingOlderRef.current) {
       const heightDiff = el.scrollHeight - prevScrollHeightRef.current;
-      el.scrollTop = el.scrollTop + heightDiff;
+      el.scrollTop = (prevScrollTopRef.current || 0) + heightDiff;
       isFetchingOlderRef.current = false;
       prevMessagesCountRef.current = messages.length;
+      prevLastMessageIdRef.current = lastMsgId;
       return;
     }
 
-    // 2. Initial load for this conversation: force scroll to bottom across multiple render frames
+    // 2. Initial load for this conversation: scroll to bottom once so it opens at latest
     if (isInitialLoadRef.current) {
       const forceBottom = () => {
-        if (messagesContainerRef.current) {
+        if (!userScrolledUpRef.current && messagesContainerRef.current) {
           messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+          messagesEndRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
         }
-        messagesEndRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
       };
 
       forceBottom();
-      const raf1 = requestAnimationFrame(() => {
-        forceBottom();
-        const raf2 = requestAnimationFrame(forceBottom);
-        return () => cancelAnimationFrame(raf2);
-      });
-      const t1 = setTimeout(forceBottom, 40);
-      const t2 = setTimeout(forceBottom, 120);
+      clearInitialTimers();
+
+      const t1 = setTimeout(forceBottom, 50);
+      const t2 = setTimeout(forceBottom, 150);
       const t3 = setTimeout(() => {
         forceBottom();
         isInitialLoadRef.current = false;
-        setIsAtBottom(true);
-        setShowScrollDown(false);
-      }, 250);
+        if (!userScrolledUpRef.current) {
+          setIsAtBottom(true);
+          setShowScrollDown(false);
+        }
+      }, 300);
 
+      initialScrollTimersRef.current = [t1, t2, t3];
       prevMessagesCountRef.current = messages.length;
-      return () => {
-        cancelAnimationFrame(raf1);
-        clearTimeout(t1);
-        clearTimeout(t2);
-        clearTimeout(t3);
-      };
+      prevLastMessageIdRef.current = lastMsgId;
+      return;
     }
 
-    // 3. New message arrived after initial load
-    const lastMsg = messages[messages.length - 1];
+    // 3. Subsequent message updates: check if a genuinely NEW message was added at the bottom
+    const isNewMessageAtBottom = Boolean(
+      prevLastMessageIdRef.current &&
+      lastMsgId &&
+      lastMsgId !== prevLastMessageIdRef.current
+    );
+
+    // Update trackers
+    prevLastMessageIdRef.current = lastMsgId;
+    prevMessagesCountRef.current = messages.length;
+
+    // If NO new message was added at the bottom (e.g. reaction, edit, status update), DO NOT auto-scroll!
+    if (!isNewMessageAtBottom) {
+      return;
+    }
+
+    // A brand new message arrived at the bottom:
     const isOwn = (lastMsg?.sender?._id || lastMsg?.sender)?.toString() === myId;
 
-    if (isOwn || isAtBottom) {
-      scrollToBottom(isOwn);
+    if (isOwn) {
+      // Sent by me: scroll smoothly to bottom
+      userScrolledUpRef.current = false;
+      scrollToBottom(true);
       setUnreadNewCount(0);
     } else {
-      setUnreadNewCount((prev) => prev + 1);
-      setShowScrollDown(true);
+      // Incoming message from someone else:
+      if (userScrolledUpRef.current) {
+        // User is currently reading past messages: DO NOT disrupt them!
+        setUnreadNewCount((prev) => prev + 1);
+        setShowScrollDown(true);
+      } else {
+        // User was already at the bottom: scroll smoothly to show new message
+        scrollToBottom(true);
+        setUnreadNewCount(0);
+      }
     }
+  }, [messages, activeConversation?._id, myId, scrollToBottom, clearInitialTimers]);
 
-    prevMessagesCountRef.current = messages.length;
-  }, [messages, activeConversation?._id, myId, isAtBottom, scrollToBottom]);
-
-  // Keep pinned to latest message as images, stickers, and media load
+  // Keep pinned to latest message as images, stickers, and media load — ONLY if user is already at the bottom
   useEffect(() => {
     const el = messagesContainerRef.current;
     if (!el) return;
 
     const resizeObserver = new ResizeObserver(() => {
-      if (isAtBottom || isInitialLoadRef.current) {
+      // If user has scrolled up to read past chat, NEVER auto-scroll down!
+      if (userScrolledUpRef.current) return;
+
+      const currentDistance = el.scrollHeight - el.scrollTop - el.clientHeight;
+      // Only keep pinned if already right at the bottom (< 40px)
+      if (currentDistance < 40) {
         el.scrollTop = el.scrollHeight;
       }
     });
 
     resizeObserver.observe(el);
     return () => resizeObserver.disconnect();
-  }, [isAtBottom]);
+  }, []);
 
   const handleScroll = () => {
     const el = messagesContainerRef.current;
     if (!el) return;
 
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    const atBottom = distanceFromBottom < 80;
+    const isNearBottom = distanceFromBottom < 60;
 
-    setIsAtBottom(atBottom);
-    setShowScrollDown(!atBottom);
-    if (atBottom) setUnreadNewCount(0);
+    setIsAtBottom(isNearBottom);
+    setShowScrollDown(!isNearBottom);
 
-    // Infinite scroll: fetch older messages only if user actively scrolled near top
+    if (isNearBottom) {
+      // User is at the bottom
+      userScrolledUpRef.current = false;
+      setUnreadNewCount(0);
+    } else if (distanceFromBottom > 100) {
+      // User has scrolled up to see past chat
+      userScrolledUpRef.current = true;
+      clearInitialTimers();
+      isInitialLoadRef.current = false;
+    }
+
+    // Infinite scroll: fetch older messages when user scrolls near the top
     if (
       !isInitialLoadRef.current &&
-      el.scrollTop < 60 &&
+      el.scrollTop < 80 &&
       hasMoreMessages &&
       !isLoadingMessages &&
       messages.length > 0 &&
@@ -308,6 +363,7 @@ export default function ChatWindow({ onStartCall }) {
       const oldest = messages[0];
       if (oldest?.createdAt) {
         isFetchingOlderRef.current = true;
+        prevScrollTopRef.current = el.scrollTop;
         prevScrollHeightRef.current = el.scrollHeight;
         prevMessagesCountRef.current = messages.length;
         fetchMessages(activeConversation._id, oldest.createdAt);
