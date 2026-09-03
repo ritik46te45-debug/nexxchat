@@ -345,106 +345,125 @@ export const dispatchPush = async (recipientUserId, event, data, options = {}) =
       }
     }
 
-    // 6. Get all active devices for this user
-    let devices = await Device.find({ user: userId, status: 'active' });
-    
+    // 6. Get all active devices and push subscriptions for this user
+    const [devices, fullUser] = await Promise.all([
+      Device.find({ user: userId, status: 'active' }),
+      User.findById(userId).select('pushSubscriptions'),
+    ]);
+
     // Build payload
     const payload = buildPayload(event, data, settings);
 
-    // Fallback if no Device records exist yet (legacy migration)
-    if (devices.length === 0) {
-      const fullUser = await User.findById(userId).select('pushSubscriptions');
-      if (fullUser?.pushSubscriptions?.length > 0) {
-        await sendLegacyPush(userId, payload);
-        return { sent: fullUser.pushSubscriptions.length, skipped: 0, errors: 0 };
+    // Collect and deduplicate all VAPID subscriptions across Device and User models
+    const endpointMap = new Map(); // endpoint -> subscription
+    const fcmTokens = new Set();
+
+    // Add VAPID and FCM from Device model
+    for (const device of devices) {
+      // For non-call events, only skip if explicitly requested and device is confirmed actively in foreground
+      if (options.skipForegroundDevices === true && event !== 'call' && device.isSocketConnected) {
+        continue;
       }
-      return { sent: 0, skipped: 'no_devices', errors: 0 };
+
+      if (device.pushTransport === 'vapid' && device.pushSubscription?.endpoint) {
+        endpointMap.set(device.pushSubscription.endpoint, {
+          subscription: {
+            endpoint: device.pushSubscription.endpoint,
+            keys: {
+              p256dh: device.pushSubscription.keys?.p256dh,
+              auth: device.pushSubscription.keys?.auth,
+            },
+          },
+          device,
+        });
+      } else if (device.pushTransport === 'fcm' && device.pushToken) {
+        fcmTokens.add({ token: device.pushToken, device });
+      }
     }
 
-    // 8. Send to each device
-    const skipForeground = options.skipForegroundDevices !== false && event !== 'call';
+    // Add any subscriptions from user.pushSubscriptions (legacy or alternate browsers)
+    if (fullUser?.pushSubscriptions?.length > 0) {
+      for (const sub of fullUser.pushSubscriptions) {
+        if (sub?.endpoint && !endpointMap.has(sub.endpoint)) {
+          endpointMap.set(sub.endpoint, {
+            subscription: {
+              endpoint: sub.endpoint,
+              keys: {
+                p256dh: sub.keys?.p256dh,
+                auth: sub.keys?.auth,
+              },
+            },
+            device: null,
+          });
+        }
+      }
+    }
+
+    if (endpointMap.size === 0 && fcmTokens.size === 0) {
+      return { sent: 0, skipped: 'no_push_targets', errors: 0 };
+    }
+
     let sent = 0;
     let skipped = 0;
     let errors = 0;
 
-    const sendPromises = devices.map(async (device) => {
+    // Send to all VAPID endpoints (Laptops, Desktops, Web, Mobile Browsers)
+    const vapidPromises = Array.from(endpointMap.values()).map(async ({ subscription, device }) => {
       try {
-        // Skip foreground-connected devices for non-call events
-        if (skipForeground && device.isSocketConnected) {
-          skipped++;
-          return;
-        }
+        const result = await sendVapidPush(subscription, payload);
 
-        if (device.pushTransport === 'vapid' && device.pushSubscription?.endpoint) {
-          const subscription = {
-            endpoint: device.pushSubscription.endpoint,
-            keys: {
-              p256dh: device.pushSubscription.keys.p256dh,
-              auth: device.pushSubscription.keys.auth,
-            },
-          };
-
-          const result = await sendVapidPush(subscription, payload);
-
-          if (result?.expired) {
-            // Subscription expired — mark device
+        if (result?.expired) {
+          if (device) {
             await Device.findByIdAndUpdate(device._id, {
-              $set: { status: 'expired', pushSubscription: { endpoint: null, keys: { p256dh: null, auth: null } } },
+              $set: { status: 'expired', 'pushSubscription.endpoint': null },
             });
-            errors++;
-          } else {
-            sent++;
-            // Reset failure count on success
-            if (device.pushFailureCount > 0) {
-              await Device.findByIdAndUpdate(device._id, {
-                $set: { pushFailureCount: 0, lastPushFailure: null },
-              });
-            }
           }
-        } else if (device.pushTransport === 'fcm' && device.pushToken) {
-          const result = await sendFcmPush(device.pushToken, payload);
-          if (result === null) {
-            // FCM not configured yet — don't count as error
-            skipped++;
-          } else if (result?.expired) {
-            await Device.findByIdAndUpdate(device._id, {
-              $set: { status: 'expired', pushToken: null },
-            });
-            errors++;
-          } else {
-            sent++;
-            if (device.pushFailureCount > 0) {
-              await Device.findByIdAndUpdate(device._id, {
-                $set: { pushFailureCount: 0, lastPushFailure: null },
-              });
-            }
-          }
+          await User.findByIdAndUpdate(userId, {
+            $pull: { pushSubscriptions: { endpoint: subscription.endpoint } },
+          });
+          errors++;
         } else {
-          // No push transport configured for this device
-          skipped++;
+          sent++;
+          if (device && device.pushFailureCount > 0) {
+            await Device.findByIdAndUpdate(device._id, {
+              $set: { pushFailureCount: 0, lastPushFailure: null },
+            });
+          }
         }
       } catch (err) {
-        console.error(`[PUSH] Error sending to device ${device.deviceId}:`, err.message);
-
-        // Increment failure count
-        const newFailureCount = (device.pushFailureCount || 0) + 1;
-        const updateFields = {
-          pushFailureCount: newFailureCount,
-          lastPushFailure: new Date(),
-        };
-
-        // Auto-expire after 3 consecutive failures
-        if (newFailureCount >= 3) {
-          updateFields.status = 'expired';
-          updateFields.pushToken = null;
-        }
-
-        await Device.findByIdAndUpdate(device._id, { $set: updateFields });
+        console.warn('[PUSH] VAPID send note:', err.message);
         errors++;
       }
     });
 
-    await Promise.allSettled(sendPromises);
+    // Send to all FCM tokens (Android native devices)
+    const fcmPromises = Array.from(fcmTokens).map(async ({ token, device }) => {
+      try {
+        const result = await sendFcmPush(token, payload);
+        if (result === null) {
+          skipped++;
+        } else if (result?.expired) {
+          if (device) {
+            await Device.findByIdAndUpdate(device._id, {
+              $set: { status: 'expired', pushToken: null },
+            });
+          }
+          errors++;
+        } else {
+          sent++;
+          if (device && device.pushFailureCount > 0) {
+            await Device.findByIdAndUpdate(device._id, {
+              $set: { pushFailureCount: 0, lastPushFailure: null },
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('[PUSH] FCM send note:', err.message);
+        errors++;
+      }
+    });
+
+    await Promise.allSettled([...vapidPromises, ...fcmPromises]);
 
     return { sent, skipped, errors };
   } catch (error) {
