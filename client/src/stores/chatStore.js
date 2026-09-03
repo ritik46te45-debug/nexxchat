@@ -80,8 +80,19 @@ const useChatStore = create((set, get) => ({
     }
   },
 
+  // Monotonically increasing counter to prevent stale fetch responses from overwriting current conversation
+  _fetchGeneration: 0,
+
   setActiveConversation: (conversation) => {
-    set({ activeConversation: conversation, messages: [], hasMoreMessages: true });
+    // Bump generation so any in-flight fetchMessages for the OLD conversation is discarded
+    const gen = (get()._fetchGeneration || 0) + 1;
+    set({
+      activeConversation: conversation,
+      messages: [],
+      hasMoreMessages: true,
+      isLoadingMessages: !!conversation,
+      _fetchGeneration: gen,
+    });
     if (conversation) {
       get().fetchMessages(conversation._id);
       get().markAsRead(conversation._id);
@@ -103,11 +114,21 @@ const useChatStore = create((set, get) => ({
 
   // ====== MESSAGES ======
   fetchMessages: async (conversationId, before = null) => {
-    set({ isLoadingMessages: true });
+    const genAtStart = get()._fetchGeneration;
+    if (!before) {
+      // Only set loading for initial fetch — pagination keeps existing messages visible
+      set({ isLoadingMessages: true });
+    }
     try {
       const params = { limit: 50 };
       if (before) params.before = before;
       const { data } = await api.get(`/messages/${conversationId}`, { params });
+
+      // Guard: discard this response if the user switched to a different conversation while we were fetching
+      if (get()._fetchGeneration !== genAtStart) {
+        return;
+      }
+
       set((state) => ({
         messages: before ? [...data.messages, ...state.messages] : data.messages,
         hasMoreMessages: data.pagination?.hasMore || false,
@@ -115,7 +136,10 @@ const useChatStore = create((set, get) => ({
       }));
     } catch (error) {
       console.error('Fetch messages error:', error);
-      set({ isLoadingMessages: false });
+      // Only clear loading if we're still on the same conversation
+      if (get()._fetchGeneration === genAtStart) {
+        set({ isLoadingMessages: false });
+      }
     }
   },
 

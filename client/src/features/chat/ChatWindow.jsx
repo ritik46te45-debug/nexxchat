@@ -657,15 +657,22 @@ export default function ChatWindow({ onStartCall }) {
           className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 sm:p-4 space-y-1 hide-scrollbar bg-dark-bg relative"
         >
 
-          {/* Top Loading Spinner for Infinite History Scroll */}
-          {isLoadingMessages && (
+          {/* Full-screen centered spinner during initial conversation load */}
+          {isLoadingMessages && messages.length === 0 && (
+            <div className="flex-1 flex items-center justify-center py-16">
+              <Loader2 className="w-7 h-7 animate-spin text-primary-400" />
+            </div>
+          )}
+
+          {/* Top Loading Spinner for Infinite History Scroll (pagination) */}
+          {isLoadingMessages && messages.length > 0 && (
             <div className="flex justify-center py-2">
               <Loader2 className="w-5 h-5 animate-spin text-primary-400" />
             </div>
           )}
 
-          {/* Render Messages with Smart Grouping and Date Separators */}
-          {(messages || []).map((msg, index) => {
+          {/* Render Messages with Smart Grouping and Date Separators — hidden during initial load to prevent flash */}
+          {!(isLoadingMessages && messages.length === 0) && (messages || []).map((msg, index) => {
             if (!msg) return null;
             const prevMsg = messages[index - 1];
             const nextMsg = messages[index + 1];
