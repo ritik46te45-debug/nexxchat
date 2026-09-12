@@ -57,7 +57,11 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
-    const isAuthEndpoint = originalRequest?.url?.includes('/auth/login') || originalRequest?.url?.includes('/auth/register') || originalRequest?.url?.includes('/auth/refresh');
+    const isAuthEndpoint = originalRequest?.url?.includes('/auth/login') ||
+      originalRequest?.url?.includes('/auth/register') ||
+      originalRequest?.url?.includes('/auth/refresh') ||
+      originalRequest?.url?.includes('/auth/reset-password') ||
+      originalRequest?.url?.includes('/auth/forgot-password');
 
     const isTokenExpired = error.response?.status === 401 && !isAuthEndpoint && !originalRequest._retry;
 

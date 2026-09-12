@@ -406,7 +406,8 @@ function App() {
       <Routes>
         <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
         <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
-        <Route path="/reset-password/:token" element={<PublicRoute><ResetPasswordPage /></PublicRoute>} />
+        <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/*" element={<ProtectedRoute><MainLayout /></ProtectedRoute>} />
       </Routes>
     </AppRouter>

@@ -13,12 +13,18 @@ export default function ResetPasswordPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const cleanToken = (token || '').trim();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!password || password.length < 6) {
-      toast.error('Password must be at least 6 characters');
+    if (!cleanToken) {
+      toast.error('Reset token is missing. Please request a new link.');
+      return;
+    }
+
+    if (!password || password.length < 8) {
+      toast.error('Password must be at least 8 characters');
       return;
     }
 
@@ -29,14 +35,21 @@ export default function ResetPasswordPage() {
 
     setIsSubmitting(true);
     try {
-      const { data } = await api.post(`/auth/reset-password/${token}`, { password });
+      const { data } = await api.post(`/auth/reset-password/${cleanToken}`, { password });
       setIsSuccess(true);
       toast.success(data.message || 'Password reset successfully!');
+
+      // Clear any stale local auth tokens so login works cleanly
+      try {
+        localStorage.removeItem('accessToken');
+        localStorage.removeItem('refreshToken');
+      } catch {}
+
       setTimeout(() => {
-        navigate('/login');
-      }, 3000);
+        navigate('/login', { replace: true });
+      }, 2500);
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to reset password. Link may be expired.');
+      toast.error(err.response?.data?.error || 'Failed to reset password. Link may be expired or invalid.');
     } finally {
       setIsSubmitting(false);
     }
@@ -72,10 +85,10 @@ export default function ResetPasswordPage() {
                     type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="At least 6 characters"
+                    placeholder="At least 8 characters"
                     className="w-full pl-10 pr-10 py-2.5 bg-dark-input border border-dark-border rounded-xl text-sm text-white placeholder-surface-500 input-focus transition-all"
                     required
-                    minLength={6}
+                    minLength={8}
                     autoComplete="new-password"
                   />
                   <button
@@ -100,7 +113,7 @@ export default function ResetPasswordPage() {
                     placeholder="Repeat new password"
                     className="w-full pl-10 pr-4 py-2.5 bg-dark-input border border-dark-border rounded-xl text-sm text-white placeholder-surface-500 input-focus transition-all"
                     required
-                    minLength={6}
+                    minLength={8}
                     autoComplete="new-password"
                   />
                 </div>

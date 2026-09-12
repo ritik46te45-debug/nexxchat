@@ -63,7 +63,7 @@ export const sendVerificationEmail = async (email, token) => {
   }
 };
 
-export const sendPasswordResetEmail = async (email, token) => {
+export const sendPasswordResetEmail = async (email, token, clientOrigin = null) => {
   if (!hasSmtpConfig()) {
     console.warn('⚠️  SMTP not configured — cannot send password reset email to', email);
     return { sent: false, reason: 'SMTP not configured' };
@@ -71,7 +71,8 @@ export const sendPasswordResetEmail = async (email, token) => {
 
   try {
     const transporter = createTransporter();
-    const resetUrl = `${process.env.CLIENT_URL}/reset-password/${token}`;
+    const baseUrl = (clientOrigin || process.env.CLIENT_URL || 'https://nexxchat-zeta.vercel.app').replace(/\/+$/, '');
+    const resetUrl = `${baseUrl}/reset-password/${token}`;
 
     await transporter.sendMail({
       from: `"NexChat" <${process.env.SMTP_USER}>`,

@@ -395,10 +395,20 @@ export const forgotPassword = async (req, res) => {
     user.passwordResetExpires = Date.now() + 60 * 60 * 1000; // 1 hour
     await user.save();
 
-    const resetUrl = `${process.env.CLIENT_URL || 'http://localhost:5173'}/reset-password/${resetToken}`;
+    // Determine the frontend URL dynamically (handles Vercel, localhost, custom domain)
+    let clientOrigin = req.get('origin');
+    if (!clientOrigin && req.get('referer')) {
+      try { clientOrigin = new URL(req.get('referer')).origin; } catch {}
+    }
+    if (!clientOrigin) {
+      clientOrigin = process.env.CLIENT_URL || 'https://nexxchat-zeta.vercel.app';
+    }
+    clientOrigin = clientOrigin.replace(/\/+$/, '');
+
+    const resetUrl = `${clientOrigin}/reset-password/${resetToken}`;
 
     // Try sending email
-    const emailResult = await sendPasswordResetEmail(user.email, resetToken);
+    const emailResult = await sendPasswordResetEmail(user.email, resetToken, clientOrigin);
 
     if (emailResult.sent) {
       // Email sent successfully
@@ -430,12 +440,18 @@ export const resetPassword = async (req, res) => {
     const { token } = req.params;
     const { password } = req.body;
 
-    if (!password || password.length < 6) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    const cleanToken = (token || '').trim();
+
+    if (!cleanToken) {
+      return res.status(400).json({ error: 'Reset token is required' });
+    }
+
+    if (!password || password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
     }
 
     const user = await User.findOne({
-      passwordResetToken: token,
+      passwordResetToken: cleanToken,
       passwordResetExpires: { $gt: Date.now() },
     });
 
@@ -456,7 +472,7 @@ export const resetPassword = async (req, res) => {
     res.json({ message: 'Password reset successfully! You can now log in with your new password.' });
   } catch (error) {
     console.error('Reset password error:', error);
-    res.status(500).json({ error: 'Password reset failed' });
+    res.status(500).json({ error: error.message || 'Password reset failed' });
   }
 };
 
