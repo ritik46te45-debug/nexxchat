@@ -3,6 +3,16 @@ import path from 'path';
 import fs from 'fs';
 import mime from 'mime-types';
 import fetch from 'node-fetch';
+import mongoose from 'mongoose';
+import { GridFSBucket } from 'mongodb';
+
+let gridFSBucket = null;
+const getGridFSBucket = () => {
+  if (!gridFSBucket && mongoose.connection?.readyState === 1 && mongoose.connection?.db) {
+    gridFSBucket = new GridFSBucket(mongoose.connection.db, { bucketName: 'uploads' });
+  }
+  return gridFSBucket;
+};
 
 // Allowed MIME types
 const ALLOWED_TYPES = {
@@ -58,11 +68,30 @@ const hasValidCloudinaryConfig = () => {
   return Boolean(name && key && secret && name !== 'your-cloud-name' && !name.includes('your-'));
 };
 
-// Helper: Save file locally on disk as fallback
-const saveFileLocally = async (buffer, category, sanitizedName) => {
+// Helper: Save file persistently in MongoDB GridFS (permanent, never wiped on server restart)
+const saveFilePersistently = async (buffer, category, sanitizedName, mimetype = 'application/octet-stream') => {
+  const filename = `${Date.now()}_${sanitizedName}`;
+  const bucket = getGridFSBucket();
+  if (bucket) {
+    try {
+      await new Promise((resolve, reject) => {
+        const uploadStream = bucket.openUploadStream(filename, {
+          contentType: mimetype,
+          metadata: { category, originalName: sanitizedName, size: buffer.length }
+        });
+        uploadStream.on('error', reject);
+        uploadStream.on('finish', resolve);
+        uploadStream.end(buffer);
+      });
+      return `/api/upload/gridfs/${filename}`;
+    } catch (gridErr) {
+      console.warn('GridFS save failed, falling back to disk:', gridErr);
+    }
+  }
+
+  // Disk fallback if GridFS is unavailable
   const uploadDir = path.join(process.cwd(), 'public/uploads', `${category}s`);
   await fs.promises.mkdir(uploadDir, { recursive: true });
-  const filename = `${Date.now()}_${sanitizedName}`;
   const filePath = path.join(uploadDir, filename);
   await fs.promises.writeFile(filePath, buffer);
   return `/uploads/${category}s/${filename}`;
@@ -104,19 +133,15 @@ export const uploadFile = async (req, res) => {
     let fileUrl = '';
     let publicId = '';
 
-    // If Cloudinary keys are configured, try Cloudinary
-    if (hasValidCloudinaryConfig()) {
+    // Files > 10MB exceed Cloudinary Free raw/image limits — store directly in permanent MongoDB GridFS
+    const CLOUDINARY_MAX_SIZE = 10 * 1024 * 1024; // 10MB
+    const useCloudinary = hasValidCloudinaryConfig() && size <= CLOUDINARY_MAX_SIZE;
+
+    if (useCloudinary) {
       try {
-        // PDFs and documents must use resource_type: 'raw' to enable direct public delivery without image ACL blocks
         const isPdf = ext === '.pdf' || effectiveMime === 'application/pdf';
         const resourceType = isPdf ? 'raw' : (category === 'image' ? 'image' : (category === 'video' ? 'video' : 'raw'));
         const folder = `nexchat/${category}s`;
-
-        // Use chunked stream for large files (> 20MB) to support up to 500MB reliably
-        const isLargeFile = size > 20 * 1024 * 1024;
-        const uploadFn = isLargeFile && typeof cloudinary.uploader.upload_chunked_stream === 'function'
-          ? cloudinary.uploader.upload_chunked_stream.bind(cloudinary.uploader)
-          : cloudinary.uploader.upload_stream.bind(cloudinary.uploader);
 
         const result = await new Promise((resolve, reject) => {
           const options = {
@@ -127,14 +152,13 @@ export const uploadFile = async (req, res) => {
             unique_filename: false,
             access_mode: 'public',
             type: 'upload',
-            ...(isLargeFile ? { chunk_size: 6 * 1024 * 1024 } : {}),
           };
 
           if (category === 'image' && !isPdf && !effectiveMime.includes('gif') && !effectiveMime.includes('svg')) {
             options.transformation = [{ quality: 'auto', fetch_format: 'auto' }];
           }
 
-          const stream = uploadFn(options, (error, result) => {
+          const stream = cloudinary.uploader.upload_stream(options, (error, result) => {
             if (error) reject(error);
             else resolve(result);
           });
@@ -144,12 +168,12 @@ export const uploadFile = async (req, res) => {
         fileUrl = result.secure_url;
         publicId = result.public_id;
       } catch (cloudErr) {
-        console.warn('Cloudinary upload failed, falling back to local storage:', cloudErr.message);
-        fileUrl = await saveFileLocally(buffer, category, sanitizedName);
+        console.warn('Cloudinary upload failed, storing in MongoDB GridFS:', cloudErr.message);
+        fileUrl = await saveFilePersistently(buffer, category, sanitizedName, effectiveMime);
       }
     } else {
-      // Local storage fallback
-      fileUrl = await saveFileLocally(buffer, category, sanitizedName);
+      // Large files (> 10MB) or when Cloudinary is not configured -> MongoDB GridFS (permanent)
+      fileUrl = await saveFilePersistently(buffer, category, sanitizedName, effectiveMime);
     }
 
     res.json({
@@ -201,14 +225,13 @@ export const uploadMultipleFiles = async (req, res) => {
         let fileUrl = '';
         let publicId = '';
 
-        if (hasValidCloudinaryConfig()) {
+        const CLOUDINARY_MAX_SIZE = 10 * 1024 * 1024;
+        const useCloudinary = hasValidCloudinaryConfig() && size <= CLOUDINARY_MAX_SIZE;
+
+        if (useCloudinary) {
           try {
             const isPdf = ext === '.pdf' || effectiveMime === 'application/pdf';
             const resourceType = isPdf ? 'raw' : (category === 'image' ? 'image' : (category === 'video' ? 'video' : 'raw'));
-            const isLargeFile = size > 20 * 1024 * 1024;
-            const uploadFn = isLargeFile && typeof cloudinary.uploader.upload_chunked_stream === 'function'
-              ? cloudinary.uploader.upload_chunked_stream.bind(cloudinary.uploader)
-              : cloudinary.uploader.upload_stream.bind(cloudinary.uploader);
 
             const result = await new Promise((resolve, reject) => {
               const options = {
@@ -219,10 +242,9 @@ export const uploadMultipleFiles = async (req, res) => {
                 unique_filename: false,
                 access_mode: 'public',
                 type: 'upload',
-                ...(isLargeFile ? { chunk_size: 6 * 1024 * 1024 } : {}),
               };
 
-              const stream = uploadFn(options, (error, result) => {
+              const stream = cloudinary.uploader.upload_stream(options, (error, result) => {
                 if (error) reject(error);
                 else resolve(result);
               });
@@ -231,10 +253,10 @@ export const uploadMultipleFiles = async (req, res) => {
             fileUrl = result.secure_url;
             publicId = result.public_id;
           } catch (cloudErr) {
-            fileUrl = await saveFileLocally(buffer, category, sanitizedName);
+            fileUrl = await saveFilePersistently(buffer, category, sanitizedName, effectiveMime);
           }
         } else {
-          fileUrl = await saveFileLocally(buffer, category, sanitizedName);
+          fileUrl = await saveFilePersistently(buffer, category, sanitizedName, effectiveMime);
         }
 
         results.push({
@@ -285,6 +307,30 @@ export const downloadFileProxy = async (req, res) => {
     }
 
     const safeFilename = filename || 'download';
+
+    // 0. Check MongoDB GridFS first (permanent persistent storage)
+    const cleanUrlPart = url.split('?')[0];
+    const urlFilename = path.basename(cleanUrlPart);
+    const bucket = getGridFSBucket();
+
+    if (bucket && urlFilename) {
+      try {
+        const cursor = bucket.find({ filename: urlFilename });
+        const gridFiles = await cursor.toArray();
+        if (gridFiles.length > 0) {
+          const gridFile = gridFiles[0];
+          const contentType = gridFile.contentType || (safeFilename.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream');
+          res.setHeader('Content-Type', contentType);
+          res.setHeader('Content-Length', gridFile.length);
+          res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(safeFilename)}"`);
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, Content-Type, Content-Length');
+          return bucket.openDownloadStreamByName(urlFilename).pipe(res);
+        }
+      } catch (gridErr) {
+        console.warn('GridFS download check error:', gridErr.message);
+      }
+    }
 
     // 1. Local disk uploads (both relative /uploads/... and full http(s)://host/uploads/...)
     let localSubpath = null;
@@ -376,5 +422,38 @@ export const downloadFileProxy = async (req, res) => {
   } catch (error) {
     console.error('Download proxy error:', error);
     res.status(500).json({ error: 'Download failed' });
+  }
+};
+
+// SERVE GRIDFS FILE DIRECTLY (permanent cloud storage via MongoDB)
+export const getGridFSFile = async (req, res) => {
+  try {
+    const { filename } = req.params;
+    const bucket = getGridFSBucket();
+
+    if (!bucket) {
+      return res.status(503).json({ error: 'Database storage not ready' });
+    }
+
+    const cursor = bucket.find({ filename });
+    const files = await cursor.toArray();
+
+    if (!files || files.length === 0) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+
+    const gridFile = files[0];
+    const contentType = gridFile.contentType || (filename.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream');
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Length', gridFile.length);
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(filename)}"`);
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, Content-Type, Content-Length');
+
+    bucket.openDownloadStreamByName(filename).pipe(res);
+  } catch (error) {
+    console.error('GridFS streaming error:', error);
+    res.status(500).json({ error: 'Failed to retrieve file' });
   }
 };

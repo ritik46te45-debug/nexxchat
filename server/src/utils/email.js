@@ -1,12 +1,17 @@
 import nodemailer from 'nodemailer';
 
+const getSmtpCredentials = () => {
+  const user = (process.env.SMTP_USER || 'ritik46te45@gmail.com').trim();
+  const rawPass = process.env.SMTP_PASS || 'ssvn njjy grqf wiha';
+  const pass = rawPass.replace(/\s+/g, '').trim();
+  return { user, pass };
+};
+
 /**
- * Check if SMTP credentials are actually configured.
- * Returns false when env vars are empty / placeholder values.
+ * Check if SMTP credentials are configured.
  */
 const hasSmtpConfig = () => {
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
+  const { user, pass } = getSmtpCredentials();
   return Boolean(
     user && pass &&
     user !== 'your-email@gmail.com' &&
@@ -17,13 +22,14 @@ const hasSmtpConfig = () => {
 };
 
 const createTransporter = () => {
+  const { user, pass } = getSmtpCredentials();
   return nodemailer.createTransport({
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
     port: parseInt(process.env.SMTP_PORT || '587'),
     secure: false,
     auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
+      user,
+      pass,
     },
   });
 };

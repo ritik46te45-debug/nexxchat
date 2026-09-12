@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { authenticate } from '../middleware/auth.js';
-import { uploadFile, uploadMultipleFiles, deleteFile, downloadFileProxy } from '../controllers/uploadController.js';
+import { uploadFile, uploadMultipleFiles, deleteFile, downloadFileProxy, getGridFSFile } from '../controllers/uploadController.js';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -12,6 +12,7 @@ const router = Router();
 
 // Public download proxy for forced attachment downloading across all browsers (NO auth middleware)
 router.get('/download', downloadFileProxy);
+router.get('/gridfs/:filename', getGridFSFile);
 
 router.use(authenticate);
 
