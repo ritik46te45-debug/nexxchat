@@ -1,5 +1,21 @@
 import nodemailer from 'nodemailer';
 
+/**
+ * Check if SMTP credentials are actually configured.
+ * Returns false when env vars are empty / placeholder values.
+ */
+const hasSmtpConfig = () => {
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+  return Boolean(
+    user && pass &&
+    user !== 'your-email@gmail.com' &&
+    !user.includes('your-') &&
+    pass !== 'your-app-password' &&
+    !pass.includes('your-')
+  );
+};
+
 const createTransporter = () => {
   return nodemailer.createTransport({
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
@@ -13,6 +29,11 @@ const createTransporter = () => {
 };
 
 export const sendVerificationEmail = async (email, token) => {
+  if (!hasSmtpConfig()) {
+    console.warn('⚠️  SMTP not configured — skipping verification email to', email);
+    return { sent: false, reason: 'SMTP not configured' };
+  }
+
   try {
     const transporter = createTransporter();
     const verifyUrl = `${process.env.CLIENT_URL}/verify-email/${token}`;
@@ -35,12 +56,19 @@ export const sendVerificationEmail = async (email, token) => {
       `,
     });
     console.log(`✅ Verification email sent to ${email}`);
+    return { sent: true };
   } catch (error) {
     console.error('Failed to send verification email:', error.message);
+    return { sent: false, reason: error.message };
   }
 };
 
 export const sendPasswordResetEmail = async (email, token) => {
+  if (!hasSmtpConfig()) {
+    console.warn('⚠️  SMTP not configured — cannot send password reset email to', email);
+    return { sent: false, reason: 'SMTP not configured' };
+  }
+
   try {
     const transporter = createTransporter();
     const resetUrl = `${process.env.CLIENT_URL}/reset-password/${token}`;
@@ -63,7 +91,9 @@ export const sendPasswordResetEmail = async (email, token) => {
       `,
     });
     console.log(`✅ Password reset email sent to ${email}`);
+    return { sent: true };
   } catch (error) {
     console.error('Failed to send password reset email:', error.message);
+    return { sent: false, reason: error.message };
   }
 };

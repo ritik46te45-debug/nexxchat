@@ -1,25 +1,47 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   X, Download, Printer, FileText, Maximize2, Minimize2, Loader2,
-  AlertCircle
+  AlertCircle, ExternalLink
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 /**
- * Inbuilt PDF Viewer Modal
- * 
- * Root cause of past failures: PDF.js requires a web worker that must be served
- * from the same origin. When the worker fails to load (CSP, CORS, bundler issues),
- * the entire PDF.js pipeline silently breaks with "Unable to render".
- * 
- * This rewrite eliminates PDF.js entirely and uses the browser's native PDF
- * rendering engine (Chrome/Edge/Firefox all have built-in PDF viewers).
- * The PDF binary is fetched via the backend proxy (which handles Cloudinary
- * signed download), converted to a same-origin blob: URL, and displayed
- * in an <object> tag. This approach is 100% reliable on all modern browsers.
- * 
- * Download is untouched — it uses the same working blob download path.
+ * PDF Viewer Modal — Cross-platform (Desktop + Android WebView)
+ *
+ * Root cause of mobile failures:
+ * - Android WebView does NOT have a built-in PDF renderer
+ * - <object type="application/pdf"> silently fails on mobile
+ * - Blob URL + <a download> also doesn't work on Android WebView
+ *
+ * Fix: Detect mobile/Capacitor and use system browser for viewing/downloading.
+ * On desktop, use iframe with blob URL (works on all modern browsers).
  */
+
+const isMobileOrCapacitor = () => {
+  if (typeof window === 'undefined') return false;
+  // Capacitor native app
+  if (window.Capacitor?.isNativePlatform?.()) return true;
+  // Mobile user agent fallback
+  return /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(navigator.userAgent);
+};
+
+const getProxyUrl = (pdfUrl, fileName) => {
+  const getBaseURL = () => {
+    const envUrl = import.meta.env.VITE_API_URL;
+    if (envUrl) {
+      const clean = envUrl.replace(/\/+$/, '');
+      return clean.endsWith('/api') ? clean : `${clean}/api`;
+    }
+    if (typeof window !== 'undefined') {
+      const host = window.location.hostname;
+      if (host === 'localhost' || host === '127.0.0.1') return 'http://localhost:5000/api';
+      if (/^(\d{1,3}\.){3}\d{1,3}$/.test(host)) return `http://${host}:5000/api`;
+    }
+    return 'https://nexxchat-5d29.onrender.com/api';
+  };
+  return `${getBaseURL()}/upload/download?url=${encodeURIComponent(pdfUrl)}&filename=${encodeURIComponent(fileName)}`;
+};
+
 export default function PdfViewerModal({ isOpen, onClose, pdfUrl, fileName, fileSize }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -27,32 +49,36 @@ export default function PdfViewerModal({ isOpen, onClose, pdfUrl, fileName, file
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   const containerRef = useRef(null);
+  const isMobile = isMobileOrCapacitor();
 
   const finalFileName = (fileName || 'document.pdf').endsWith('.pdf')
     ? (fileName || 'document.pdf')
     : `${fileName || 'document'}.pdf`;
 
-  // Build the backend proxy URL (same logic as working download)
-  const getProxyUrl = useCallback(() => {
-    const getBaseURL = () => {
-      const envUrl = import.meta.env.VITE_API_URL;
-      if (envUrl) {
-        const clean = envUrl.replace(/\/+$/, '');
-        return clean.endsWith('/api') ? clean : `${clean}/api`;
-      }
-      if (typeof window !== 'undefined') {
-        const host = window.location.hostname;
-        if (host === 'localhost' || host === '127.0.0.1') return 'http://localhost:5000/api';
-        if (/^(\d{1,3}\.){3}\d{1,3}$/.test(host)) return `http://${host}:5000/api`;
-      }
-      return 'https://nexxchat-5d29.onrender.com/api';
-    };
-    return `${getBaseURL()}/upload/download?url=${encodeURIComponent(pdfUrl)}&filename=${encodeURIComponent(finalFileName)}`;
-  }, [pdfUrl, finalFileName]);
+  const proxyUrl = pdfUrl ? getProxyUrl(pdfUrl, finalFileName) : '';
 
-  // Fetch the PDF via backend proxy and create blob URL
+  // On mobile, auto-open in system browser and close modal
   useEffect(() => {
-    if (!isOpen || !pdfUrl) {
+    if (!isOpen || !pdfUrl || !isMobile) return;
+
+    // Open PDF in system browser (which HAS a PDF renderer)
+    try {
+      // Capacitor handles '_system' to open in device's native browser
+      // which has built-in PDF rendering (Chrome, Samsung Internet, etc.)
+      const target = window.Capacitor?.isNativePlatform?.() ? '_system' : '_blank';
+      window.open(proxyUrl, target);
+      toast.success(`Opening ${finalFileName}...`);
+    } catch (err) {
+
+      console.error('Failed to open PDF in system browser:', err);
+      toast.error('Failed to open PDF');
+    }
+    onClose();
+  }, [isOpen, pdfUrl, isMobile, proxyUrl, finalFileName, onClose]);
+
+  // Desktop: Fetch PDF blob for inline viewing
+  useEffect(() => {
+    if (!isOpen || !pdfUrl || isMobile) {
       if (blobUrl) {
         URL.revokeObjectURL(blobUrl);
         setBlobUrl(null);
@@ -68,8 +94,6 @@ export default function PdfViewerModal({ isOpen, onClose, pdfUrl, fileName, file
 
     const fetchPdf = async () => {
       try {
-        // Use raw fetch (NOT the axios api instance) to avoid interceptors/auth issues
-        const proxyUrl = getProxyUrl();
         const response = await fetch(proxyUrl);
 
         if (!response.ok) {
@@ -104,7 +128,7 @@ export default function PdfViewerModal({ isOpen, onClose, pdfUrl, fileName, file
     return () => {
       isMounted = false;
     };
-  }, [isOpen, pdfUrl, getProxyUrl]);
+  }, [isOpen, pdfUrl, isMobile, proxyUrl]);
 
   // Cleanup blob URL on unmount
   useEffect(() => {
@@ -113,9 +137,10 @@ export default function PdfViewerModal({ isOpen, onClose, pdfUrl, fileName, file
     };
   }, [blobUrl]);
 
-  if (!isOpen || !pdfUrl) return null;
+  // Mobile exits early (opened in system browser)
+  if (isMobile || !isOpen || !pdfUrl) return null;
 
-  // Download — uses existing working blob
+  // Download — uses blob on desktop
   const handleDownload = (e) => {
     e?.stopPropagation();
     if (blobUrl) {
@@ -232,34 +257,21 @@ export default function PdfViewerModal({ isOpen, onClose, pdfUrl, fileName, file
               <p className="text-xs text-surface-400 mt-1">{error}</p>
             </div>
             <button
-              onClick={handleDownload}
+              onClick={() => window.open(proxyUrl, '_blank')}
               className="w-full py-2.5 rounded-xl gradient-primary text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-primary-500/25"
             >
-              <Download className="w-4 h-4" />
-              Download PDF Instead
+              <ExternalLink className="w-4 h-4" />
+              Open in Browser
             </button>
           </div>
         )}
 
         {!loading && !error && blobUrl && (
-          <object
-            data={`${blobUrl}#toolbar=1&navpanes=1&scrollbar=1&view=FitH`}
-            type="application/pdf"
-            className="w-full h-full"
+          <iframe
+            src={`${blobUrl}#toolbar=1&navpanes=1&scrollbar=1&view=FitH`}
+            className="w-full h-full border-0"
             title={finalFileName}
-          >
-            {/* Fallback for browsers without native PDF support (very rare) */}
-            <div className="flex flex-col items-center justify-center h-full gap-4">
-              <p className="text-sm text-surface-400">Your browser cannot display PDFs inline.</p>
-              <button
-                onClick={handleDownload}
-                className="px-6 py-2.5 rounded-xl gradient-primary text-white font-bold text-xs flex items-center gap-2 shadow-lg"
-              >
-                <Download className="w-4 h-4" />
-                Download PDF
-              </button>
-            </div>
-          </object>
+          />
         )}
       </div>
     </div>

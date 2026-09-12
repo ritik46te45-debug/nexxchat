@@ -41,9 +41,15 @@ const getBackendBase = () => {
   return 'https://nexxchat-5d29.onrender.com';
 };
 
+const isMobileOrCapacitor = () => {
+  if (typeof window === 'undefined') return false;
+  if (window.Capacitor?.isNativePlatform?.()) return true;
+  return /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(navigator.userAgent);
+};
+
 /**
  * Downloads a file with guaranteed proper filename and file extension format.
- * Works seamlessly across web browsers, mobile web, and desktop.
+ * Works seamlessly across web browsers, mobile web, Capacitor Android, and desktop.
  * @param {string} rawUrl - The URL of the file to download
  * @param {string} originalFileName - The original filename
  * @param {string} [mimeType] - Optional MIME type for extension inference
@@ -82,6 +88,25 @@ export const downloadFile = async (rawUrl, originalFileName, mimeType) => {
     }
   }
 
+  const proxyUrl = `${backendBase}/api/upload/download?url=${encodeURIComponent(fullUrl)}&filename=${encodeURIComponent(fileName)}`;
+
+  // ─── MOBILE / CAPACITOR: Open in system browser for native download ───
+  if (isMobileOrCapacitor()) {
+    toast.loading(`Downloading ${fileName}...`, { id: 'file-download', duration: 3000 });
+    try {
+      // Capacitor handles '_system' to open in device's native browser
+      const target = window.Capacitor?.isNativePlatform?.() ? '_system' : '_blank';
+      window.open(proxyUrl, target);
+
+      toast.success(`Opening ${fileName}...`, { id: 'file-download', duration: 2500 });
+    } catch (err) {
+      console.error('Mobile download failed:', err);
+      toast.error('Failed to download file', { id: 'file-download' });
+    }
+    return;
+  }
+
+  // ─── DESKTOP: Blob download via backend proxy ───
   toast.loading(`Downloading ${fileName}...`, { id: 'file-download', duration: 4000 });
 
   // Strategy 1: Backend Download Proxy via Axios (authenticated, signed, & CORS enabled)
@@ -136,7 +161,6 @@ export const downloadFile = async (rawUrl, originalFileName, mimeType) => {
 
   // Strategy 3: Hidden background iframe download (NEVER opens blank tabs or redirects to Cloudinary)
   try {
-    const proxyUrl = `${backendBase}/api/upload/download?url=${encodeURIComponent(fullUrl)}&filename=${encodeURIComponent(fileName)}${token ? `&token=${encodeURIComponent(token)}` : ''}`;
     const iframe = document.createElement('iframe');
     iframe.style.display = 'none';
     iframe.src = proxyUrl;

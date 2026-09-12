@@ -383,6 +383,7 @@ export const forgotPassword = async (req, res) => {
     const user = await User.findOne({ email: email.toLowerCase() });
 
     if (!user) {
+      // Don't reveal whether the email exists — but still return success shape
       return res.json({
         success: true,
         message: 'If the email exists, a password reset link has been prepared.',
@@ -394,17 +395,34 @@ export const forgotPassword = async (req, res) => {
     user.passwordResetExpires = Date.now() + 60 * 60 * 1000; // 1 hour
     await user.save();
 
-    sendPasswordResetEmail(user.email, resetToken).catch(console.error);
+    const resetUrl = `${process.env.CLIENT_URL || 'http://localhost:5173'}/reset-password/${resetToken}`;
 
-    res.json({
+    // Try sending email
+    const emailResult = await sendPasswordResetEmail(user.email, resetToken);
+
+    if (emailResult.sent) {
+      // Email sent successfully
+      return res.json({
+        success: true,
+        message: 'Password reset link has been sent to your email. Check your inbox (and spam folder).',
+        emailSent: true,
+      });
+    }
+
+    // Email failed (SMTP not configured or send error) — provide reset link directly
+    console.warn(`Password reset email failed for ${user.email}: ${emailResult.reason}. Returning reset link directly.`);
+    return res.json({
       success: true,
-      message: 'If the email is registered, a password reset link has been sent.',
+      message: 'Email service is not available. Use the link below to reset your password.',
+      emailSent: false,
+      resetUrl,
     });
   } catch (error) {
     console.error('Forgot password error:', error);
     res.status(500).json({ error: 'Password reset request failed' });
   }
 };
+
 
 // RESET PASSWORD
 export const resetPassword = async (req, res) => {
