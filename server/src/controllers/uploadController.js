@@ -309,7 +309,8 @@ export const downloadFileProxy = async (req, res) => {
     const safeFilename = filename || 'download';
 
     // 0. Check MongoDB GridFS first (permanent persistent storage)
-    const cleanUrlPart = url.split('?')[0];
+    let cleanUrlPart = url.split('?')[0];
+    try { cleanUrlPart = decodeURIComponent(cleanUrlPart); } catch {}
     const urlFilename = path.basename(cleanUrlPart);
     const bucket = getGridFSBucket();
 
@@ -325,7 +326,7 @@ export const downloadFileProxy = async (req, res) => {
           res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(safeFilename)}"`);
           res.setHeader('Access-Control-Allow-Origin', '*');
           res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, Content-Type, Content-Length');
-          return bucket.openDownloadStreamByName(urlFilename).pipe(res);
+          return bucket.openDownloadStreamByName(gridFile.filename).pipe(res);
         }
       } catch (gridErr) {
         console.warn('GridFS download check error:', gridErr.message);

@@ -5,6 +5,10 @@
       "destination": "https://nexxchat-5d29.onrender.com/api/:path*"
     },
     {
+      "source": "/uploads/:path*",
+      "destination": "https://nexxchat-5d29.onrender.com/uploads/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
