@@ -133,7 +133,21 @@ export const downloadFile = async (rawUrl, originalFileName, mimeType) => {
       return;
     }
   } catch (apiErr) {
-    console.warn('Backend download proxy failed, trying direct blob fetch:', apiErr);
+    console.warn('Backend download proxy failed, checking error response:', apiErr);
+    if (apiErr.response?.data) {
+      try {
+        let errJson = apiErr.response.data;
+        if (errJson instanceof Blob) {
+          const text = await errJson.text();
+          errJson = JSON.parse(text);
+        }
+        if (errJson?.error && (apiErr.response.status === 410 || apiErr.response.status === 403 || apiErr.response.status === 400)) {
+          toast.dismiss('file-download');
+          toast.error(errJson.error, { duration: 5000 });
+          return;
+        }
+      } catch {}
+    }
   }
 
   // Strategy 2: Direct Fetch from source URL

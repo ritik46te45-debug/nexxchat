@@ -5,7 +5,7 @@ import { uploadFile, uploadMultipleFiles, deleteFile, downloadFileProxy } from '
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 100 * 1024 * 1024 }, // 100MB max
+  limits: { fileSize: 500 * 1024 * 1024 }, // 500MB max
 });
 
 const router = Router();

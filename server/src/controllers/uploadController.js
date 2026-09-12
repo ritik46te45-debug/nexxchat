@@ -30,9 +30,9 @@ const BLOCKED_EXTENSIONS = ['.exe', '.bat', '.cmd', '.scr', '.pif', '.com', '.vb
 // Max file sizes (bytes)
 const MAX_SIZES = {
   image: 25 * 1024 * 1024,    // 25MB
-  video: 200 * 1024 * 1024,   // 200MB
+  video: 500 * 1024 * 1024,   // 500MB
   audio: 100 * 1024 * 1024,   // 100MB
-  document: 100 * 1024 * 1024 // 100MB
+  document: 500 * 1024 * 1024 // 500MB
 };
 
 const getFileCategory = (mimeType, ext = '') => {
@@ -112,6 +112,12 @@ export const uploadFile = async (req, res) => {
         const resourceType = isPdf ? 'raw' : (category === 'image' ? 'image' : (category === 'video' ? 'video' : 'raw'));
         const folder = `nexchat/${category}s`;
 
+        // Use chunked stream for large files (> 20MB) to support up to 500MB reliably
+        const isLargeFile = size > 20 * 1024 * 1024;
+        const uploadFn = isLargeFile && typeof cloudinary.uploader.upload_chunked_stream === 'function'
+          ? cloudinary.uploader.upload_chunked_stream.bind(cloudinary.uploader)
+          : cloudinary.uploader.upload_stream.bind(cloudinary.uploader);
+
         const result = await new Promise((resolve, reject) => {
           const options = {
             folder,
@@ -121,13 +127,14 @@ export const uploadFile = async (req, res) => {
             unique_filename: false,
             access_mode: 'public',
             type: 'upload',
+            ...(isLargeFile ? { chunk_size: 6 * 1024 * 1024 } : {}),
           };
 
           if (category === 'image' && !isPdf && !effectiveMime.includes('gif') && !effectiveMime.includes('svg')) {
             options.transformation = [{ quality: 'auto', fetch_format: 'auto' }];
           }
 
-          const stream = cloudinary.uploader.upload_stream(options, (error, result) => {
+          const stream = uploadFn(options, (error, result) => {
             if (error) reject(error);
             else resolve(result);
           });
@@ -198,22 +205,27 @@ export const uploadMultipleFiles = async (req, res) => {
           try {
             const isPdf = ext === '.pdf' || effectiveMime === 'application/pdf';
             const resourceType = isPdf ? 'raw' : (category === 'image' ? 'image' : (category === 'video' ? 'video' : 'raw'));
+            const isLargeFile = size > 20 * 1024 * 1024;
+            const uploadFn = isLargeFile && typeof cloudinary.uploader.upload_chunked_stream === 'function'
+              ? cloudinary.uploader.upload_chunked_stream.bind(cloudinary.uploader)
+              : cloudinary.uploader.upload_stream.bind(cloudinary.uploader);
+
             const result = await new Promise((resolve, reject) => {
-              const stream = cloudinary.uploader.upload_stream(
-                {
-                  folder: `nexchat/${category}s`,
-                  resource_type: resourceType,
-                  public_id: `${Date.now()}_${sanitizedName}`,
-                  use_filename: true,
-                  unique_filename: false,
-                  access_mode: 'public',
-                  type: 'upload',
-                },
-                (error, result) => {
-                  if (error) reject(error);
-                  else resolve(result);
-                }
-              );
+              const options = {
+                folder: `nexchat/${category}s`,
+                resource_type: resourceType,
+                public_id: `${Date.now()}_${sanitizedName}`,
+                use_filename: true,
+                unique_filename: false,
+                access_mode: 'public',
+                type: 'upload',
+                ...(isLargeFile ? { chunk_size: 6 * 1024 * 1024 } : {}),
+              };
+
+              const stream = uploadFn(options, (error, result) => {
+                if (error) reject(error);
+                else resolve(result);
+              });
               stream.end(buffer);
             });
             fileUrl = result.secure_url;
@@ -274,12 +286,28 @@ export const downloadFileProxy = async (req, res) => {
 
     const safeFilename = filename || 'download';
 
-    // 1. Local disk uploads
+    // 1. Local disk uploads (both relative /uploads/... and full http(s)://host/uploads/...)
+    let localSubpath = null;
     if (url.startsWith('/uploads/')) {
-      const localPath = path.join(process.cwd(), 'public', url);
+      localSubpath = url;
+    } else {
+      try {
+        const parsed = new URL(url);
+        if (parsed.pathname.startsWith('/uploads/')) {
+          localSubpath = parsed.pathname;
+        }
+      } catch {}
+    }
+
+    if (localSubpath) {
+      const localPath = path.join(process.cwd(), 'public', localSubpath);
       if (fs.existsSync(localPath)) {
         return res.download(localPath, safeFilename);
       }
+      // File was stored on local ephemeral disk and is no longer available after restart/redeploy
+      return res.status(410).json({
+        error: 'This file was stored temporarily on the server and is no longer available after a server restart. Please ask the sender to re-upload the file.',
+      });
     }
 
     let targetFetchUrl = url.startsWith('http') ? url : `${req.protocol}://${req.get('host')}${url}`;

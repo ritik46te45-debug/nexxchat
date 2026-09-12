@@ -97,7 +97,13 @@ export default function PdfViewerModal({ isOpen, onClose, pdfUrl, fileName, file
         const response = await fetch(proxyUrl);
 
         if (!response.ok) {
-          throw new Error(`Server returned ${response.status}`);
+          // Try to parse error message from server
+          let errMsg = `Server returned ${response.status}`;
+          try {
+            const errData = await response.json();
+            if (errData.error) errMsg = errData.error;
+          } catch {}
+          throw new Error(errMsg);
         }
 
         const arrayBuffer = await response.arrayBuffer();
