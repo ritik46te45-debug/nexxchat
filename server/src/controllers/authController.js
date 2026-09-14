@@ -407,25 +407,34 @@ export const forgotPassword = async (req, res) => {
 
     const resetUrl = `${clientOrigin}/reset-password/${resetToken}`;
 
-    // Try sending email
-    const emailResult = await sendPasswordResetEmail(user.email, resetToken, clientOrigin);
+    // Try sending email with safety timeout
+    let emailResult = { sent: false, reason: 'Pending' };
+    try {
+      emailResult = await sendPasswordResetEmail(user.email, resetToken, clientOrigin);
+    } catch (mailErr) {
+      console.warn('Password reset email dispatch note:', mailErr.message);
+      emailResult = { sent: false, reason: mailErr.message };
+    }
 
     if (emailResult.sent) {
-      // Email sent successfully
+      // Email sent successfully — provide confirmation AND direct link
       return res.json({
         success: true,
-        message: 'Password reset link has been sent to your email. Check your inbox (and spam folder).',
+        message: 'Password reset link sent to your email. You can also click the direct link below.',
         emailSent: true,
+        resetUrl,
+        resetToken,
       });
     }
 
-    // Email failed (SMTP not configured or send error) — provide reset link directly
+    // Email failed or SMTP slow — provide reset link directly
     console.warn(`Password reset email failed for ${user.email}: ${emailResult.reason}. Returning reset link directly.`);
     return res.json({
       success: true,
-      message: 'Email service is not available. Use the link below to reset your password.',
+      message: 'Reset link ready. Use the link below to set your new password.',
       emailSent: false,
       resetUrl,
+      resetToken,
     });
   } catch (error) {
     console.error('Forgot password error:', error);

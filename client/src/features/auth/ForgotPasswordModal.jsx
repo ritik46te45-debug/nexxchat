@@ -1,12 +1,15 @@
 import { useState } from 'react';
-import { Mail, ArrowRight, Loader2, X, CheckCircle2, ExternalLink, AlertTriangle } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Mail, ArrowRight, Loader2, X, CheckCircle2, ExternalLink, AlertTriangle, Copy, Check } from 'lucide-react';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
 
 export default function ForgotPasswordModal({ onClose }) {
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [resetData, setResetData] = useState(null);
+  const [copied, setCopied] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -14,19 +17,40 @@ export default function ForgotPasswordModal({ onClose }) {
 
     setIsSubmitting(true);
     try {
-      const { data } = await api.post('/auth/forgot-password', { email });
+      const { data } = await api.post('/auth/forgot-password', { email }, { timeout: 10000 });
       setResetData(data);
       if (data.emailSent) {
-        toast.success('Reset link sent to your email!');
+        toast.success('Reset link prepared! Check your email or click below.');
       } else if (data.resetUrl) {
-        toast.success('Reset link ready — use it below');
+        toast.success('Reset link ready — click below to set password');
       } else {
         toast.success(data.message || 'Recovery instructions prepared');
       }
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to request password reset');
+      const msg = err.code === 'ECONNABORTED'
+        ? 'Request timed out. Please check your connection and try again.'
+        : (err.response?.data?.error || 'Failed to request password reset');
+      toast.error(msg);
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleGoToReset = () => {
+    onClose();
+    if (resetData?.resetToken) {
+      navigate(`/reset-password/${resetData.resetToken}`);
+    } else if (resetData?.resetUrl) {
+      window.location.href = resetData.resetUrl;
+    }
+  };
+
+  const handleCopyLink = () => {
+    if (resetData?.resetUrl) {
+      navigator.clipboard.writeText(resetData.resetUrl);
+      setCopied(true);
+      toast.success('Reset link copied to clipboard!');
+      setTimeout(() => setCopied(false), 2000);
     }
   };
 
@@ -73,10 +97,13 @@ export default function ForgotPasswordModal({ onClose }) {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full py-3 rounded-xl font-semibold text-sm text-white gradient-primary hover:opacity-90 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary-500/25"
+                className="w-full py-3 rounded-xl font-semibold text-sm text-white gradient-primary hover:opacity-90 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary-500/25 cursor-pointer"
               >
                 {isSubmitting ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Preparing Reset Link...</span>
+                  </>
                 ) : (
                   <>
                     Send Recovery Link
@@ -88,64 +115,52 @@ export default function ForgotPasswordModal({ onClose }) {
           </>
         ) : (
           <div className="text-center py-2 animate-fade-in space-y-4">
-            {/* Success: Email was sent */}
-            {resetData.emailSent && (
-              <>
-                <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-accent-green/20 text-accent-green mb-1">
-                  <CheckCircle2 className="w-8 h-8" />
-                </div>
-                <h3 className="text-lg font-bold text-white">Check Your Email</h3>
-                <p className="text-xs text-surface-300">
-                  We've sent a password reset link to <span className="text-primary-400 font-semibold">{email}</span>.
-                  Check your inbox and spam folder.
-                </p>
-                <p className="text-[11px] text-surface-500">The link expires in 1 hour.</p>
-              </>
-            )}
+            <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-accent-green/20 text-accent-green mb-1">
+              <CheckCircle2 className="w-8 h-8" />
+            </div>
+            <h3 className="text-lg font-bold text-white">
+              {resetData.emailSent ? 'Check Your Email' : 'Reset Link Ready'}
+            </h3>
+            <p className="text-xs text-surface-300">
+              {resetData.emailSent
+                ? `A password reset link was dispatched to ${email}. You can also open the reset page immediately below:`
+                : (resetData.message || 'Your password reset link is ready. Use the button below to set your new password.')}
+            </p>
 
-            {/* Fallback: SMTP not configured — show direct link */}
-            {!resetData.emailSent && resetData.resetUrl && (
-              <>
-                <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-amber-500/20 text-amber-400 mb-1">
-                  <AlertTriangle className="w-8 h-8" />
-                </div>
-                <h3 className="text-lg font-bold text-white">Reset Link Ready</h3>
-                <p className="text-xs text-surface-300">
-                  {resetData.message || 'Email service is unavailable. Use the link below to reset your password.'}
-                </p>
+            {/* Direct Action Button */}
+            {(resetData.resetUrl || resetData.resetToken) && (
+              <div className="space-y-2 pt-1">
+                <button
+                  type="button"
+                  onClick={handleGoToReset}
+                  className="w-full py-3 px-4 rounded-xl gradient-primary text-white font-semibold text-xs shadow-lg shadow-primary-500/25 hover:opacity-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  Click Here to Set New Password <ExternalLink className="w-4 h-4" />
+                </button>
 
-                <div className="p-3 bg-dark-input rounded-xl border border-dark-border space-y-2 text-left">
-                  <p className="text-[11px] text-surface-400 font-medium">Direct Reset Link:</p>
-                  <a
-                    href={resetData.resetUrl}
-                    className="block w-full py-2.5 px-3 bg-primary-500/20 hover:bg-primary-500/30 text-primary-400 rounded-lg text-xs font-semibold text-center truncate transition-all flex items-center justify-center gap-1.5"
+                {resetData.resetUrl && (
+                  <button
+                    type="button"
+                    onClick={handleCopyLink}
+                    className="w-full py-2 px-3 rounded-xl bg-dark-input hover:bg-dark-hover border border-dark-border text-xs text-surface-300 hover:text-white flex items-center justify-center gap-1.5 transition-all"
                   >
-                    Click Here to Set New Password <ExternalLink className="w-3.5 h-3.5 flex-shrink-0" />
-                  </a>
-                </div>
-                <p className="text-[11px] text-surface-500">This link expires in 1 hour.</p>
-              </>
+                    {copied ? <Check className="w-3.5 h-3.5 text-accent-green" /> : <Copy className="w-3.5 h-3.5" />}
+                    {copied ? 'Link Copied!' : 'Copy Direct Reset Link'}
+                  </button>
+                )}
+                <p className="text-[11px] text-surface-500">Link expires in 2 hours.</p>
+              </div>
             )}
 
-            {/* Generic fallback (user not found case) */}
-            {!resetData.emailSent && !resetData.resetUrl && (
-              <>
-                <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-accent-green/20 text-accent-green mb-1">
-                  <CheckCircle2 className="w-8 h-8" />
-                </div>
-                <h3 className="text-lg font-bold text-white">Request Received</h3>
-                <p className="text-xs text-surface-300">
-                  {resetData.message || 'If this email is registered, reset instructions have been prepared.'}
-                </p>
-              </>
-            )}
-
-            <button
-              onClick={onClose}
-              className="w-full py-2.5 rounded-xl bg-dark-input hover:bg-dark-hover border border-dark-border text-xs font-medium text-surface-300 hover:text-white transition-all"
-            >
-              Back to Sign In
-            </button>
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full py-2.5 rounded-xl bg-dark-input hover:bg-dark-hover border border-dark-border text-xs font-medium text-surface-300 hover:text-white transition-all cursor-pointer"
+              >
+                Back to Sign In
+              </button>
+            </div>
           </div>
         )}
       </div>
