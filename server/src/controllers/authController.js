@@ -438,13 +438,14 @@ export const forgotPassword = async (req, res) => {
 export const resetPassword = async (req, res) => {
   try {
     const { token } = req.params;
-    const { password } = req.body;
+    const { password, token: bodyToken } = req.body;
 
-    // Decode any URL-encoded characters in the token (e.g. from email clients)
-    let cleanToken = (token || '').trim();
-    try { cleanToken = decodeURIComponent(cleanToken); } catch {}
+    // Decode any URL-encoded characters in the token & normalize to lowercase hex
+    let rawToken = (token || bodyToken || '').trim();
+    try { rawToken = decodeURIComponent(rawToken); } catch {}
+    const cleanToken = rawToken.toLowerCase().trim();
 
-    console.log(`[RESET-PASSWORD] Attempting reset with token length: ${cleanToken.length}`);
+    console.log(`[RESET-PASSWORD] Attempting reset with token: ${cleanToken.substring(0, 8)}... (len: ${cleanToken.length})`);
 
     if (!cleanToken) {
       return res.status(400).json({ error: 'Reset token is required' });
@@ -466,7 +467,7 @@ export const resetPassword = async (req, res) => {
         console.warn(`[RESET-PASSWORD] Token found but EXPIRED for user: ${expiredUser.email}`);
         return res.status(400).json({ error: 'Reset token has expired. Please request a new password reset link.' });
       }
-      console.warn(`[RESET-PASSWORD] No user found with provided token`);
+      console.warn(`[RESET-PASSWORD] No user found with token: ${cleanToken.substring(0, 8)}...`);
       return res.status(400).json({ error: 'Invalid or expired reset token. Please request a new one.' });
     }
 

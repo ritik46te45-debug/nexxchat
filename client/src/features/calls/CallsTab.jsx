@@ -4,6 +4,7 @@ import {
   Trash2, Search, Filter, Loader2, Calendar, Clock, AlertCircle
 } from 'lucide-react';
 import api from '../../lib/api';
+import { getSocket } from '../../lib/socket';
 import useAuthStore from '../../stores/authStore';
 import toast from 'react-hot-toast';
 
@@ -17,6 +18,15 @@ export default function CallsTab({ onStartCall }) {
 
   useEffect(() => {
     fetchCallHistory();
+
+    const socket = getSocket();
+    if (socket) {
+      const handleCallEnded = () => {
+        setTimeout(() => fetchCallHistory(), 1000);
+      };
+      socket.on('call:ended', handleCallEnded);
+      return () => socket.off('call:ended', handleCallEnded);
+    }
   }, []);
 
   const fetchCallHistory = async () => {

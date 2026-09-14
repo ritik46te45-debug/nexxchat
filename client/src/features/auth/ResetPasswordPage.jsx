@@ -14,13 +14,15 @@ export default function ResetPasswordPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [tokenExpired, setTokenExpired] = useState(false);
-  const cleanToken = (token || '').trim();
+  const [manualToken, setManualToken] = useState('');
+
+  const targetToken = (token || manualToken || '').trim().toLowerCase();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!cleanToken) {
-      toast.error('Reset token is missing. Please request a new link.');
+    if (!targetToken) {
+      toast.error('Reset token is missing. Please paste your token or request a new link.');
       return;
     }
 
@@ -36,7 +38,7 @@ export default function ResetPasswordPage() {
 
     setIsSubmitting(true);
     try {
-      const { data } = await api.post(`/auth/reset-password/${cleanToken}`, { password });
+      const { data } = await api.post(`/auth/reset-password/${targetToken}`, { password, token: targetToken });
       setIsSuccess(true);
       toast.success(data.message || 'Password reset successfully!');
 
@@ -82,6 +84,23 @@ export default function ResetPasswordPage() {
         <div className="glass-card p-6 sm:p-8">
           {!isSuccess ? (
             <form onSubmit={handleSubmit} className="space-y-4">
+              {!token && (
+                <div>
+                  <label className="block text-xs font-semibold text-surface-300 mb-1.5">Reset Token / Code</label>
+                  <div className="relative">
+                    <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-500" />
+                    <input
+                      type="text"
+                      value={manualToken}
+                      onChange={(e) => setManualToken(e.target.value)}
+                      placeholder="Paste your reset token hex code"
+                      className="w-full pl-10 pr-4 py-2.5 bg-dark-input border border-dark-border rounded-xl text-sm text-white placeholder-surface-500 input-focus transition-all font-mono text-xs"
+                      required
+                    />
+                  </div>
+                </div>
+              )}
+
               {/* New Password */}
               <div>
                 <label className="block text-xs font-semibold text-surface-300 mb-1.5">New Password</label>

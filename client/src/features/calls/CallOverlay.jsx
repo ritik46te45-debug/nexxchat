@@ -105,9 +105,8 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
   const remoteStreamRef = useRef(null);
   const [remoteStream, setRemoteStream] = useState(null);
   const containerRef = useRef(null);
-  const timerRef = useRef(null);
-  const webrtcManagerRef = useRef(null);
   const callIdRef = useRef(callData.callId);
+  const callDurationRef = useRef(0);
 
   const isVideoCall = callData.type === 'video';
 
@@ -185,7 +184,11 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
   const startTimer = () => {
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = setInterval(() => {
-      setCallDuration((prev) => prev + 1);
+      setCallDuration((prev) => {
+        const next = prev + 1;
+        callDurationRef.current = next;
+        return next;
+      });
     }, 1000);
   };
 
@@ -456,7 +459,8 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
 
   const handleEndCall = () => {
     const socket = getSocket();
-    if (socket) socket.emit('call:end', { callId: callIdRef.current, duration: callDuration });
+    const finalDuration = callDurationRef.current || callDuration || 0;
+    if (socket) socket.emit('call:end', { callId: callIdRef.current, duration: finalDuration });
     cleanupAndExit();
   };
 

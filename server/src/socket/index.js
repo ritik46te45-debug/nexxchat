@@ -465,20 +465,26 @@ export const setupSocket = (io) => {
     socket.on('call:accept', async ({ callId }) => {
       try {
         console.log(`[CALL] accept: callId ${callId} accepted by user ${userId}`);
-        const call = await Call.findById(callId);
+        let call = null;
+        if (callId && mongoose.Types.ObjectId.isValid(callId)) {
+          call = await Call.findById(callId);
+        }
+        if (!call) {
+          call = await Call.findOne({ receiver: userId, status: 'ringing' }).sort({ createdAt: -1 });
+        }
         if (!call) return;
 
         call.status = 'ongoing';
         call.startedAt = new Date();
         await call.save();
 
-        const populatedCall = await Call.findById(callId)
+        const populatedCall = await Call.findById(call._id)
           .populate('caller', 'username displayName avatar')
           .populate('receiver', 'username displayName avatar');
 
         const callerId = (call.caller?._id || call.caller)?.toString();
         if (callerId) {
-          emitToUser(callerId, 'call:accepted', { call: populatedCall, callId, userId });
+          emitToUser(callerId, 'call:accepted', { call: populatedCall, callId: call._id.toString(), userId });
         }
       } catch (error) {
         console.error('Call accept error:', error);
@@ -487,7 +493,13 @@ export const setupSocket = (io) => {
 
     socket.on('call:reject', async ({ callId, reason = 'declined' }) => {
       try {
-        const call = await Call.findById(callId);
+        let call = null;
+        if (callId && mongoose.Types.ObjectId.isValid(callId)) {
+          call = await Call.findById(callId);
+        }
+        if (!call) {
+          call = await Call.findOne({ receiver: userId, status: 'ringing' }).sort({ createdAt: -1 });
+        }
         if (!call) return;
 
         call.status = 'rejected';
@@ -495,11 +507,12 @@ export const setupSocket = (io) => {
         call.endReason = reason;
         await call.save();
 
-        activeCalls.delete(callId);
+        activeCalls.delete(call._id.toString());
+        if (callId) activeCalls.delete(callId);
 
         const callerId = (call.caller?._id || call.caller)?.toString();
         if (callerId) {
-          emitToUser(callerId, 'call:rejected', { callId, reason, userId });
+          emitToUser(callerId, 'call:rejected', { callId: call._id.toString(), reason, userId });
         }
       } catch (error) {
         console.error('Call reject error:', error);
@@ -508,14 +521,29 @@ export const setupSocket = (io) => {
 
     socket.on('call:end', async ({ callId, duration = 0 }) => {
       try {
-        const call = await Call.findById(callId);
+        let call = null;
+        if (callId && mongoose.Types.ObjectId.isValid(callId)) {
+          call = await Call.findById(callId);
+        }
+        if (!call) {
+          call = await Call.findOne({
+            $or: [{ caller: userId }, { receiver: userId }],
+            status: { $in: ['ringing', 'ongoing'] },
+          }).sort({ createdAt: -1 });
+        }
+        if (!call) {
+          call = await Call.findOne({
+            $or: [{ caller: userId }, { receiver: userId }],
+            createdAt: { $gte: new Date(Date.now() - 2 * 60 * 1000) },
+          }).sort({ createdAt: -1 });
+        }
         if (!call) return;
 
         call.status = 'ended';
         call.endedAt = new Date();
 
-        // Use client-reported duration, but compute from timestamps as failsafe
-        let finalDuration = duration;
+        // Use client-reported duration, or compute from timestamps as failsafe
+        let finalDuration = Number(duration) || 0;
         if ((!finalDuration || finalDuration <= 0) && call.startedAt) {
           finalDuration = Math.round((call.endedAt.getTime() - new Date(call.startedAt).getTime()) / 1000);
           if (finalDuration < 0) finalDuration = 0;
@@ -524,14 +552,15 @@ export const setupSocket = (io) => {
         call.endReason = 'completed';
         await call.save();
 
-        activeCalls.delete(callId);
+        activeCalls.delete(call._id.toString());
+        if (callId) activeCalls.delete(callId);
 
         const callerId = (call.caller?._id || call.caller)?.toString();
         const receiverId = (call.receiver?._id || call.receiver)?.toString();
         const otherUserId = callerId === userId ? receiverId : callerId;
 
         if (otherUserId) {
-          emitToUser(otherUserId, 'call:ended', { callId, duration: finalDuration });
+          emitToUser(otherUserId, 'call:ended', { callId: call._id.toString(), duration: finalDuration });
         }
       } catch (error) {
         console.error('Call end error:', error);
