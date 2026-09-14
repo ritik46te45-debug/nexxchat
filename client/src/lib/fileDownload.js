@@ -90,21 +90,8 @@ export const downloadFile = async (rawUrl, originalFileName, mimeType) => {
 
   const proxyUrl = `${backendBase}/api/upload/download?url=${encodeURIComponent(fullUrl)}&filename=${encodeURIComponent(fileName)}`;
 
-  // ─── MOBILE / CAPACITOR: Open in system browser for native download ───
-  if (isMobileOrCapacitor()) {
-    toast.loading(`Downloading ${fileName}...`, { id: 'file-download', duration: 3000 });
-    try {
-      // Capacitor handles '_system' to open in device's native browser
-      const target = window.Capacitor?.isNativePlatform?.() ? '_system' : '_blank';
-      window.open(proxyUrl, target);
-
-      toast.success(`Opening ${fileName}...`, { id: 'file-download', duration: 2500 });
-    } catch (err) {
-      console.error('Mobile download failed:', err);
-      toast.error('Failed to download file', { id: 'file-download' });
-    }
-    return;
-  }
+  // Unified download strategy for all platforms (Mobile Web, Desktop, & Capacitor)
+  toast.loading(`Downloading ${fileName}...`, { id: 'file-download', duration: 4000 });
 
   // ─── DESKTOP: Blob download via backend proxy ───
   toast.loading(`Downloading ${fileName}...`, { id: 'file-download', duration: 4000 });

@@ -3,6 +3,7 @@ import {
   X, Download, Printer, FileText, Maximize2, Minimize2, Loader2,
   AlertCircle, ExternalLink
 } from 'lucide-react';
+import { downloadFile } from '../../lib/fileDownload';
 import toast from 'react-hot-toast';
 
 /**
@@ -57,28 +58,9 @@ export default function PdfViewerModal({ isOpen, onClose, pdfUrl, fileName, file
 
   const proxyUrl = pdfUrl ? getProxyUrl(pdfUrl, finalFileName) : '';
 
-  // On mobile, auto-open in system browser and close modal
+  // Fetch PDF blob for inline viewing across all platforms (Mobile & Desktop)
   useEffect(() => {
-    if (!isOpen || !pdfUrl || !isMobile) return;
-
-    // Open PDF in system browser (which HAS a PDF renderer)
-    try {
-      // Capacitor handles '_system' to open in device's native browser
-      // which has built-in PDF rendering (Chrome, Samsung Internet, etc.)
-      const target = window.Capacitor?.isNativePlatform?.() ? '_system' : '_blank';
-      window.open(proxyUrl, target);
-      toast.success(`Opening ${finalFileName}...`);
-    } catch (err) {
-
-      console.error('Failed to open PDF in system browser:', err);
-      toast.error('Failed to open PDF');
-    }
-    onClose();
-  }, [isOpen, pdfUrl, isMobile, proxyUrl, finalFileName, onClose]);
-
-  // Desktop: Fetch PDF blob for inline viewing
-  useEffect(() => {
-    if (!isOpen || !pdfUrl || isMobile) {
+    if (!isOpen || !pdfUrl) {
       if (blobUrl) {
         URL.revokeObjectURL(blobUrl);
         setBlobUrl(null);
@@ -97,7 +79,6 @@ export default function PdfViewerModal({ isOpen, onClose, pdfUrl, fileName, file
         const response = await fetch(proxyUrl);
 
         if (!response.ok) {
-          // Try to parse error message from server
           let errMsg = `Server returned ${response.status}`;
           try {
             const errData = await response.json();
@@ -123,7 +104,7 @@ export default function PdfViewerModal({ isOpen, onClose, pdfUrl, fileName, file
       } catch (err) {
         console.error('PDF viewer fetch error:', err);
         if (isMounted) {
-          setError(err.message || 'Failed to load PDF');
+          setError(err.message || 'Failed to load PDF preview');
           setLoading(false);
         }
       }
@@ -134,7 +115,7 @@ export default function PdfViewerModal({ isOpen, onClose, pdfUrl, fileName, file
     return () => {
       isMounted = false;
     };
-  }, [isOpen, pdfUrl, isMobile, proxyUrl]);
+  }, [isOpen, pdfUrl, proxyUrl]);
 
   // Cleanup blob URL on unmount
   useEffect(() => {
@@ -143,8 +124,7 @@ export default function PdfViewerModal({ isOpen, onClose, pdfUrl, fileName, file
     };
   }, [blobUrl]);
 
-  // Mobile exits early (opened in system browser)
-  if (isMobile || !isOpen || !pdfUrl) return null;
+  if (!isOpen || !pdfUrl) return null;
 
   // Download — uses blob on desktop
   const handleDownload = (e) => {
@@ -158,6 +138,8 @@ export default function PdfViewerModal({ isOpen, onClose, pdfUrl, fileName, file
       a.click();
       document.body.removeChild(a);
       toast.success(`Saved ${finalFileName}`);
+    } else {
+      downloadFile(pdfUrl, finalFileName, 'application/pdf');
     }
   };
 
@@ -190,16 +172,16 @@ export default function PdfViewerModal({ isOpen, onClose, pdfUrl, fileName, file
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       {/* ── Header Toolbar ── */}
-      <div className="flex items-center justify-between px-4 py-3 bg-dark-card/95 border-b border-dark-border z-20 shadow-xl flex-shrink-0">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 rounded-2xl bg-red-500/20 text-red-400 flex items-center justify-center flex-shrink-0 shadow-lg shadow-red-500/20">
-            <FileText className="w-5 h-5" />
+      <div className="flex items-center justify-between px-3 sm:px-4 py-2.5 sm:py-3 bg-dark-card/95 border-b border-dark-border z-20 shadow-xl flex-shrink-0">
+        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-red-500/20 text-red-400 flex items-center justify-center flex-shrink-0 shadow-lg shadow-red-500/20">
+            <FileText className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-bold text-white truncate max-w-xs sm:max-w-md md:max-w-lg">
+            <p className="text-xs sm:text-sm font-bold text-white truncate max-w-[150px] sm:max-w-md">
               {finalFileName}
             </p>
-            <p className="text-[11px] text-surface-400">
+            <p className="text-[10px] sm:text-[11px] text-surface-400">
               {fileSize ? `${(fileSize / 1024).toFixed(0)} KB • ` : ''}PDF Document
             </p>
           </div>
@@ -226,17 +208,16 @@ export default function PdfViewerModal({ isOpen, onClose, pdfUrl, fileName, file
 
           <button
             onClick={handleDownload}
-            disabled={!blobUrl}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl gradient-primary text-white font-bold text-xs shadow-lg shadow-primary-500/30 hover:shadow-primary-500/50 transition-all active:scale-95 disabled:opacity-50"
+            className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-xl gradient-primary text-white font-bold text-xs shadow-lg shadow-primary-500/30 hover:shadow-primary-500/50 transition-all active:scale-95 cursor-pointer"
             title="Download PDF"
           >
             <Download className="w-4 h-4" />
-            <span className="hidden sm:inline">Download</span>
+            <span>Download</span>
           </button>
 
           <button
             onClick={onClose}
-            className="p-2 rounded-xl bg-dark-input hover:bg-dark-hover text-surface-400 hover:text-white border border-dark-border/60 transition-all active:scale-95 ml-1"
+            className="p-2 rounded-xl bg-dark-input hover:bg-dark-hover text-surface-400 hover:text-white border border-dark-border/60 transition-all active:scale-95 ml-1 cursor-pointer"
             title="Close"
           >
             <X className="w-5 h-5" />
@@ -259,16 +240,27 @@ export default function PdfViewerModal({ isOpen, onClose, pdfUrl, fileName, file
               <AlertCircle className="w-6 h-6" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white">Unable to Load PDF</h3>
-              <p className="text-xs text-surface-400 mt-1">{error}</p>
+              <h3 className="text-base font-bold text-white">Unable to Preview PDF</h3>
+              <p className="text-xs text-surface-400 mt-1">
+                You can download the file directly to your device or open it in your browser.
+              </p>
             </div>
-            <button
-              onClick={() => window.open(proxyUrl, '_blank')}
-              className="w-full py-2.5 rounded-xl gradient-primary text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-primary-500/25"
-            >
-              <ExternalLink className="w-4 h-4" />
-              Open in Browser
-            </button>
+            <div className="w-full space-y-2">
+              <button
+                onClick={handleDownload}
+                className="w-full py-2.5 rounded-xl gradient-primary text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-primary-500/25 cursor-pointer"
+              >
+                <Download className="w-4 h-4" />
+                Download PDF File
+              </button>
+              <button
+                onClick={() => window.open(proxyUrl, '_blank')}
+                className="w-full py-2.5 rounded-xl bg-dark-input hover:bg-dark-hover text-surface-300 hover:text-white font-semibold text-xs flex items-center justify-center gap-2 border border-dark-border transition-all cursor-pointer"
+              >
+                <ExternalLink className="w-4 h-4" />
+                Open in Browser
+              </button>
+            </div>
           </div>
         )}
 
