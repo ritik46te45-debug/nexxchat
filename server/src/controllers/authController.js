@@ -392,7 +392,7 @@ export const forgotPassword = async (req, res) => {
 
     const resetToken = crypto.randomBytes(32).toString('hex');
     user.passwordResetToken = resetToken;
-    user.passwordResetExpires = Date.now() + 60 * 60 * 1000; // 1 hour
+    user.passwordResetExpires = Date.now() + 2 * 60 * 60 * 1000; // 2 hours
     await user.save();
 
     // Determine the frontend URL dynamically (handles Vercel, localhost, custom domain)

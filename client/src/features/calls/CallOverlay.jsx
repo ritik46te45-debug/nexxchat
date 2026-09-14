@@ -105,6 +105,8 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
   const remoteStreamRef = useRef(null);
   const [remoteStream, setRemoteStream] = useState(null);
   const containerRef = useRef(null);
+  const timerRef = useRef(null);
+  const webrtcManagerRef = useRef(null);
   const callIdRef = useRef(callData.callId);
   const callDurationRef = useRef(0);
 
