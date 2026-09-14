@@ -440,7 +440,11 @@ export const resetPassword = async (req, res) => {
     const { token } = req.params;
     const { password } = req.body;
 
-    const cleanToken = (token || '').trim();
+    // Decode any URL-encoded characters in the token (e.g. from email clients)
+    let cleanToken = (token || '').trim();
+    try { cleanToken = decodeURIComponent(cleanToken); } catch {}
+
+    console.log(`[RESET-PASSWORD] Attempting reset with token length: ${cleanToken.length}`);
 
     if (!cleanToken) {
       return res.status(400).json({ error: 'Reset token is required' });
@@ -453,11 +457,20 @@ export const resetPassword = async (req, res) => {
     const user = await User.findOne({
       passwordResetToken: cleanToken,
       passwordResetExpires: { $gt: Date.now() },
-    });
+    }).select('+password');
 
     if (!user) {
+      // Check if token exists but is expired
+      const expiredUser = await User.findOne({ passwordResetToken: cleanToken });
+      if (expiredUser) {
+        console.warn(`[RESET-PASSWORD] Token found but EXPIRED for user: ${expiredUser.email}`);
+        return res.status(400).json({ error: 'Reset token has expired. Please request a new password reset link.' });
+      }
+      console.warn(`[RESET-PASSWORD] No user found with provided token`);
       return res.status(400).json({ error: 'Invalid or expired reset token. Please request a new one.' });
     }
+
+    console.log(`[RESET-PASSWORD] Valid token found for user: ${user.email}`);
 
     user.password = password;
     user.passwordResetToken = undefined;
@@ -469,6 +482,7 @@ export const resetPassword = async (req, res) => {
     // Revoke previous sessions
     await Session.updateMany({ user: user._id }, { isRevoked: true });
 
+    console.log(`[RESET-PASSWORD] Password reset SUCCESSFUL for user: ${user.email}`);
     res.json({ message: 'Password reset successfully! You can now log in with your new password.' });
   } catch (error) {
     console.error('Reset password error:', error);

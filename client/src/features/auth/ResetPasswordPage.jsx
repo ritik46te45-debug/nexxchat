@@ -13,6 +13,7 @@ export default function ResetPasswordPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [tokenExpired, setTokenExpired] = useState(false);
   const cleanToken = (token || '').trim();
 
   const handleSubmit = async (e) => {
@@ -49,7 +50,12 @@ export default function ResetPasswordPage() {
         navigate('/login', { replace: true });
       }, 2500);
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to reset password. Link may be expired or invalid.');
+      const errorMsg = err.response?.data?.error || 'Failed to reset password. Link may be expired or invalid.';
+      toast.error(errorMsg);
+      // If token is expired/invalid, show option to request a new one
+      if (err.response?.status === 400 && (errorMsg.includes('expired') || errorMsg.includes('invalid') || errorMsg.includes('Invalid'))) {
+        setTokenExpired(true);
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -134,6 +140,18 @@ export default function ResetPasswordPage() {
                   </>
                 )}
               </button>
+
+              {tokenExpired && (
+                <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-center space-y-2">
+                  <p className="text-xs text-amber-400 font-medium">Your reset link has expired or is invalid.</p>
+                  <Link
+                    to="/login"
+                    className="inline-block text-xs text-primary-400 hover:text-primary-300 font-semibold transition-colors"
+                  >
+                    Go to Login → Request New Link
+                  </Link>
+                </div>
+              )}
 
               <div className="text-center pt-2">
                 <Link to="/login" className="text-xs text-surface-400 hover:text-white transition-colors">

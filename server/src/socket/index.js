@@ -513,7 +513,14 @@ export const setupSocket = (io) => {
 
         call.status = 'ended';
         call.endedAt = new Date();
-        call.duration = duration;
+
+        // Use client-reported duration, but compute from timestamps as failsafe
+        let finalDuration = duration;
+        if ((!finalDuration || finalDuration <= 0) && call.startedAt) {
+          finalDuration = Math.round((call.endedAt.getTime() - new Date(call.startedAt).getTime()) / 1000);
+          if (finalDuration < 0) finalDuration = 0;
+        }
+        call.duration = finalDuration;
         call.endReason = 'completed';
         await call.save();
 
@@ -524,7 +531,7 @@ export const setupSocket = (io) => {
         const otherUserId = callerId === userId ? receiverId : callerId;
 
         if (otherUserId) {
-          emitToUser(otherUserId, 'call:ended', { callId, duration });
+          emitToUser(otherUserId, 'call:ended', { callId, duration: finalDuration });
         }
       } catch (error) {
         console.error('Call end error:', error);

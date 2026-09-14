@@ -456,7 +456,7 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
 
   const handleEndCall = () => {
     const socket = getSocket();
-    if (socket) socket.emit('call:end', { callId: callIdRef.current });
+    if (socket) socket.emit('call:end', { callId: callIdRef.current, duration: callDuration });
     cleanupAndExit();
   };
 
