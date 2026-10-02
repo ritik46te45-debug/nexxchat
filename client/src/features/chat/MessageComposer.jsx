@@ -13,6 +13,7 @@ import LocationPickerModal from './LocationPickerModal';
 import CreatePollModal from './CreatePollModal';
 import UnifiedPickerModal from './UnifiedPickerModal';
 import VoiceRecorder from './VoiceRecorder';
+import PdfCoverCard from './PdfCoverCard';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
 
@@ -460,7 +461,21 @@ export default function MessageComposer() {
         <div className="flex gap-2 mb-2 overflow-x-auto pb-1 hide-scrollbar">
           {files.map((file, idx) => {
             const isImg = file.type.startsWith('image/');
+            const isPdf = file.type === 'application/pdf' || file.name?.toLowerCase().endsWith('.pdf');
             const previewUrl = isImg ? URL.createObjectURL(file) : null;
+
+            if (isPdf) {
+              return (
+                <PdfCoverCard
+                  key={idx}
+                  source={file}
+                  fileName={file.name}
+                  fileSize={file.size}
+                  compact={true}
+                  onRemove={() => removeFile(idx)}
+                />
+              );
+            }
 
             return (
               <div

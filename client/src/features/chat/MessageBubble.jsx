@@ -12,6 +12,7 @@ import ViewOnceModal from './ViewOnceModal';
 import AudioWaveformPlayer from './AudioWaveformPlayer';
 import CustomVideoPlayer from './CustomVideoPlayer';
 import PdfViewerModal from './PdfViewerModal';
+import PdfCoverCard from './PdfCoverCard';
 import { downloadFile } from '../../lib/fileDownload';
 import toast from 'react-hot-toast';
 
@@ -451,72 +452,87 @@ export default function MessageBubble({
             </div>
           )}
 
-          {/* DOCUMENTS & FILES (WhatsApp-Style PDF & Doc preview / download) */}
-          {(message.type === 'document' || message.type === 'file') && message.attachments?.[0]?.url && (
-            <div className="my-1">
-              <div
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const isPdf = message.attachments[0].fileName?.toLowerCase().endsWith('.pdf') || message.attachments[0].mimeType === 'application/pdf' || message.attachments[0].url?.toLowerCase().includes('.pdf');
-                  if (isPdf) {
-                    setShowPdfViewer(true);
-                  } else {
-                    downloadFile(
-                      message.attachments[0].url,
-                      message.attachments[0].fileName,
-                      message.attachments[0].mimeType
-                    );
-                  }
-                }}
-                className={`p-3 rounded-2xl flex items-center justify-between gap-3 border transition-all cursor-pointer select-none group ${
-                  isOwn ? 'bg-black/20 border-white/20 hover:bg-black/30' : 'bg-dark-input hover:bg-dark-hover border-dark-border'
-                }`}
-                title="Click to preview or download document"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-xl bg-red-500/20 text-red-400 flex items-center justify-center flex-shrink-0 font-bold shadow-sm">
-                    <FileText className="w-5 h-5 text-red-400" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs font-bold text-white truncate group-hover:text-primary-300 transition-colors">
-                      {message.attachments[0].fileName}
-                    </p>
-                    <p className="text-[10px] text-surface-400 flex items-center gap-1.5">
-                      <span>{message.attachments[0].fileSize ? `${(message.attachments[0].fileSize / 1024).toFixed(0)} KB` : 'Document'}</span>
-                      <span>•</span>
-                      <span className="text-primary-400 font-semibold uppercase">
-                        {message.attachments[0].fileName?.split('.').pop() || 'PDF'}
-                      </span>
-                    </p>
-                  </div>
+          {/* DOCUMENTS & FILES (WhatsApp-Style PDF with Cover Page & Doc preview) */}
+          {(message.type === 'document' || message.type === 'file') && message.attachments?.[0]?.url && (() => {
+            const att = message.attachments[0];
+            const isPdf = att.fileName?.toLowerCase().endsWith('.pdf') || att.mimeType === 'application/pdf' || att.url?.toLowerCase().includes('.pdf');
+
+            if (isPdf) {
+              return (
+                <div className="my-1.5">
+                  <PdfCoverCard
+                    source={att.url}
+                    fileName={att.fileName}
+                    fileSize={att.fileSize}
+                    isOwn={isOwn}
+                    onPreview={() => setShowPdfViewer(true)}
+                    onDownload={() => downloadFile(att.url, att.fileName, att.mimeType)}
+                  />
+
+                  {/* WhatsApp-Style In-App PDF Viewer Modal */}
+                  <PdfViewerModal
+                    isOpen={showPdfViewer}
+                    onClose={() => setShowPdfViewer(false)}
+                    pdfUrl={att.url}
+                    fileName={att.fileName}
+                    fileSize={att.fileSize}
+                  />
                 </div>
-                <button
-                  type="button"
+              );
+            }
+
+            return (
+              <div className="my-1">
+                <div
                   onClick={(e) => {
                     e.stopPropagation();
                     downloadFile(
-                      message.attachments[0].url,
-                      message.attachments[0].fileName,
-                      message.attachments[0].mimeType
+                      att.url,
+                      att.fileName,
+                      att.mimeType
                     );
                   }}
-                  className="p-2 rounded-xl hover:bg-white/10 text-surface-300 hover:text-white transition-all flex-shrink-0 active:scale-95"
-                  title="Download File"
+                  className={`p-3 rounded-2xl flex items-center justify-between gap-3 border transition-all cursor-pointer select-none group ${
+                    isOwn ? 'bg-black/20 border-white/20 hover:bg-black/30' : 'bg-dark-input hover:bg-dark-hover border-dark-border'
+                  }`}
+                  title="Click to download document"
                 >
-                  <Download className="w-4 h-4" />
-                </button>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-xl bg-red-500/20 text-red-400 flex items-center justify-center flex-shrink-0 font-bold shadow-sm">
+                      <FileText className="w-5 h-5 text-red-400" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-white truncate group-hover:text-primary-300 transition-colors">
+                        {att.fileName}
+                      </p>
+                      <p className="text-[10px] text-surface-400 flex items-center gap-1.5">
+                        <span>{att.fileSize ? `${(att.fileSize / 1024).toFixed(0)} KB` : 'Document'}</span>
+                        <span>•</span>
+                        <span className="text-primary-400 font-semibold uppercase">
+                          {att.fileName?.split('.').pop() || 'FILE'}
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      downloadFile(
+                        att.url,
+                        att.fileName,
+                        att.mimeType
+                      );
+                    }}
+                    className="p-2 rounded-xl hover:bg-white/10 text-surface-300 hover:text-white transition-all flex-shrink-0 active:scale-95"
+                    title="Download File"
+                  >
+                    <Download className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
-
-              {/* WhatsApp-Style In-App PDF Viewer Modal */}
-              <PdfViewerModal
-                isOpen={showPdfViewer}
-                onClose={() => setShowPdfViewer(false)}
-                pdfUrl={message.attachments[0].url}
-                fileName={message.attachments[0].fileName}
-                fileSize={message.attachments[0].fileSize}
-              />
-            </div>
-          )}
+            );
+          })()}
 
           {/* LOCATION CARD (WhatsApp-Style Live / Static GPS Location) */}
           {message.type === 'location' && message.location && (
