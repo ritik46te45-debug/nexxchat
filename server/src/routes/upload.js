@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { authenticate } from '../middleware/auth.js';
-import { uploadFile, uploadMultipleFiles, deleteFile, downloadFileProxy, getGridFSFile } from '../controllers/uploadController.js';
+import { uploadFile, uploadMultipleFiles, deleteFile, downloadFileProxy, getGridFSFile, migrateGridFSToCloudinary, getStorageStats } from '../controllers/uploadController.js';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -20,4 +20,9 @@ router.post('/single', upload.single('file'), uploadFile);
 router.post('/multiple', upload.array('files', 10), uploadMultipleFiles);
 router.delete('/', deleteFile);
 
+// Storage management endpoints (require auth)
+router.get('/storage/stats', getStorageStats);
+router.post('/storage/migrate', migrateGridFSToCloudinary);
+
 export default router;
+

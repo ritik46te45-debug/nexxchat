@@ -5,6 +5,7 @@ import mime from 'mime-types';
 import fetch from 'node-fetch';
 import mongoose from 'mongoose';
 import { GridFSBucket } from 'mongodb';
+import Message from '../models/Message.js';
 
 let gridFSBucket = null;
 const getGridFSBucket = () => {
@@ -45,6 +46,10 @@ const MAX_SIZES = {
   document: 500 * 1024 * 1024 // 500MB
 };
 
+// Cloudinary free plan: images up to 10MB, video/raw up to 100MB
+// We use 100MB as the max since most large files are documents/video (raw type)
+const CLOUDINARY_MAX_SIZE = 100 * 1024 * 1024; // 100MB
+
 const getFileCategory = (mimeType, ext = '') => {
   const m = (mimeType || '').toLowerCase();
   const e = (ext || '').toLowerCase();
@@ -68,7 +73,42 @@ const hasValidCloudinaryConfig = () => {
   return Boolean(name && key && secret && name !== 'your-cloud-name' && !name.includes('your-'));
 };
 
-// Helper: Save file persistently in MongoDB GridFS (permanent, never wiped on server restart)
+// Helper: Upload buffer to Cloudinary
+const uploadToCloudinary = async (buffer, category, sanitizedName, effectiveMime) => {
+  const ext = path.extname(sanitizedName).toLowerCase();
+  const isPdf = ext === '.pdf' || effectiveMime === 'application/pdf';
+  // For images > 10MB, use 'raw' resource_type to avoid Cloudinary image size limit
+  const isLargeImage = category === 'image' && buffer.length > 10 * 1024 * 1024;
+  const resourceType = isPdf || isLargeImage ? 'raw' : (category === 'image' ? 'image' : (category === 'video' ? 'video' : 'raw'));
+  const folder = `nexchat/${category}s`;
+
+  const result = await new Promise((resolve, reject) => {
+    const options = {
+      folder,
+      resource_type: resourceType,
+      public_id: `${Date.now()}_${sanitizedName}`,
+      use_filename: true,
+      unique_filename: false,
+      access_mode: 'public',
+      type: 'upload',
+    };
+
+    // Only apply transformations for small images (not PDF, not GIF, not SVG)
+    if (category === 'image' && !isPdf && !isLargeImage && !effectiveMime.includes('gif') && !effectiveMime.includes('svg')) {
+      options.transformation = [{ quality: 'auto', fetch_format: 'auto' }];
+    }
+
+    const stream = cloudinary.uploader.upload_stream(options, (error, result) => {
+      if (error) reject(error);
+      else resolve(result);
+    });
+    stream.end(buffer);
+  });
+
+  return { url: result.secure_url, publicId: result.public_id };
+};
+
+// Helper: Save file persistently in MongoDB GridFS (LAST RESORT only — when Cloudinary is unavailable)
 const saveFilePersistently = async (buffer, category, sanitizedName, mimetype = 'application/octet-stream') => {
   const filename = `${Date.now()}_${sanitizedName}`;
   const bucket = getGridFSBucket();
@@ -97,7 +137,7 @@ const saveFilePersistently = async (buffer, category, sanitizedName, mimetype = 
   return `/uploads/${category}s/${filename}`;
 };
 
-// UPLOAD FILE
+// UPLOAD FILE — Cloudinary-first strategy (no more GridFS bloat)
 export const uploadFile = async (req, res) => {
   try {
     if (!req.file) {
@@ -133,46 +173,24 @@ export const uploadFile = async (req, res) => {
     let fileUrl = '';
     let publicId = '';
 
-    // Files > 10MB exceed Cloudinary Free raw/image limits — store directly in permanent MongoDB GridFS
-    const CLOUDINARY_MAX_SIZE = 10 * 1024 * 1024; // 10MB
+    // Strategy: ALWAYS try Cloudinary first (up to 100MB), GridFS only as last resort
     const useCloudinary = hasValidCloudinaryConfig() && size <= CLOUDINARY_MAX_SIZE;
 
     if (useCloudinary) {
       try {
-        const isPdf = ext === '.pdf' || effectiveMime === 'application/pdf';
-        const resourceType = isPdf ? 'raw' : (category === 'image' ? 'image' : (category === 'video' ? 'video' : 'raw'));
-        const folder = `nexchat/${category}s`;
-
-        const result = await new Promise((resolve, reject) => {
-          const options = {
-            folder,
-            resource_type: resourceType,
-            public_id: `${Date.now()}_${sanitizedName}`,
-            use_filename: true,
-            unique_filename: false,
-            access_mode: 'public',
-            type: 'upload',
-          };
-
-          if (category === 'image' && !isPdf && !effectiveMime.includes('gif') && !effectiveMime.includes('svg')) {
-            options.transformation = [{ quality: 'auto', fetch_format: 'auto' }];
-          }
-
-          const stream = cloudinary.uploader.upload_stream(options, (error, result) => {
-            if (error) reject(error);
-            else resolve(result);
-          });
-          stream.end(buffer);
-        });
-
-        fileUrl = result.secure_url;
-        publicId = result.public_id;
+        const result = await uploadToCloudinary(buffer, category, sanitizedName, effectiveMime);
+        fileUrl = result.url;
+        publicId = result.publicId;
       } catch (cloudErr) {
-        console.warn('Cloudinary upload failed, storing in MongoDB GridFS:', cloudErr.message);
+        console.warn('Cloudinary upload failed, falling back to GridFS:', cloudErr.message);
         fileUrl = await saveFilePersistently(buffer, category, sanitizedName, effectiveMime);
       }
+    } else if (hasValidCloudinaryConfig() && size > CLOUDINARY_MAX_SIZE) {
+      // File exceeds Cloudinary limits — GridFS as last resort
+      console.warn(`File ${sanitizedName} (${Math.round(size / 1024 / 1024)}MB) exceeds Cloudinary limit, using GridFS`);
+      fileUrl = await saveFilePersistently(buffer, category, sanitizedName, effectiveMime);
     } else {
-      // Large files (> 10MB) or when Cloudinary is not configured -> MongoDB GridFS (permanent)
+      // Cloudinary not configured at all
       fileUrl = await saveFilePersistently(buffer, category, sanitizedName, effectiveMime);
     }
 
@@ -225,34 +243,15 @@ export const uploadMultipleFiles = async (req, res) => {
         let fileUrl = '';
         let publicId = '';
 
-        const CLOUDINARY_MAX_SIZE = 10 * 1024 * 1024;
         const useCloudinary = hasValidCloudinaryConfig() && size <= CLOUDINARY_MAX_SIZE;
 
         if (useCloudinary) {
           try {
-            const isPdf = ext === '.pdf' || effectiveMime === 'application/pdf';
-            const resourceType = isPdf ? 'raw' : (category === 'image' ? 'image' : (category === 'video' ? 'video' : 'raw'));
-
-            const result = await new Promise((resolve, reject) => {
-              const options = {
-                folder: `nexchat/${category}s`,
-                resource_type: resourceType,
-                public_id: `${Date.now()}_${sanitizedName}`,
-                use_filename: true,
-                unique_filename: false,
-                access_mode: 'public',
-                type: 'upload',
-              };
-
-              const stream = cloudinary.uploader.upload_stream(options, (error, result) => {
-                if (error) reject(error);
-                else resolve(result);
-              });
-              stream.end(buffer);
-            });
-            fileUrl = result.secure_url;
-            publicId = result.public_id;
+            const result = await uploadToCloudinary(buffer, category, sanitizedName, effectiveMime);
+            fileUrl = result.url;
+            publicId = result.publicId;
           } catch (cloudErr) {
+            console.warn(`Cloudinary upload failed for ${sanitizedName}, using GridFS:`, cloudErr.message);
             fileUrl = await saveFilePersistently(buffer, category, sanitizedName, effectiveMime);
           }
         } else {
@@ -285,10 +284,32 @@ export const deleteFile = async (req, res) => {
     const { publicId, url } = req.body;
 
     if (publicId && hasValidCloudinaryConfig()) {
-      await cloudinary.uploader.destroy(publicId).catch(console.error);
+      // Try all resource types for Cloudinary deletion
+      for (const type of ['raw', 'image', 'video']) {
+        try {
+          await cloudinary.uploader.destroy(publicId, { resource_type: type });
+        } catch {}
+      }
     } else if (url && url.startsWith('/uploads/')) {
       const localPath = path.join(process.cwd(), 'public', url);
       await fs.promises.unlink(localPath).catch(console.error);
+    }
+
+    // Also clean up GridFS if the URL was a GridFS URL
+    if (url && url.includes('/gridfs/')) {
+      const filename = path.basename(url);
+      const bucket = getGridFSBucket();
+      if (bucket && filename) {
+        try {
+          const cursor = bucket.find({ filename });
+          const files = await cursor.toArray();
+          for (const file of files) {
+            await bucket.delete(file._id);
+          }
+        } catch (gridErr) {
+          console.warn('GridFS delete error:', gridErr.message);
+        }
+      }
     }
 
     res.json({ message: 'File deleted' });
@@ -308,7 +329,7 @@ export const downloadFileProxy = async (req, res) => {
 
     const safeFilename = filename || 'download';
 
-    // 0. Check MongoDB GridFS first (permanent persistent storage)
+    // 0. Check MongoDB GridFS first (for backward compatibility with old files)
     let cleanUrlPart = url.split('?')[0];
     try { cleanUrlPart = decodeURIComponent(cleanUrlPart); } catch {}
     const urlFilename = path.basename(cleanUrlPart);
@@ -426,7 +447,7 @@ export const downloadFileProxy = async (req, res) => {
   }
 };
 
-// SERVE GRIDFS FILE DIRECTLY (permanent cloud storage via MongoDB)
+// SERVE GRIDFS FILE DIRECTLY (backward compatibility for old files still in GridFS)
 export const getGridFSFile = async (req, res) => {
   try {
     const { filename } = req.params;
@@ -456,5 +477,160 @@ export const getGridFSFile = async (req, res) => {
   } catch (error) {
     console.error('GridFS streaming error:', error);
     res.status(500).json({ error: 'Failed to retrieve file' });
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// MIGRATION: Move ALL existing GridFS files → Cloudinary & update DB
+// ═══════════════════════════════════════════════════════════════════
+export const migrateGridFSToCloudinary = async (req, res) => {
+  if (!hasValidCloudinaryConfig()) {
+    return res.status(400).json({ error: 'Cloudinary is not configured' });
+  }
+
+  const bucket = getGridFSBucket();
+  if (!bucket) {
+    return res.status(503).json({ error: 'GridFS not available — database may not be connected' });
+  }
+
+  const dryRun = req.query.dryRun === 'true';
+
+  try {
+    // 1. Find all GridFS files
+    const cursor = bucket.find({});
+    const allFiles = await cursor.toArray();
+
+    if (allFiles.length === 0) {
+      return res.json({ message: 'No GridFS files found — nothing to migrate', migrated: 0 });
+    }
+
+    const totalSizeMB = allFiles.reduce((sum, f) => sum + f.length, 0) / (1024 * 1024);
+
+    if (dryRun) {
+      return res.json({
+        message: 'Dry run — no changes made',
+        totalFiles: allFiles.length,
+        totalSizeMB: Math.round(totalSizeMB * 100) / 100,
+        files: allFiles.map(f => ({
+          filename: f.filename,
+          sizeMB: Math.round(f.length / 1024 / 1024 * 100) / 100,
+          contentType: f.contentType,
+          uploadDate: f.uploadDate,
+        })),
+      });
+    }
+
+    const results = { migrated: 0, failed: 0, skipped: 0, errors: [], freedMB: 0 };
+
+    for (const gridFile of allFiles) {
+      try {
+        // Skip files too large for Cloudinary
+        if (gridFile.length > CLOUDINARY_MAX_SIZE) {
+          results.skipped++;
+          results.errors.push({ file: gridFile.filename, reason: 'Too large for Cloudinary (>100MB)' });
+          continue;
+        }
+
+        // 2. Read the file from GridFS into a buffer
+        const chunks = [];
+        await new Promise((resolve, reject) => {
+          const downloadStream = bucket.openDownloadStream(gridFile._id);
+          downloadStream.on('data', chunk => chunks.push(chunk));
+          downloadStream.on('error', reject);
+          downloadStream.on('end', resolve);
+        });
+        const fileBuffer = Buffer.concat(chunks);
+
+        // 3. Determine category and upload to Cloudinary
+        const mimetype = gridFile.contentType || 'application/octet-stream';
+        const originalName = gridFile.metadata?.originalName || gridFile.filename;
+        const category = gridFile.metadata?.category || getFileCategory(mimetype, path.extname(originalName));
+
+        const cloudResult = await uploadToCloudinary(fileBuffer, category, originalName, mimetype);
+
+        // 4. Update all message attachment URLs that point to this GridFS file
+        const oldUrl = `/api/upload/gridfs/${gridFile.filename}`;
+        const updateResult = await Message.updateMany(
+          { 'attachments.url': oldUrl },
+          { $set: { 'attachments.$[elem].url': cloudResult.url, 'attachments.$[elem].publicId': cloudResult.publicId } },
+          { arrayFilters: [{ 'elem.url': oldUrl }] }
+        );
+
+        // Also check for content field containing the old URL (inline links)
+        await Message.updateMany(
+          { content: { $regex: oldUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') } },
+          [{ $set: { content: { $replaceAll: { input: '$content', find: oldUrl, replacement: cloudResult.url } } } }]
+        );
+
+        console.log(`Migrated: ${gridFile.filename} → ${cloudResult.url} (updated ${updateResult.modifiedCount} messages)`);
+
+        // 5. Delete the GridFS file to free MongoDB storage
+        await bucket.delete(gridFile._id);
+
+        results.migrated++;
+        results.freedMB += gridFile.length / (1024 * 1024);
+      } catch (fileErr) {
+        results.failed++;
+        results.errors.push({ file: gridFile.filename, reason: fileErr.message });
+        console.error(`Migration failed for ${gridFile.filename}:`, fileErr.message);
+      }
+    }
+
+    results.freedMB = Math.round(results.freedMB * 100) / 100;
+
+    res.json({
+      message: `Migration complete! Freed ${results.freedMB}MB from MongoDB.`,
+      ...results,
+      totalFiles: allFiles.length,
+    });
+  } catch (error) {
+    console.error('Migration error:', error);
+    res.status(500).json({ error: 'Migration failed: ' + error.message });
+  }
+};
+
+// GET STORAGE STATS — Check how much space GridFS is using
+export const getStorageStats = async (req, res) => {
+  try {
+    const bucket = getGridFSBucket();
+    const stats = { gridfs: { files: 0, totalSizeMB: 0, fileList: [] }, cloudinary: { configured: hasValidCloudinaryConfig() } };
+
+    if (bucket) {
+      const cursor = bucket.find({});
+      const allFiles = await cursor.toArray();
+      stats.gridfs.files = allFiles.length;
+      stats.gridfs.totalSizeMB = Math.round(allFiles.reduce((sum, f) => sum + f.length, 0) / (1024 * 1024) * 100) / 100;
+      stats.gridfs.fileList = allFiles.map(f => ({
+        filename: f.filename,
+        sizeMB: Math.round(f.length / 1024 / 1024 * 100) / 100,
+        contentType: f.contentType,
+        uploadDate: f.uploadDate,
+      }));
+    }
+
+    // Check MongoDB collections sizes
+    if (mongoose.connection?.db) {
+      try {
+        const collections = await mongoose.connection.db.listCollections().toArray();
+        const collectionStats = [];
+        for (const col of collections) {
+          try {
+            const colStats = await mongoose.connection.db.collection(col.name).stats();
+            collectionStats.push({
+              name: col.name,
+              sizeMB: Math.round((colStats.size || 0) / (1024 * 1024) * 100) / 100,
+              storageSizeMB: Math.round((colStats.storageSize || 0) / (1024 * 1024) * 100) / 100,
+              count: colStats.count || 0,
+            });
+          } catch {}
+        }
+        stats.collections = collectionStats.sort((a, b) => b.sizeMB - a.sizeMB);
+      } catch {}
+    }
+
+    res.json(stats);
+  } catch (error) {
+    console.error('Storage stats error:', error);
+    res.status(500).json({ error: 'Failed to get storage stats' });
   }
 };
