@@ -8,6 +8,15 @@ export const getSocketURL = () => {
     return envUrl.replace(/\/api\/?$/, '').replace(/\/+$/, '');
   }
   if (typeof window !== 'undefined') {
+    const isCapacitorNative = Boolean(
+      window.Capacitor?.isNativePlatform?.() ||
+      window.location.protocol === 'capacitor:' ||
+      (window.location.hostname === 'localhost' && window.Capacitor)
+    );
+    if (isCapacitorNative) {
+      return 'https://nexxchat-5d29.onrender.com';
+    }
+
     const host = window.location.hostname;
     if (host === 'localhost' || host === '127.0.0.1') {
       return 'http://localhost:5000';

@@ -8,6 +8,17 @@ const getBaseURL = () => {
     return clean.endsWith('/api') ? clean : `${clean}/api`;
   }
   if (typeof window !== 'undefined') {
+    // In Capacitor native mobile apps (Android/iOS), window.location.hostname is 'localhost'
+    // or protocol is 'capacitor:'! We MUST NOT connect to phone's localhost:5000!
+    const isCapacitorNative = Boolean(
+      window.Capacitor?.isNativePlatform?.() ||
+      window.location.protocol === 'capacitor:' ||
+      (window.location.hostname === 'localhost' && window.Capacitor)
+    );
+    if (isCapacitorNative) {
+      return 'https://nexxchat-5d29.onrender.com/api';
+    }
+
     const host = window.location.hostname;
     if (host === 'localhost' || host === '127.0.0.1') {
       return 'http://localhost:5000/api';
