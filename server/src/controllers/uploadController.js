@@ -151,33 +151,9 @@ const uploadToCloudinary = async (buffer, category, sanitizedName, effectiveMime
   return { url: result.secure_url, publicId: result.public_id };
 };
 
-// Helper: Save small file (<2MB) in MongoDB GridFS only when external storage fails
-const saveFilePersistently = async (buffer, category, sanitizedName, mimetype = 'application/octet-stream') => {
-  // Never save large files to GridFS to prevent MongoDB Atlas from running out of storage
-  if (buffer.length > 2 * 1024 * 1024) {
-    throw new Error(`File is too large (${(buffer.length / 1024 / 1024).toFixed(1)}MB) to save in database. Cloudinary accepts up to 10MB.`);
-  }
-
+// Helper: Save file to disk only (never to MongoDB) if external cloud storage fails
+const saveFilePersistently = async (buffer, category, sanitizedName) => {
   const filename = `${Date.now()}_${sanitizedName}`;
-  const bucket = getGridFSBucket();
-  if (bucket) {
-    try {
-      await new Promise((resolve, reject) => {
-        const uploadStream = bucket.openUploadStream(filename, {
-          contentType: mimetype,
-          metadata: { category, originalName: sanitizedName, size: buffer.length }
-        });
-        uploadStream.on('error', reject);
-        uploadStream.on('finish', resolve);
-        uploadStream.end(buffer);
-      });
-      return `/api/upload/gridfs/${filename}`;
-    } catch (gridErr) {
-      console.warn('GridFS save failed, falling back to disk:', gridErr);
-    }
-  }
-
-  // Disk fallback if GridFS is unavailable
   const uploadDir = path.join(process.cwd(), 'public/uploads', `${category}s`);
   await fs.promises.mkdir(uploadDir, { recursive: true });
   const filePath = path.join(uploadDir, filename);
