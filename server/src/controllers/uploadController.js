@@ -46,9 +46,13 @@ const MAX_SIZES = {
   document: 500 * 1024 * 1024 // 500MB
 };
 
-// Cloudinary free plan: images up to 10MB, video/raw up to 100MB
-// We use 100MB as the max since most large files are documents/video (raw type)
-const CLOUDINARY_MAX_SIZE = 100 * 1024 * 1024; // 100MB
+// Cloudinary free plan limits:
+// - images: up to 10MB
+// - raw/documents: up to 10MB
+// - video: up to 100MB
+const CLOUDINARY_IMAGE_MAX_SIZE = 10 * 1024 * 1024;  // 10MB
+const CLOUDINARY_RAW_MAX_SIZE = 10 * 1024 * 1024;    // 10MB
+const CLOUDINARY_VIDEO_MAX_SIZE = 100 * 1024 * 1024; // 100MB
 
 const getFileCategory = (mimeType, ext = '') => {
   const m = (mimeType || '').toLowerCase();
@@ -73,21 +77,60 @@ const hasValidCloudinaryConfig = () => {
   return Boolean(name && key && secret && name !== 'your-cloud-name' && !name.includes('your-'));
 };
 
+// Helper: Upload large files (>10MB) to GitHub Releases if GITHUB_TOKEN is available
+const uploadToGitHubReleases = async (filename, buffer, contentType = 'application/octet-stream') => {
+  const token = process.env.GITHUB_STORAGE_TOKEN || process.env.GITHUB_TOKEN;
+  const repo = process.env.GITHUB_STORAGE_REPO || 'ritik46te45-debug/nexxchat';
+  const releaseId = process.env.GITHUB_STORAGE_RELEASE_ID || 401555865;
+  if (!token) return null;
+
+  try {
+    const cleanName = `${Date.now()}_${filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+    const uploadUrl = `https://uploads.github.com/repos/${repo}/releases/${releaseId}/assets?name=${encodeURIComponent(cleanName)}`;
+    const res = await fetch(uploadUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `token ${token}`,
+        'User-Agent': 'Nexchat-App',
+        'Content-Type': contentType,
+        'Content-Length': buffer.length.toString(),
+      },
+      body: buffer,
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      return { url: data.browser_download_url, publicId: `gh_asset_${data.id}` };
+    }
+    const errText = await res.text();
+    console.warn('GitHub release upload failed:', res.status, errText);
+    return null;
+  } catch (err) {
+    console.warn('GitHub release upload error:', err.message);
+    return null;
+  }
+};
+
 // Helper: Upload buffer to Cloudinary
 const uploadToCloudinary = async (buffer, category, sanitizedName, effectiveMime) => {
   const ext = path.extname(sanitizedName).toLowerCase();
   const isPdf = ext === '.pdf' || effectiveMime === 'application/pdf';
-  // For images > 10MB, use 'raw' resource_type to avoid Cloudinary image size limit
   const isLargeImage = category === 'image' && buffer.length > 10 * 1024 * 1024;
   const resourceType = isPdf || isLargeImage ? 'raw' : (category === 'image' ? 'image' : (category === 'video' ? 'video' : 'raw'));
   const folder = `nexchat/${category}s`;
+
+  // Cloudinary blocks certain extensions in public_id for raw uploads
+  const blockedRawExts = ['.apk', '.bin', '.exe', '.sh', '.bat', '.msi'];
+  const safePublicId = (resourceType === 'raw' && blockedRawExts.includes(ext))
+    ? `${Date.now()}_${sanitizedName.replace(/\.[^.]+$/, '')}`
+    : `${Date.now()}_${sanitizedName}`;
 
   const result = await new Promise((resolve, reject) => {
     const options = {
       folder,
       resource_type: resourceType,
-      public_id: `${Date.now()}_${sanitizedName}`,
-      use_filename: true,
+      public_id: safePublicId,
+      use_filename: false,
       unique_filename: false,
       access_mode: 'public',
       type: 'upload',
@@ -108,8 +151,13 @@ const uploadToCloudinary = async (buffer, category, sanitizedName, effectiveMime
   return { url: result.secure_url, publicId: result.public_id };
 };
 
-// Helper: Save file persistently in MongoDB GridFS (LAST RESORT only — when Cloudinary is unavailable)
+// Helper: Save small file (<2MB) in MongoDB GridFS only when external storage fails
 const saveFilePersistently = async (buffer, category, sanitizedName, mimetype = 'application/octet-stream') => {
+  // Never save large files to GridFS to prevent MongoDB Atlas from running out of storage
+  if (buffer.length > 2 * 1024 * 1024) {
+    throw new Error(`File is too large (${(buffer.length / 1024 / 1024).toFixed(1)}MB) to save in database. Cloudinary accepts up to 10MB.`);
+  }
+
   const filename = `${Date.now()}_${sanitizedName}`;
   const bucket = getGridFSBucket();
   if (bucket) {
@@ -137,7 +185,7 @@ const saveFilePersistently = async (buffer, category, sanitizedName, mimetype = 
   return `/uploads/${category}s/${filename}`;
 };
 
-// UPLOAD FILE — Cloudinary-first strategy (no more GridFS bloat)
+// UPLOAD FILE — Cloudinary-first strategy (with GitHub Releases for >10MB files)
 export const uploadFile = async (req, res) => {
   try {
     if (!req.file) {
@@ -162,7 +210,7 @@ export const uploadFile = async (req, res) => {
     const effectiveMime = mimetype && mimetype !== 'application/octet-stream' ? mimetype : (mime.lookup(sanitizedName) || 'application/octet-stream');
     const category = getFileCategory(effectiveMime, ext);
 
-    // Validate file size
+    // Validate overall file size
     const maxSize = MAX_SIZES[category] || MAX_SIZES.document;
     if (size > maxSize) {
       return res.status(400).json({
@@ -173,25 +221,39 @@ export const uploadFile = async (req, res) => {
     let fileUrl = '';
     let publicId = '';
 
-    // Strategy: ALWAYS try Cloudinary first (up to 100MB), GridFS only as last resort
-    const useCloudinary = hasValidCloudinaryConfig() && size <= CLOUDINARY_MAX_SIZE;
+    const maxCloudinarySize = category === 'video' ? CLOUDINARY_VIDEO_MAX_SIZE : CLOUDINARY_RAW_MAX_SIZE;
 
-    if (useCloudinary) {
+    if (hasValidCloudinaryConfig() && size <= maxCloudinarySize) {
       try {
         const result = await uploadToCloudinary(buffer, category, sanitizedName, effectiveMime);
         fileUrl = result.url;
         publicId = result.publicId;
       } catch (cloudErr) {
-        console.warn('Cloudinary upload failed, falling back to GridFS:', cloudErr.message);
-        fileUrl = await saveFilePersistently(buffer, category, sanitizedName, effectiveMime);
+        console.warn('Cloudinary upload failed:', cloudErr.message);
+        // Try GitHub Releases fallback
+        const ghResult = await uploadToGitHubReleases(sanitizedName, buffer, effectiveMime);
+        if (ghResult) {
+          fileUrl = ghResult.url;
+          publicId = ghResult.publicId;
+        } else if (size <= 2 * 1024 * 1024) {
+          fileUrl = await saveFilePersistently(buffer, category, sanitizedName, effectiveMime);
+        } else {
+          return res.status(400).json({ error: `Upload failed: ${cloudErr.message}` });
+        }
       }
-    } else if (hasValidCloudinaryConfig() && size > CLOUDINARY_MAX_SIZE) {
-      // File exceeds Cloudinary limits — GridFS as last resort
-      console.warn(`File ${sanitizedName} (${Math.round(size / 1024 / 1024)}MB) exceeds Cloudinary limit, using GridFS`);
-      fileUrl = await saveFilePersistently(buffer, category, sanitizedName, effectiveMime);
     } else {
-      // Cloudinary not configured at all
-      fileUrl = await saveFilePersistently(buffer, category, sanitizedName, effectiveMime);
+      // Exceeds Cloudinary limit — try GitHub Releases
+      const ghResult = await uploadToGitHubReleases(sanitizedName, buffer, effectiveMime);
+      if (ghResult) {
+        fileUrl = ghResult.url;
+        publicId = ghResult.publicId;
+      } else if (size <= 2 * 1024 * 1024) {
+        fileUrl = await saveFilePersistently(buffer, category, sanitizedName, effectiveMime);
+      } else {
+        return res.status(400).json({
+          error: `File size (${(size / 1024 / 1024).toFixed(1)}MB) exceeds Cloudinary free tier limit (10MB for documents/images, 100MB for video).`,
+        });
+      }
     }
 
     res.json({
@@ -207,7 +269,7 @@ export const uploadFile = async (req, res) => {
     });
   } catch (error) {
     console.error('Upload error:', error);
-    res.status(500).json({ error: 'Upload failed' });
+    res.status(500).json({ error: error.message || 'Upload failed' });
   }
 };
 
@@ -243,19 +305,40 @@ export const uploadMultipleFiles = async (req, res) => {
         let fileUrl = '';
         let publicId = '';
 
-        const useCloudinary = hasValidCloudinaryConfig() && size <= CLOUDINARY_MAX_SIZE;
+        const maxCloudinarySize = category === 'video' ? CLOUDINARY_VIDEO_MAX_SIZE : CLOUDINARY_RAW_MAX_SIZE;
 
-        if (useCloudinary) {
+        if (hasValidCloudinaryConfig() && size <= maxCloudinarySize) {
           try {
             const result = await uploadToCloudinary(buffer, category, sanitizedName, effectiveMime);
             fileUrl = result.url;
             publicId = result.publicId;
           } catch (cloudErr) {
-            console.warn(`Cloudinary upload failed for ${sanitizedName}, using GridFS:`, cloudErr.message);
-            fileUrl = await saveFilePersistently(buffer, category, sanitizedName, effectiveMime);
+            console.warn(`Cloudinary upload failed for ${sanitizedName}:`, cloudErr.message);
+            const ghResult = await uploadToGitHubReleases(sanitizedName, buffer, effectiveMime);
+            if (ghResult) {
+              fileUrl = ghResult.url;
+              publicId = ghResult.publicId;
+            } else if (size <= 2 * 1024 * 1024) {
+              fileUrl = await saveFilePersistently(buffer, category, sanitizedName, effectiveMime);
+            } else {
+              errors.push({ file: originalname, error: `Upload failed: ${cloudErr.message}` });
+              continue;
+            }
           }
         } else {
-          fileUrl = await saveFilePersistently(buffer, category, sanitizedName, effectiveMime);
+          const ghResult = await uploadToGitHubReleases(sanitizedName, buffer, effectiveMime);
+          if (ghResult) {
+            fileUrl = ghResult.url;
+            publicId = ghResult.publicId;
+          } else if (size <= 2 * 1024 * 1024) {
+            fileUrl = await saveFilePersistently(buffer, category, sanitizedName, effectiveMime);
+          } else {
+            errors.push({
+              file: originalname,
+              error: `File size (${(size / 1024 / 1024).toFixed(1)}MB) exceeds Cloudinary free tier limit (10MB for documents/images, 100MB for video).`,
+            });
+            continue;
+          }
         }
 
         results.push({
