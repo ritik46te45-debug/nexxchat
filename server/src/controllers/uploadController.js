@@ -440,7 +440,7 @@ export const downloadFileProxy = async (req, res) => {
     let targetFetchUrl = url.startsWith('http') ? url : `${req.protocol}://${req.get('host')}${url}`;
 
     // SSRF Protection: Only allow fetching from whitelisted domains
-    const ALLOWED_DOMAINS = ['res.cloudinary.com', 'api.cloudinary.com', req.get('host')].filter(Boolean);
+    const ALLOWED_DOMAINS = ['res.cloudinary.com', 'api.cloudinary.com', 'github.com', 'githubusercontent.com', 'objects.githubusercontent.com', req.get('host')].filter(Boolean);
     try {
       const parsed = new URL(targetFetchUrl);
       if (!ALLOWED_DOMAINS.some(d => parsed.hostname === d || parsed.hostname.endsWith(`.${d}`))) {
@@ -450,8 +450,8 @@ export const downloadFileProxy = async (req, res) => {
       return res.status(400).json({ error: 'Invalid URL' });
     }
 
-    // 2. Direct fetch first (for raw uploads like BRCCO, this returns 200 directly from CDN)
-    let response = await fetch(targetFetchUrl);
+    // 2. Direct fetch first (with redirect: 'follow' for GitHub & CDN redirects)
+    let response = await fetch(targetFetchUrl, { redirect: 'follow' });
 
     // 3. If direct fetch returned 401 or not ok and it's a Cloudinary URL, use private_download_url
     if (!response.ok && targetFetchUrl.includes('cloudinary.com') && hasValidCloudinaryConfig()) {
