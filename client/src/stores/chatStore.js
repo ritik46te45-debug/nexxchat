@@ -112,6 +112,55 @@ const useChatStore = create((set, get) => ({
     }
   },
 
+  clearConversationMessages: async (conversationId) => {
+    try {
+      await api.post(`/conversations/${conversationId}/clear`);
+      const state = get();
+      const currentActiveId = (state.activeConversation?._id || state.activeConversation?.id)?.toString();
+      if (currentActiveId === conversationId?.toString()) {
+        set({
+          messages: [],
+          activeConversation: {
+            ...state.activeConversation,
+            lastMessage: null,
+            pinnedMessages: [],
+          },
+        });
+      }
+      set((state) => ({
+        conversations: state.conversations.map((c) =>
+          c._id?.toString() === conversationId?.toString()
+            ? { ...c, lastMessage: null, unreadCount: 0 }
+            : c
+        ),
+      }));
+    } catch (error) {
+      console.error('Clear conversation error:', error);
+      throw error;
+    }
+  },
+
+  deleteConversation: async (conversationId) => {
+    try {
+      await api.delete(`/conversations/${conversationId}`);
+      const state = get();
+      const nextConversations = state.conversations.filter(
+        (c) => c._id?.toString() !== conversationId?.toString()
+      );
+      const isCurrentActive =
+        (state.activeConversation?._id || state.activeConversation?.id)?.toString() ===
+        conversationId?.toString();
+
+      set({
+        conversations: nextConversations,
+        ...(isCurrentActive ? { activeConversation: null, messages: [] } : {}),
+      });
+    } catch (error) {
+      console.error('Delete conversation error:', error);
+      throw error;
+    }
+  },
+
   // ====== MESSAGES ======
   fetchMessages: async (conversationId, before = null) => {
     const genAtStart = get()._fetchGeneration;

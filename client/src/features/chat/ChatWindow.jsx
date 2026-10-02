@@ -1,9 +1,10 @@
 import { useRef, useEffect, useLayoutEffect, useState, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ArrowLeft, Phone, Video, MoreVertical, Search, Loader2,
   ChevronDown, Info, Clock, Timer, Check, Star, Pin,
   MessageSquare, UploadCloud, Shield, PanelRightOpen,
-  PanelRightClose, FileUp
+  PanelRightClose, FileUp, Ban, ShieldCheck, Eraser, UserX, Trash2
 } from 'lucide-react';
 import { isToday, isYesterday, format } from 'date-fns';
 import useChatStore from '../../stores/chatStore';
@@ -37,6 +38,7 @@ export default function ChatWindow({ onStartCall }) {
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const disappearingMenuRef = useRef(null);
+  const moreMenuRef = useRef(null);
   const isInitialLoadRef = useRef(true);
   const userScrolledUpRef = useRef(false);
   const prevConvIdRef = useRef(null);
@@ -53,6 +55,8 @@ export default function ChatWindow({ onStartCall }) {
   const [unreadNewCount, setUnreadNewCount] = useState(0);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [showDisappearingMenu, setShowDisappearingMenu] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [confirmModal, setConfirmModal] = useState({ isOpen: false, type: null, isSubmitting: false });
   const [showDetailsPanel, setShowDetailsPanel] = useState(false); // Gallery / Media Panel
   const [showBioModal, setShowBioModal] = useState(false); // User Full Bio Profile Modal
   const [showSearchModal, setShowSearchModal] = useState(false);
@@ -116,6 +120,18 @@ export default function ChatWindow({ onStartCall }) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showDisappearingMenu]);
 
+  // Click-outside listener for 3-dots more options menu
+  useEffect(() => {
+    if (!showMoreMenu) return;
+    const handleClickOutside = (e) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target)) {
+        setShowMoreMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showMoreMenu]);
+
   // Ensure document window scroll is permanently locked at 0 in mobile typing mode
   useEffect(() => {
     const handleScrollReset = () => {
@@ -168,6 +184,81 @@ export default function ChatWindow({ onStartCall }) {
   const isOnline = otherUser && canSeeOnline
     ? Boolean(otherUser.isOnline || (onlineUsers && typeof onlineUsers.has === 'function' && onlineUsers.has(otherUser._id?.toString())))
     : false;
+
+  // Computed block status for active 1-on-1 recipient
+  const isBlocked = useMemo(() => {
+    if (!otherUser?._id) return false;
+    const targetId = (otherUser._id?._id || otherUser._id)?.toString();
+    const list = user?.blockedUsers || [];
+    return list.some((item) => (item?._id || item)?.toString() === targetId);
+  }, [user?.blockedUsers, otherUser?._id]);
+
+  // Sync latest blocked users list on chat switch
+  useEffect(() => {
+    if (activeConversation?.type === 'private' && otherUser?._id) {
+      api.get('/users/blocked').then(({ data }) => {
+        if (Array.isArray(data.blockedUsers)) {
+          useAuthStore.getState().updateUser({ blockedUsers: data.blockedUsers });
+        }
+      }).catch(() => {});
+    }
+  }, [activeConversation?._id, otherUser?._id]);
+
+  // Action Confirmation Execution Handler
+  const handleExecuteConfirmAction = async () => {
+    const actionType = confirmModal.type;
+    const convId = (activeConversation?._id || activeConversation?.id)?.toString();
+    const targetUserId = (otherUser?._id?._id || otherUser?._id)?.toString();
+
+    setConfirmModal((prev) => ({ ...prev, isSubmitting: true }));
+    try {
+      if (actionType === 'block') {
+        if (!targetUserId) throw new Error('User not found');
+        await api.post(`/users/${targetUserId}/block`);
+        const current = (user?.blockedUsers || []).map((id) => (id?._id || id)?.toString());
+        useAuthStore.getState().updateUser({ blockedUsers: [...current, targetUserId] });
+        toast.success(`${name || 'User'} blocked`);
+      } else if (actionType === 'unblock') {
+        if (!targetUserId) throw new Error('User not found');
+        await api.delete(`/users/${targetUserId}/block`);
+        const updated = (user?.blockedUsers || []).filter(
+          (id) => (id?._id || id)?.toString() !== targetUserId
+        );
+        useAuthStore.getState().updateUser({ blockedUsers: updated });
+        toast.success(`${name || 'User'} unblocked`);
+      } else if (actionType === 'clear_chats') {
+        if (!convId) throw new Error('Conversation not found');
+        await useChatStore.getState().clearConversationMessages(convId);
+        setPinnedList([]);
+        toast.success('All chats deleted');
+      } else if (actionType === 'delete_user' || actionType === 'delete_chat') {
+        if (!convId) throw new Error('Conversation not found');
+        if (targetUserId) {
+          try {
+            await api.delete(`/friends/${targetUserId}`);
+            if (user?.friends) {
+              useAuthStore.getState().updateUser({
+                friends: user.friends.filter((f) => (f?._id || f)?.toString() !== targetUserId),
+              });
+            }
+          } catch (e) {
+            console.warn('Unfriend note:', e);
+          }
+        }
+        await useChatStore.getState().deleteConversation(convId);
+        if (isMobile) {
+          setShowChatOnMobile(false);
+        }
+        toast.success(targetUserId ? 'User and chat deleted' : 'Chat deleted');
+      }
+
+      setConfirmModal({ isOpen: false, type: null, isSubmitting: false });
+    } catch (err) {
+      console.error('Action error:', err);
+      toast.error(err.response?.data?.error || err.message || 'Action failed');
+      setConfirmModal((prev) => ({ ...prev, isSubmitting: false }));
+    }
+  };
 
   // Typing & Recording indicator text
   const convTyping = (activeConversation?._id && typingUsers?.[activeConversation._id]) || {};
@@ -641,6 +732,92 @@ export default function ChatWindow({ onStartCall }) {
             >
               <Info className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
+
+            {/* 3-Dots More Options Menu */}
+            <div className="relative" ref={moreMenuRef}>
+              <button
+                id="chat-more-options-btn"
+                onClick={() => setShowMoreMenu((prev) => !prev)}
+                className={`p-2 rounded-2xl transition-colors ${
+                  showMoreMenu
+                    ? 'text-primary-400 bg-primary-500/20'
+                    : 'text-surface-400 hover:text-white hover:bg-dark-hover'
+                }`}
+                title="More Options"
+              >
+                <MoreVertical className="w-4 h-4 sm:w-5 sm:h-5" />
+              </button>
+
+              {showMoreMenu && (
+                <div className="absolute right-0 top-full mt-2 w-52 py-1.5 rounded-2xl bg-dark-card/95 backdrop-blur-xl border border-dark-border shadow-2xl z-50 animate-scale-in select-none">
+                  {/* Block / Unblock User */}
+                  {otherUser && (
+                    <button
+                      id="chat-menu-block-btn"
+                      onClick={() => {
+                        setShowMoreMenu(false);
+                        setConfirmModal({
+                          isOpen: true,
+                          type: isBlocked ? 'unblock' : 'block',
+                          isSubmitting: false,
+                        });
+                      }}
+                      className={`w-full px-3.5 py-2.5 text-left text-xs font-semibold flex items-center gap-2.5 transition-colors ${
+                        isBlocked
+                          ? 'text-accent-green hover:bg-accent-green/10'
+                          : 'text-accent-red hover:bg-accent-red/10'
+                      }`}
+                    >
+                      {isBlocked ? (
+                        <>
+                          <ShieldCheck className="w-4 h-4 text-accent-green flex-shrink-0" />
+                          <span>Unblock User</span>
+                        </>
+                      ) : (
+                        <>
+                          <Ban className="w-4 h-4 text-accent-red flex-shrink-0" />
+                          <span>Block User</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+
+                  {/* Delete All Chats (Clear message history) */}
+                  <button
+                    id="chat-menu-clear-chats-btn"
+                    onClick={() => {
+                      setShowMoreMenu(false);
+                      setConfirmModal({
+                        isOpen: true,
+                        type: 'clear_chats',
+                        isSubmitting: false,
+                      });
+                    }}
+                    className="w-full px-3.5 py-2.5 text-left text-xs font-semibold text-surface-200 hover:text-accent-red hover:bg-accent-red/10 flex items-center gap-2.5 transition-colors"
+                  >
+                    <Eraser className="w-4 h-4 text-accent-red flex-shrink-0" />
+                    <span>Delete All Chats</span>
+                  </button>
+
+                  {/* Delete User (or Delete Chat) */}
+                  <button
+                    id="chat-menu-delete-user-btn"
+                    onClick={() => {
+                      setShowMoreMenu(false);
+                      setConfirmModal({
+                        isOpen: true,
+                        type: otherUser ? 'delete_user' : 'delete_chat',
+                        isSubmitting: false,
+                      });
+                    }}
+                    className="w-full px-3.5 py-2.5 text-left text-xs font-semibold text-accent-red hover:bg-accent-red/10 flex items-center gap-2.5 transition-colors"
+                  >
+                    <UserX className="w-4 h-4 text-accent-red flex-shrink-0" />
+                    <span>{otherUser ? 'Delete User' : 'Delete Chat'}</span>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -791,8 +968,30 @@ export default function ChatWindow({ onStartCall }) {
           onClearSelection={clearSelectedMessages}
         />
 
-        {/* Smart Message Composer */}
-        <MessageComposer />
+        {/* Blocked banner if user is blocked */}
+        {isBlocked && (
+          <div className="mx-3 sm:mx-4 mb-2 p-3 rounded-2xl bg-accent-red/10 border border-accent-red/20 flex items-center justify-between gap-3 text-xs text-accent-red select-none">
+            <div className="flex items-center gap-2 min-w-0">
+              <Ban className="w-4 h-4 flex-shrink-0" />
+              <span className="truncate">You have blocked this contact. Unblock to send messages.</span>
+            </div>
+            <button
+              onClick={() => setConfirmModal({ isOpen: true, type: 'unblock', isSubmitting: false })}
+              className="px-3 py-1 rounded-xl bg-accent-red hover:bg-accent-red/90 text-white font-semibold transition-colors flex-shrink-0 shadow-sm"
+            >
+              Unblock
+            </button>
+          </div>
+        )}
+
+        {/* Message Composer or Blocked State */}
+        {!isBlocked ? (
+          <MessageComposer />
+        ) : (
+          <div className="p-3.5 border-t border-dark-border bg-dark-card/60 text-center text-xs text-surface-400 select-none">
+            You cannot send messages to a blocked contact.
+          </div>
+        )}
       </div>
 
 
@@ -956,6 +1155,84 @@ export default function ChatWindow({ onStartCall }) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Confirmation Modal for Block / Delete All Chats / Delete User */}
+      {confirmModal.isOpen && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[99999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in select-none">
+          <div className="w-full max-w-sm rounded-3xl bg-dark-card border border-dark-border p-6 shadow-2xl animate-scale-in text-center space-y-4">
+            <div
+              className={`w-14 h-14 rounded-2xl mx-auto flex items-center justify-center ${
+                confirmModal.type === 'unblock'
+                  ? 'bg-accent-green/15 text-accent-green'
+                  : 'bg-accent-red/15 text-accent-red'
+              }`}
+            >
+              {confirmModal.type === 'unblock' && <ShieldCheck className="w-7 h-7" />}
+              {confirmModal.type === 'block' && <Ban className="w-7 h-7" />}
+              {confirmModal.type === 'clear_chats' && <Eraser className="w-7 h-7" />}
+              {(confirmModal.type === 'delete_user' || confirmModal.type === 'delete_chat') && (
+                <UserX className="w-7 h-7" />
+              )}
+            </div>
+
+            <div>
+              <h3 className="text-lg font-bold text-white">
+                {confirmModal.type === 'unblock' && `Unblock ${name}?`}
+                {confirmModal.type === 'block' && `Block ${name}?`}
+                {confirmModal.type === 'clear_chats' && 'Delete All Chats?'}
+                {confirmModal.type === 'delete_user' && `Delete ${name}?`}
+                {confirmModal.type === 'delete_chat' && 'Delete Chat?'}
+              </h3>
+              <p className="text-xs text-surface-400 mt-1.5 leading-relaxed">
+                {confirmModal.type === 'unblock' &&
+                  'They will be able to send you messages and call you again.'}
+                {confirmModal.type === 'block' &&
+                  'Blocked contacts will no longer be able to send you messages or start calls with you.'}
+                {confirmModal.type === 'clear_chats' &&
+                  'All message history in this conversation will be permanently cleared for you. This action cannot be undone.'}
+                {confirmModal.type === 'delete_user' &&
+                  'This will remove this user from your contacts and delete the conversation.'}
+                {confirmModal.type === 'delete_chat' &&
+                  'This conversation and its messages will be removed from your chat list.'}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <button
+                type="button"
+                disabled={confirmModal.isSubmitting}
+                onClick={() => setConfirmModal({ isOpen: false, type: null, isSubmitting: false })}
+                className="w-full py-2.5 px-4 rounded-xl bg-dark-input hover:bg-dark-hover border border-dark-border text-xs font-semibold text-surface-300 hover:text-white transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={confirmModal.isSubmitting}
+                onClick={handleExecuteConfirmAction}
+                className={`w-full py-2.5 px-4 rounded-xl text-xs font-semibold text-white transition-all shadow-md flex items-center justify-center gap-1.5 disabled:opacity-50 ${
+                  confirmModal.type === 'unblock'
+                    ? 'bg-accent-green hover:bg-accent-green/90 shadow-accent-green/20'
+                    : 'bg-accent-red hover:bg-accent-red/90 shadow-accent-red/20'
+                }`}
+              >
+                {confirmModal.isSubmitting ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <>
+                    {confirmModal.type === 'unblock' && 'Unblock'}
+                    {confirmModal.type === 'block' && 'Block'}
+                    {confirmModal.type === 'clear_chats' && 'Delete All'}
+                    {confirmModal.type === 'delete_user' && 'Delete User'}
+                    {confirmModal.type === 'delete_chat' && 'Delete'}
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );

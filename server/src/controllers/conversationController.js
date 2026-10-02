@@ -80,8 +80,12 @@ export const getConversations = async (req, res) => {
     const { page = 1, limit = 50 } = req.query;
 
     const conversations = await Conversation.find({
-      'participants.user': req.userId,
-      'participants.isDeleted': { $ne: true },
+      participants: {
+        $elemMatch: {
+          user: req.userId,
+          isDeleted: { $ne: true },
+        },
+      },
     })
       .populate('participants.user', 'username displayName avatar isOnline lastSeen about userCode privacy friends')
       .populate({
@@ -122,6 +126,9 @@ export const getConversations = async (req, res) => {
         (p) => (p.user?._id || p.user)?.toString() === req.userId.toString()
       );
       const actualUnread = unreadMap.get(conv._id.toString()) || 0;
+      if (convObj.lastMessage && convObj.lastMessage.deletedFor?.some(id => id.toString() === req.userId.toString())) {
+        convObj.lastMessage = null;
+      }
       return {
         ...convObj,
         _participant: myParticipant ? { ...myParticipant, unreadCount: actualUnread } : null,
@@ -248,6 +255,12 @@ export const deleteConversation = async (req, res) => {
     conversation.participants[participantIndex].isDeleted = true;
     conversation.participants[participantIndex].deletedAt = new Date();
     await conversation.save();
+
+    // Also mark all messages as deletedFor for this user
+    await Message.updateMany(
+      { conversation: conversationId },
+      { $addToSet: { deletedFor: req.userId } }
+    );
 
     res.json({ message: 'Conversation deleted' });
   } catch (error) {
