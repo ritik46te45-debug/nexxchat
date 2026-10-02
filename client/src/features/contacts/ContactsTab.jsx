@@ -30,17 +30,29 @@ export default function ContactsTab({ onStartCall }) {
     try {
       if (activeTab === 'friends') {
         const { data } = await api.get('/friends');
-        setFriends(data.friends || []);
+        const validFriends = (data.friends || []).filter(
+          (f) => f && f._id && (f.displayName || f.username)
+        );
+        setFriends(validFriends);
       } else if (activeTab === 'requests') {
         const [pendingRes, sentRes] = await Promise.all([
           api.get('/friends/requests/pending'),
           api.get('/friends/requests/sent'),
         ]);
-        setPendingRequests(pendingRes.data.requests || []);
-        setSentRequests(sentRes.data.requests || []);
+        const validPending = (pendingRes.data.requests || []).filter(
+          (r) => r && r.from && r.from._id && (r.from.displayName || r.from.username)
+        );
+        const validSent = (sentRes.data.requests || []).filter(
+          (r) => r && r.to && r.to._id && (r.to.displayName || r.to.username)
+        );
+        setPendingRequests(validPending);
+        setSentRequests(validSent);
       } else if (activeTab === 'blocked') {
         const { data } = await api.get('/users/blocked');
-        setBlockedUsers(data.blockedUsers || []);
+        const validBlocked = (data.blockedUsers || []).filter(
+          (u) => u && u._id && (u.displayName || u.username)
+        );
+        setBlockedUsers(validBlocked);
       }
     } catch (err) {
       console.error('Load contacts error:', err);
@@ -59,7 +71,10 @@ export default function ContactsTab({ onStartCall }) {
       setIsSearching(true);
       try {
         const { data } = await api.get(`/users/search?q=${encodeURIComponent(searchQuery.trim())}`);
-        setSearchResults(data.users || []);
+        const validUsers = (data.users || []).filter(
+          (u) => u && u._id && (u.displayName || u.username)
+        );
+        setSearchResults(validUsers);
       } catch (err) {
         console.error('Search error:', err);
       } finally {
@@ -257,6 +272,7 @@ export default function ContactsTab({ onStartCall }) {
             </div>
           ) : (
             friends.map((friend) => {
+              if (!friend || !friend._id) return null;
               const myId = (user?._id || user)?.toString();
               const isFriend = true; // They are in friends list
 
@@ -331,38 +347,41 @@ export default function ContactsTab({ onStartCall }) {
               {pendingRequests.length === 0 ? (
                 <p className="text-xs text-surface-500 px-2 py-2">No pending requests</p>
               ) : (
-                pendingRequests.map((req) => (
-                  <div
-                    key={req._id}
-                    className="flex items-center justify-between p-2.5 rounded-xl bg-dark-card border border-dark-border mb-2"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-10 h-10 rounded-full gradient-primary flex items-center justify-center text-white font-bold text-sm">
-                        {req.from?.displayName?.charAt(0) || '?'}
+                pendingRequests.map((req) => {
+                  if (!req || !req.from || !req.from._id) return null;
+                  return (
+                    <div
+                      key={req._id}
+                      className="flex items-center justify-between p-2.5 rounded-xl bg-dark-card border border-dark-border mb-2"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-full gradient-primary flex items-center justify-center text-white font-bold text-sm">
+                          {req.from?.displayName?.charAt(0) || '?'}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-white truncate">{req.from?.displayName}</p>
+                          <p className="text-xs text-surface-500 truncate">@{req.from?.username}</p>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-white truncate">{req.from?.displayName}</p>
-                        <p className="text-xs text-surface-500 truncate">@{req.from?.username}</p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleAcceptRequest(req._id)}
+                          className="p-2 rounded-lg bg-accent-green/20 text-accent-green hover:bg-accent-green/30 transition-all"
+                          title="Accept"
+                        >
+                          <Check className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleRejectRequest(req._id)}
+                          className="p-2 rounded-lg bg-accent-red/20 text-accent-red hover:bg-accent-red/30 transition-all"
+                          title="Decline"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => handleAcceptRequest(req._id)}
-                        className="p-2 rounded-lg bg-accent-green/20 text-accent-green hover:bg-accent-green/30 transition-all"
-                        title="Accept"
-                      >
-                        <Check className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleRejectRequest(req._id)}
-                        className="p-2 rounded-lg bg-accent-red/20 text-accent-red hover:bg-accent-red/30 transition-all"
-                        title="Decline"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
 
@@ -374,28 +393,31 @@ export default function ContactsTab({ onStartCall }) {
               {sentRequests.length === 0 ? (
                 <p className="text-xs text-surface-500 px-2 py-2">No sent requests</p>
               ) : (
-                sentRequests.map((req) => (
-                  <div
-                    key={req._id}
-                    className="flex items-center justify-between p-2.5 rounded-xl bg-dark-card border border-dark-border mb-2"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-10 h-10 rounded-full bg-dark-input border border-dark-border flex items-center justify-center text-white font-bold text-sm">
-                        {req.to?.displayName?.charAt(0) || '?'}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-white truncate">{req.to?.displayName}</p>
-                        <p className="text-xs text-surface-500 truncate">Pending approval</p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => handleCancelRequest(req._id)}
-                      className="text-xs text-surface-400 hover:text-accent-red px-2.5 py-1.5 rounded-lg border border-dark-border hover:border-accent-red/30 transition-all"
+                sentRequests.map((req) => {
+                  if (!req || !req.to || !req.to._id) return null;
+                  return (
+                    <div
+                      key={req._id}
+                      className="flex items-center justify-between p-2.5 rounded-xl bg-dark-card border border-dark-border mb-2"
                     >
-                      Cancel
-                    </button>
-                  </div>
-                ))
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-full bg-dark-input border border-dark-border flex items-center justify-center text-white font-bold text-sm">
+                          {req.to?.displayName?.charAt(0) || '?'}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-white truncate">{req.to?.displayName}</p>
+                          <p className="text-xs text-surface-500 truncate">Pending approval</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleCancelRequest(req._id)}
+                        className="text-xs text-surface-400 hover:text-accent-red px-2.5 py-1.5 rounded-lg border border-dark-border hover:border-accent-red/30 transition-all"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  );
+                })
               )}
             </div>
           </div>
@@ -411,28 +433,31 @@ export default function ContactsTab({ onStartCall }) {
                 <p className="text-xs text-surface-500">You haven&apos;t blocked any users.</p>
               </div>
             ) : (
-              blockedUsers.map((user) => (
-                <div
-                  key={user._id}
-                  className="flex items-center justify-between p-2.5 rounded-xl bg-dark-card border border-dark-border mb-2"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 rounded-full bg-dark-input border border-dark-border flex items-center justify-center font-bold text-surface-400">
-                      {user.displayName?.charAt(0) || '?'}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-white truncate">{user.displayName}</p>
-                      <p className="text-xs text-surface-500 truncate">@{user.username}</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => handleUnblock(user._id)}
-                    className="text-xs text-accent-green hover:bg-accent-green/10 border border-accent-green/30 px-3 py-1.5 rounded-lg font-semibold transition-all"
+              blockedUsers.map((user) => {
+                if (!user || !user._id) return null;
+                return (
+                  <div
+                    key={user._id}
+                    className="flex items-center justify-between p-2.5 rounded-xl bg-dark-card border border-dark-border mb-2"
                   >
-                    Unblock
-                  </button>
-                </div>
-              ))
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-full bg-dark-input border border-dark-border flex items-center justify-center font-bold text-surface-400">
+                        {user.displayName?.charAt(0) || '?'}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-white truncate">{user.displayName}</p>
+                        <p className="text-xs text-surface-500 truncate">@{user.username}</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleUnblock(user._id)}
+                      className="text-xs text-accent-green hover:bg-accent-green/10 border border-accent-green/30 px-3 py-1.5 rounded-lg font-semibold transition-all"
+                    >
+                      Unblock
+                    </button>
+                  </div>
+                );
+              })
             )}
           </div>
         )}

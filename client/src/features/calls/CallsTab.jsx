@@ -98,7 +98,10 @@ export default function CallsTab({ onStartCall }) {
   const filteredCalls = calls.filter((call) => {
     const isCaller = (call.caller?._id || call.caller)?.toString() === myId;
     const otherUser = isCaller ? call.receiver : call.caller;
-    const displayName = otherUser?.displayName || otherUser?.username || 'User';
+    if (!otherUser || !otherUser._id || (!otherUser.displayName && !otherUser.username)) {
+      return false;
+    }
+    const displayName = otherUser.displayName || otherUser.username || 'User';
 
     // Search query filter
     if (searchQuery.trim()) {

@@ -119,7 +119,10 @@ export const getConversations = async (req, res) => {
       })
     );
 
-    // Filter out conversations where participant deleted & attach exact unreadCount
+    // Track orphaned conversations where user was deleted from DB to clean up
+    const orphanedConvIds = [];
+
+    // Filter out conversations where participant deleted, where other user is deleted, & attach exact unreadCount
     const filtered = conversations.map((conv) => {
       const convObj = conv.toObject();
       const myParticipant = convObj.participants?.find(
@@ -134,7 +137,36 @@ export const getConversations = async (req, res) => {
         _participant: myParticipant ? { ...myParticipant, unreadCount: actualUnread } : null,
         unreadCount: actualUnread,
       };
-    }).filter((conv) => !conv._participant?.isDeleted);
+    }).filter((conv) => {
+      // 1. Current participant soft-deleted the conversation
+      if (conv._participant?.isDeleted) return false;
+
+      // 2. Private chat: ensure the other participant's user still exists in the database
+      if (conv.type === 'private') {
+        const otherParticipant = conv.participants?.find(
+          (p) => p.user && (p.user._id || p.user).toString() !== req.userId.toString()
+        );
+        // If other user was deleted from MongoDB, participant.user is null/missing -> Remove completely!
+        if (!otherParticipant || !otherParticipant.user || (!otherParticipant.user.displayName && !otherParticipant.user.username && !otherParticipant.user._id)) {
+          orphanedConvIds.push(conv._id);
+          return false;
+        }
+      }
+
+      // 3. Group chat: filter out null participants whose user accounts were deleted
+      if (conv.type === 'group') {
+        conv.participants = (conv.participants || []).filter(p => p && p.user && (p.user._id || p.user));
+        if (conv.participants.length === 0) return false;
+      }
+
+      return true;
+    });
+
+    // Asynchronously delete orphaned conversations & their messages so they don't linger in DB
+    if (orphanedConvIds.length > 0) {
+      Conversation.deleteMany({ _id: { $in: orphanedConvIds } }).catch(console.error);
+      Message.deleteMany({ conversation: { $in: orphanedConvIds } }).catch(console.error);
+    }
 
     res.json({ conversations: filtered });
   } catch (error) {
@@ -152,7 +184,7 @@ export const getConversation = async (req, res) => {
       _id: conversationId,
       'participants.user': req.userId,
     })
-      .populate('participants.user', 'username displayName avatar isOnline lastSeen about')
+      .populate('participants.user', 'username displayName avatar isOnline lastSeen about userCode privacy friends')
       .populate({
         path: 'lastMessage',
         populate: { path: 'sender', select: 'username displayName' },
@@ -164,6 +196,18 @@ export const getConversation = async (req, res) => {
 
     if (!conversation) {
       return res.status(404).json({ error: 'Conversation not found' });
+    }
+
+    // If private chat, ensure the other user has not been deleted from database
+    if (conversation.type === 'private') {
+      const otherParticipant = conversation.participants?.find(
+        (p) => p.user && (p.user._id || p.user).toString() !== req.userId.toString()
+      );
+      if (!otherParticipant || !otherParticipant.user || (!otherParticipant.user.displayName && !otherParticipant.user.username && !otherParticipant.user._id)) {
+        Conversation.findByIdAndDelete(conversationId).catch(console.error);
+        Message.deleteMany({ conversation: conversationId }).catch(console.error);
+        return res.status(404).json({ error: 'User no longer exists in database' });
+      }
     }
 
     res.json({ conversation });

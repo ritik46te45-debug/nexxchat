@@ -19,7 +19,10 @@ export default function NewChatModal({ onClose }) {
     const loadFriends = async () => {
       try {
         const { data } = await api.get('/friends');
-        setFriends(data.friends || []);
+        const validFriends = (data.friends || []).filter(
+          (f) => f && f._id && (f.displayName || f.username)
+        );
+        setFriends(validFriends);
       } catch (error) {
         console.error('Load friends error:', error);
       } finally {
@@ -40,7 +43,10 @@ export default function NewChatModal({ onClose }) {
       setIsSearching(true);
       try {
         const { data } = await api.get(`/users/search?q=${encodeURIComponent(query.trim())}`);
-        setUsers(data.users || []);
+        const validUsers = (data.users || []).filter(
+          (u) => u && u._id && (u.displayName || u.username)
+        );
+        setUsers(validUsers);
       } catch (error) {
         console.error('Search error:', error);
       } finally {
@@ -113,8 +119,10 @@ export default function NewChatModal({ onClose }) {
               {query.trim().length > 0 ? 'No users found' : 'No friends yet. Search for users to connect!'}
             </div>
           ) : (
-            displayList.map((u) => (
-              <div key={u._id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-dark-hover transition-colors">
+            displayList.map((u) => {
+              if (!u || !u._id) return null;
+              return (
+                <div key={u._id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-dark-hover transition-colors">
                 {u.avatar?.url ? (
                   <img src={u.avatar.url} alt={u.displayName} className="w-10 h-10 rounded-full object-cover" />
                 ) : (
@@ -159,8 +167,8 @@ export default function NewChatModal({ onClose }) {
                   </div>
                 )}
               </div>
-            ))
-          )}
+            );
+          }))}
         </div>
       </div>
     </div>

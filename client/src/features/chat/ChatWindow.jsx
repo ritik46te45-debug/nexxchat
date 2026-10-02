@@ -154,13 +154,14 @@ export default function ChatWindow({ onStartCall }) {
   // Get other user info
   const otherParticipant = activeConversation?.type === 'private'
     ? activeConversation.participants?.find((p) => {
+        if (!p || !p.user) return false;
         const pId = (p.user?._id || p.user)?.toString();
         return pId && myId && pId !== myId;
       })
     : null;
 
   const otherUser = typeof otherParticipant?.user === 'object' && otherParticipant?.user !== null
-    ? otherParticipant.user
+    ? ((otherParticipant.user._id || otherParticipant.user.displayName || otherParticipant.user.username) ? otherParticipant.user : null)
     : otherParticipant?.user
     ? { _id: otherParticipant.user.toString(), displayName: 'User' }
     : null;
@@ -171,10 +172,14 @@ export default function ChatWindow({ onStartCall }) {
   const canSeeOnline = !otherUser?.privacy?.online || otherUser.privacy.online === 'everyone' || (otherUser.privacy.online === 'friends' && isFriend);
   const canSeeLastSeen = !otherUser?.privacy?.lastSeen || otherUser.privacy.lastSeen === 'everyone' || (otherUser.privacy.lastSeen === 'friends' && isFriend);
 
+  const isUserDeleted = activeConversation?.type === 'private' && !otherUser;
+
   const name = activeConversation?.type === 'group'
     ? (activeConversation.groupName || 'Group')
     : activeConversation?.type === 'channel'
     ? (activeConversation.groupName || 'Channel')
+    : isUserDeleted
+    ? 'Deleted Account'
     : (otherUser?.displayName || otherUser?.username || 'User');
 
   const avatar = activeConversation?.type === 'group' || activeConversation?.type === 'channel'

@@ -19,11 +19,23 @@ export default function ChatList({ onOpenProfile }) {
   const filteredConversations = useMemo(() => {
     let convs = [...conversations];
 
+    // Filter out conversations where the other user was deleted from the database
+    convs = convs.filter(conv => {
+      if (!conv) return false;
+      if (conv.type === 'private') {
+        const otherUser = getOtherUser(conv, user?._id);
+        if (!otherUser || (!otherUser.displayName && !otherUser.username && !otherUser._id)) {
+          return false;
+        }
+      }
+      return true;
+    });
+
     if (searchQuery) {
       convs = convs.filter(conv => {
         const otherUser = getOtherUser(conv, user?._id);
-        const name = conv.type === 'group' ? conv.groupName : otherUser?.displayName || '';
-        return name.toLowerCase().includes(searchQuery.toLowerCase());
+        const name = conv.type === 'group' ? conv.groupName : (otherUser?.displayName || otherUser?.username || '');
+        return (name || '').toLowerCase().includes(searchQuery.toLowerCase());
       });
     }
 
@@ -157,13 +169,19 @@ function ConversationItem({ conversation, userId, isActive, onClick, typingUsers
   const currentAuthUser = useAuthStore.getState().user;
   const myId = (userId || currentAuthUser?._id || currentAuthUser?.id || currentAuthUser)?.toString();
   const otherUser = getOtherUser(conversation, myId);
+
+  // If private conversation and other user does not exist in DB, do not render item
+  if (conversation.type === 'private' && (!otherUser || (!otherUser.displayName && !otherUser.username && !otherUser._id))) {
+    return null;
+  }
+
   const isFriend = Array.isArray(otherUser?.friends) && otherUser.friends.some(f => (f?._id || f)?.toString() === myId);
 
   // Privacy evaluation for avatar and online status
   const canSeeProfilePhoto = !otherUser?.privacy?.profilePhoto || otherUser.privacy.profilePhoto === 'everyone' || (otherUser.privacy.profilePhoto === 'friends' && isFriend);
   const canSeeOnline = !otherUser?.privacy?.online || otherUser.privacy.online === 'everyone' || (otherUser.privacy.online === 'friends' && isFriend);
 
-  const name = conversation.type === 'group' ? conversation.groupName : (otherUser?.displayName || otherUser?.username || 'Unknown');
+  const name = conversation.type === 'group' ? (conversation.groupName || 'Group') : (otherUser?.displayName || otherUser?.username || 'User');
   const avatar = conversation.type === 'group' ? conversation.groupAvatar?.url : (canSeeProfilePhoto ? otherUser?.avatar?.url : null);
   const showOnline = isOnline && canSeeOnline;
 
@@ -276,15 +294,21 @@ function ConversationItem({ conversation, userId, isActive, onClick, typingUsers
 
 // Helpers
 function getOtherUser(conversation, userId) {
-  if (conversation.type === 'group') return null;
+  if (!conversation || conversation.type === 'group') return null;
   const myId = userId?.toString();
   const other = conversation.participants?.find(
     p => {
+      if (!p || !p.user) return false;
       const pId = (p.user?._id || p.user)?.toString();
       return pId && myId && pId !== myId;
     }
   );
-  return typeof other?.user === 'object' && other?.user !== null ? other.user : other?.user ? { _id: other.user.toString(), displayName: 'User' } : null;
+  if (!other || !other.user) return null;
+  if (typeof other.user === 'object' && other.user !== null) {
+    if (!other.user._id && !other.user.displayName && !other.user.username) return null;
+    return other.user;
+  }
+  return other.user ? { _id: other.user.toString() } : null;
 }
 
 function isUserOnline(conversation, userId, onlineUsers) {

@@ -187,7 +187,18 @@ export const getPendingRequests = async (req, res) => {
       .populate('from', 'username displayName avatar isOnline')
       .sort({ createdAt: -1 });
 
-    res.json({ requests });
+    // Filter out requests from users that were deleted from database
+    const validRequests = requests.filter(
+      (r) => r && r.from && r.from._id && (r.from.displayName || r.from.username)
+    );
+
+    // Clean up orphaned requests
+    const orphaned = requests.filter((r) => !r.from || !r.from._id).map((r) => r._id);
+    if (orphaned.length > 0) {
+      FriendRequest.deleteMany({ _id: { $in: orphaned } }).catch(console.error);
+    }
+
+    res.json({ requests: validRequests });
   } catch (error) {
     console.error('Get pending requests error:', error);
     res.status(500).json({ error: 'Failed to get requests' });
@@ -201,7 +212,18 @@ export const getSentRequests = async (req, res) => {
       .populate('to', 'username displayName avatar isOnline')
       .sort({ createdAt: -1 });
 
-    res.json({ requests });
+    // Filter out requests to users that were deleted from database
+    const validRequests = requests.filter(
+      (r) => r && r.to && r.to._id && (r.to.displayName || r.to.username)
+    );
+
+    // Clean up orphaned requests
+    const orphaned = requests.filter((r) => !r.to || !r.to._id).map((r) => r._id);
+    if (orphaned.length > 0) {
+      FriendRequest.deleteMany({ _id: { $in: orphaned } }).catch(console.error);
+    }
+
+    res.json({ requests: validRequests });
   } catch (error) {
     console.error('Get sent requests error:', error);
     res.status(500).json({ error: 'Failed to get requests' });
@@ -214,7 +236,22 @@ export const getFriends = async (req, res) => {
     const user = await User.findById(req.userId)
       .populate('friends', 'username displayName avatar isOnline lastSeen about userCode privacy friends');
 
-    res.json({ friends: user.friends });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Filter out friends that were deleted from the database
+    const validFriends = (user.friends || []).filter(
+      (f) => f && f._id && (f.displayName || f.username)
+    );
+
+    // If any friends were deleted from MongoDB, clean up User.friends array
+    if (validFriends.length !== (user.friends || []).length) {
+      const validFriendIds = validFriends.map((f) => f._id);
+      User.findByIdAndUpdate(req.userId, { friends: validFriendIds }).catch(console.error);
+    }
+
+    res.json({ friends: validFriends });
   } catch (error) {
     console.error('Get friends error:', error);
     res.status(500).json({ error: 'Failed to get friends' });

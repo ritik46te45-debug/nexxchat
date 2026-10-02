@@ -361,7 +361,21 @@ export const getBlockedUsers = async (req, res) => {
   try {
     const user = await User.findById(req.userId)
       .populate('blockedUsers', 'username displayName avatar');
-    res.json({ blockedUsers: user.blockedUsers });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const validBlocked = (user.blockedUsers || []).filter(
+      (b) => b && b._id && (b.displayName || b.username)
+    );
+
+    if (validBlocked.length !== (user.blockedUsers || []).length) {
+      const validIds = validBlocked.map((b) => b._id);
+      User.findByIdAndUpdate(req.userId, { blockedUsers: validIds }).catch(console.error);
+    }
+
+    res.json({ blockedUsers: validBlocked });
   } catch (error) {
     console.error('Get blocked users error:', error);
     res.status(500).json({ error: 'Failed to get blocked users' });

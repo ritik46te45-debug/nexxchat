@@ -22,8 +22,26 @@ const useChatStore = create((set, get) => ({
     set({ isLoadingConversations: true });
     try {
       const { data } = await api.get('/conversations');
-      const convs = data.conversations || [];
+      const rawConvs = data.conversations || [];
       const myId = (useAuthStore.getState().user?._id || useAuthStore.getState().user)?.toString();
+
+      // Ensure no private conversation with a deleted user enters the store
+      const convs = rawConvs.filter((c) => {
+        if (!c) return false;
+        if (c.type === 'private') {
+          const other = c.participants?.find((p) => {
+            if (!p || !p.user) return false;
+            const pId = (p.user._id || p.user)?.toString();
+            return pId && myId && pId !== myId;
+          });
+          if (!other || !other.user) return false;
+          if (typeof other.user === 'object' && !other.user._id && !other.user.displayName && !other.user.username) {
+            return false;
+          }
+        }
+        return true;
+      });
+
       const unreadTotal = convs.reduce((sum, c) => {
         const myP = c._participant || c.participants?.find(p => (p.user?._id || p.user)?.toString() === myId);
         return sum + (myP?.unreadCount || 0);

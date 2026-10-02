@@ -15,11 +15,16 @@ export const getCallHistory = async (req, res) => {
       .limit(parseInt(limit))
       .skip((parseInt(page) - 1) * parseInt(limit));
 
-    const total = await Call.countDocuments({
-      $or: [{ caller: req.userId }, { receiver: req.userId }]
+    // Filter out calls where the other user was deleted from database
+    const validCalls = calls.filter((call) => {
+      const isCaller = (call.caller?._id || call.caller)?.toString() === req.userId.toString();
+      const other = isCaller ? call.receiver : call.caller;
+      return other && other._id && (other.displayName || other.username);
     });
 
-    res.json({ calls, total });
+    const total = validCalls.length;
+
+    res.json({ calls: validCalls, total });
   } catch (error) {
     console.error('Get call history error:', error);
     res.status(500).json({ error: 'Failed to fetch call history' });
