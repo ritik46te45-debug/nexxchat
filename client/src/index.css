@@ -237,3 +237,18 @@
 .animate-float-up {
   animation: float-up 2.2s cubic-bezier(0.25, 1, 0.5, 1) forwards;
 }
+
+/* Upload progress shimmer light streak */
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(250%);
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 1.8s infinite linear;
+}
+

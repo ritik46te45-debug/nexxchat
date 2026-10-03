@@ -2,7 +2,8 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Send, Smile, Mic, X, Image, FileText, Camera,
   Reply, Loader2, Video, MapPin, Bell, BellOff, Plus,
-  Sparkles, Check, Edit3, BarChart2, Gift, Image as ImageIcon
+  Sparkles, Check, Edit3, BarChart2, Gift, Image as ImageIcon,
+  UploadCloud, Zap
 } from 'lucide-react';
 import useChatStore from '../../stores/chatStore';
 import useAuthStore from '../../stores/authStore';
@@ -17,6 +18,38 @@ import PdfCoverCard from './PdfCoverCard';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
 
+// Format bytes into readable string (B, KB, MB, GB)
+const formatFileSize = (bytes) => {
+  if (!bytes || bytes <= 0 || !isFinite(bytes)) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+};
+
+// Format upload data speed (B/s, KB/s, MB/s)
+const formatDataSpeed = (bytesPerSec) => {
+  if (!bytesPerSec || bytesPerSec <= 0 || !isFinite(bytesPerSec)) return '0 KB/s';
+  if (bytesPerSec < 1024) {
+    return `${Math.round(bytesPerSec)} B/s`;
+  } else if (bytesPerSec < 1024 * 1024) {
+    return `${(bytesPerSec / 1024).toFixed(1)} KB/s`;
+  } else {
+    return `${(bytesPerSec / (1024 * 1024)).toFixed(1)} MB/s`;
+  }
+};
+
+// Estimate remaining upload time
+const calculateETA = (loaded, total, bytesPerSec) => {
+  if (!bytesPerSec || bytesPerSec <= 0 || !total || loaded >= total) return '';
+  const remainingBytes = total - loaded;
+  const seconds = Math.ceil(remainingBytes / bytesPerSec);
+  if (!isFinite(seconds) || seconds <= 0) return '';
+  if (seconds < 60) return `~${seconds}s left`;
+  const mins = Math.floor(seconds / 60);
+  const remSecs = seconds % 60;
+  return `~${mins}m ${remSecs}s left`;
+};
+
 export default function MessageComposer() {
   const {
     activeConversation, sendMessage, saveDraft, getDraft,
@@ -28,8 +61,17 @@ export default function MessageComposer() {
   const [text, setText] = useState('');
   const [files, setFiles] = useState([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(null);
   const [isViewOnce, setIsViewOnce] = useState(false);
   const [isSilent, setIsSilent] = useState(false);
+
+  const uploadAbortControllerRef = useRef(null);
+  const speedTrackerRef = useRef({
+    startTime: 0,
+    lastTime: 0,
+    lastLoaded: 0,
+    smoothedSpeed: 0,
+  });
 
   // Popover & modal triggers
   const [showAttachMenu, setShowAttachMenu] = useState(false);
@@ -90,6 +132,23 @@ export default function MessageComposer() {
   useEffect(() => {
     textareaRef.current?.focus();
   }, [conversationId]);
+
+  // Register global cancel upload handler for in-bubble cancel buttons
+  useEffect(() => {
+    window.__cancelUpload = (clientId) => {
+      if (window.__activeUploads && window.__activeUploads[clientId]) {
+        window.__activeUploads[clientId].abort();
+        delete window.__activeUploads[clientId];
+      }
+      useChatStore.getState().removeOptimisticMessage(clientId);
+      setIsUploading(false);
+      setUploadProgress(null);
+      toast('Upload cancelled', { icon: '⏹️' });
+    };
+    return () => {
+      delete window.__cancelUpload;
+    };
+  }, []);
 
   // Typing indicator
   const handleTyping = useCallback(() => {
@@ -169,42 +228,176 @@ export default function MessageComposer() {
     const socket = getSocket();
     if (socket) socket.emit('typing:stop', { conversationId });
 
-    // 1. Upload files if any
+    // 1. Upload files if any — Instant WhatsApp-style outgoing message bubble with in-bubble progress
     if (files.length > 0) {
       setIsUploading(true);
-      const toastId = toast.loading(`Uploading ${files.length} attachment${files.length > 1 ? 's' : ''}...`);
+      const filesToUpload = [...files];
+      setFiles([]);
+      setText('');
+      setReplyingMessage(null);
+      if (conversationId) saveDraft(conversationId, '');
+
       (async () => {
         try {
-          for (const file of files) {
-            const formData = new FormData();
-            formData.append('file', file);
-            const { data } = await api.post('/upload/single', formData);
+          for (let i = 0; i < filesToUpload.length; i++) {
+            const file = filesToUpload[i];
+            const clientId = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            const abortController = new AbortController();
+            uploadAbortControllerRef.current = abortController;
+            if (typeof window !== 'undefined') {
+              if (!window.__activeUploads) window.__activeUploads = {};
+              window.__activeUploads[clientId] = abortController;
+            }
 
-            const attachment = data.file;
-            const msgType = ['image', 'video', 'audio', 'voice', 'document', 'file'].includes(attachment?.type)
-              ? attachment.type
-              : 'document';
+            const isImg = file.type.startsWith('image/');
+            const isVid = file.type.startsWith('video/');
+            const isAud = file.type.startsWith('audio/');
+            const isPdf = file.type === 'application/pdf' || file.name?.toLowerCase().endsWith('.pdf');
+            const msgType = isImg ? 'image' : (isVid ? 'video' : (isAud ? 'audio' : (isPdf ? 'document' : 'file')));
+            const previewUrl = (isImg || isVid) ? URL.createObjectURL(file) : null;
 
-            await sendMessage(conversationId, {
+            const now = performance.now();
+            speedTrackerRef.current = {
+              startTime: now,
+              lastTime: now,
+              lastLoaded: 0,
+              smoothedSpeed: 0,
+            };
+
+            const initialUploadProgress = {
+              percent: 0,
+              speed: '0 KB/s',
+              rawSpeed: 0,
+              loaded: 0,
+              total: file.size,
+              formattedLoaded: '0 B',
+              formattedTotal: formatFileSize(file.size),
+              fileName: file.name,
+              fileIndex: i + 1,
+              totalFiles: filesToUpload.length,
+              eta: '',
+              status: 'uploading',
+            };
+
+            // Instant WhatsApp-style optimistic bubble in chat window
+            const optimisticMsg = {
+              _id: clientId,
+              clientId,
+              conversation: conversationId,
               type: msgType,
               content: trimmedText || '',
-              attachments: [attachment],
+              status: 'uploading',
+              createdAt: new Date().toISOString(),
+              sender: user || { _id: 'self' },
+              reactions: [],
+              attachments: [{
+                fileName: file.name,
+                fileSize: file.size,
+                mimeType: file.type,
+                type: msgType,
+                url: previewUrl || '',
+                _localFile: file,
+              }],
+              uploadProgress: initialUploadProgress,
               replyTo: replyingMessage?._id,
               isViewOnce: isViewOnce && (msgType === 'image' || msgType === 'video'),
               isSilent,
+              _optimistic: true,
+            };
+
+            useChatStore.getState().addOptimisticMessage(optimisticMsg);
+            setUploadProgress(initialUploadProgress);
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const { data } = await api.post('/upload/single', formData, {
+              signal: abortController.signal,
+              onUploadProgress: (progressEvent) => {
+                const total = progressEvent.total || file.size;
+                const loaded = progressEvent.loaded || 0;
+                const percent = Math.min(100, Math.max(0, Math.round((loaded * 100) / total)));
+
+                const currentTime = performance.now();
+                const tracker = speedTrackerRef.current;
+                const timeElapsedSec = (currentTime - tracker.lastTime) / 1000;
+
+                let currentSpeed = tracker.smoothedSpeed;
+                if (timeElapsedSec >= 0.25) {
+                  const bytesSinceLast = loaded - tracker.lastLoaded;
+                  const instantSpeed = bytesSinceLast / timeElapsedSec;
+                  currentSpeed = tracker.smoothedSpeed > 0
+                    ? (0.75 * tracker.smoothedSpeed + 0.25 * instantSpeed)
+                    : instantSpeed;
+                  tracker.lastTime = currentTime;
+                  tracker.lastLoaded = loaded;
+                  tracker.smoothedSpeed = currentSpeed;
+                } else if (tracker.smoothedSpeed === 0 && (currentTime - tracker.startTime) > 200) {
+                  const overallElapsed = (currentTime - tracker.startTime) / 1000;
+                  currentSpeed = overallElapsed > 0 ? (loaded / overallElapsed) : 0;
+                }
+
+                const updatedProgress = {
+                  percent,
+                  speed: formatDataSpeed(currentSpeed),
+                  rawSpeed: currentSpeed,
+                  loaded,
+                  total,
+                  formattedLoaded: formatFileSize(loaded),
+                  formattedTotal: formatFileSize(total),
+                  fileName: file.name,
+                  fileIndex: i + 1,
+                  totalFiles: filesToUpload.length,
+                  eta: calculateETA(loaded, total, currentSpeed),
+                  status: percent >= 100 ? 'processing' : 'uploading',
+                };
+
+                setUploadProgress(updatedProgress);
+                useChatStore.getState().updateOptimisticMessage(clientId, {
+                  uploadProgress: updatedProgress,
+                });
+              },
             });
+
+            if (typeof window !== 'undefined' && window.__activeUploads) {
+              delete window.__activeUploads[clientId];
+            }
+
+            const attachment = data.file;
+            const finalMsgType = ['image', 'video', 'audio', 'voice', 'document', 'file'].includes(attachment?.type)
+              ? attachment.type
+              : msgType;
+
+            const { data: serverMsgData } = await api.post(`/messages/${conversationId}`, {
+              type: finalMsgType,
+              content: trimmedText || '',
+              attachments: [attachment],
+              replyTo: replyingMessage?._id,
+              isViewOnce: isViewOnce && (finalMsgType === 'image' || finalMsgType === 'video'),
+              isSilent,
+              clientId,
+            });
+
+            useChatStore.setState((state) => ({
+              messages: state.messages.map((m) =>
+                m.clientId === clientId ? serverMsgData.message : m
+              ),
+            }));
+            useChatStore.getState().updateConversationInList(conversationId, serverMsgData.message);
           }
+
           if (!isSilent) playSentMessageSound();
-          toast.success('Sent successfully!', { id: toastId });
-          setFiles([]);
           setIsViewOnce(false);
-          setText('');
-          setReplyingMessage(null);
-          if (conversationId) saveDraft(conversationId, '');
         } catch (error) {
-          toast.error('Failed to upload file', { id: toastId });
+          if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') {
+            return;
+          }
+          console.error('File upload error:', error);
+          toast.error(error.response?.data?.error || 'Failed to upload file');
         } finally {
           setIsUploading(false);
+          setUploadProgress(null);
+          uploadAbortControllerRef.current = null;
         }
       })();
       return;
@@ -236,17 +429,94 @@ export default function MessageComposer() {
     }
   };
 
+  // Cancel active upload
+  const handleCancelUpload = () => {
+    if (uploadAbortControllerRef.current) {
+      uploadAbortControllerRef.current.abort();
+      uploadAbortControllerRef.current = null;
+    }
+    setIsUploading(false);
+    setUploadProgress(null);
+    toast('Upload cancelled', { icon: '⏹️' });
+  };
+
   // Send Voice Message
   const handleSendVoice = async (audioBlob, duration) => {
     if (!conversationId) return;
     setIsVoiceRecording(false);
     setIsUploading(true);
-    const toastId = toast.loading('Sending voice message...');
+
+    const abortController = new AbortController();
+    uploadAbortControllerRef.current = abortController;
+
+    const now = performance.now();
+    speedTrackerRef.current = {
+      startTime: now,
+      lastTime: now,
+      lastLoaded: 0,
+      smoothedSpeed: 0,
+    };
+
+    setUploadProgress({
+      percent: 0,
+      speed: '0 KB/s',
+      rawSpeed: 0,
+      loaded: 0,
+      total: audioBlob.size,
+      formattedLoaded: '0 B',
+      formattedTotal: formatFileSize(audioBlob.size),
+      fileName: 'Voice note',
+      fileIndex: 1,
+      totalFiles: 1,
+      eta: '',
+      status: 'uploading',
+    });
 
     try {
       const formData = new FormData();
       formData.append('file', audioBlob, 'voice_message.webm');
-      const { data } = await api.post('/upload/single', formData);
+      const { data } = await api.post('/upload/single', formData, {
+        signal: abortController.signal,
+        onUploadProgress: (progressEvent) => {
+          const total = progressEvent.total || audioBlob.size;
+          const loaded = progressEvent.loaded || 0;
+          const percent = Math.min(100, Math.max(0, Math.round((loaded * 100) / total)));
+
+          const currentTime = performance.now();
+          const tracker = speedTrackerRef.current;
+          const timeElapsedSec = (currentTime - tracker.lastTime) / 1000;
+
+          let currentSpeed = tracker.smoothedSpeed;
+          if (timeElapsedSec >= 0.25) {
+            const bytesSinceLast = loaded - tracker.lastLoaded;
+            const instantSpeed = bytesSinceLast / timeElapsedSec;
+            currentSpeed = tracker.smoothedSpeed > 0
+              ? (0.75 * tracker.smoothedSpeed + 0.25 * instantSpeed)
+              : instantSpeed;
+            tracker.lastTime = currentTime;
+            tracker.lastLoaded = loaded;
+            tracker.smoothedSpeed = currentSpeed;
+          } else if (tracker.smoothedSpeed === 0 && (currentTime - tracker.startTime) > 200) {
+            const overallElapsed = (currentTime - tracker.startTime) / 1000;
+            currentSpeed = overallElapsed > 0 ? (loaded / overallElapsed) : 0;
+          }
+
+          setUploadProgress({
+            percent,
+            speed: formatDataSpeed(currentSpeed),
+            rawSpeed: currentSpeed,
+            loaded,
+            total,
+            formattedLoaded: formatFileSize(loaded),
+            formattedTotal: formatFileSize(total),
+            fileName: 'Voice note',
+            fileIndex: 1,
+            totalFiles: 1,
+            eta: calculateETA(loaded, total, currentSpeed),
+            status: percent >= 100 ? 'processing' : 'uploading',
+          });
+        },
+      });
 
       const attachment = {
         ...data.file,
@@ -262,11 +532,14 @@ export default function MessageComposer() {
       });
 
       if (!isSilent) playSentMessageSound();
-      toast.success('Voice message sent!', { id: toastId });
-    } catch {
-      toast.error('Failed to send voice message', { id: toastId });
+      toast.success('Voice message sent!');
+    } catch (error) {
+      if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') return;
+      toast.error('Failed to send voice message');
     } finally {
       setIsUploading(false);
+      setUploadProgress(null);
+      uploadAbortControllerRef.current = null;
     }
   };
 
@@ -355,12 +628,78 @@ export default function MessageComposer() {
     if (!conversationId) return;
     setShowVideoNoteRecorder(false);
     setIsUploading(true);
-    const toastId = toast.loading('Sending video note...');
+
+    const abortController = new AbortController();
+    uploadAbortControllerRef.current = abortController;
+
+    const now = performance.now();
+    speedTrackerRef.current = {
+      startTime: now,
+      lastTime: now,
+      lastLoaded: 0,
+      smoothedSpeed: 0,
+    };
+
+    setUploadProgress({
+      percent: 0,
+      speed: '0 KB/s',
+      rawSpeed: 0,
+      loaded: 0,
+      total: videoBlob.size,
+      formattedLoaded: '0 B',
+      formattedTotal: formatFileSize(videoBlob.size),
+      fileName: 'Video note',
+      fileIndex: 1,
+      totalFiles: 1,
+      eta: '',
+      status: 'uploading',
+    });
 
     try {
       const formData = new FormData();
       formData.append('file', videoBlob, 'video_note.webm');
-      const { data } = await api.post('/upload/single', formData);
+      const { data } = await api.post('/upload/single', formData, {
+        signal: abortController.signal,
+        onUploadProgress: (progressEvent) => {
+          const total = progressEvent.total || videoBlob.size;
+          const loaded = progressEvent.loaded || 0;
+          const percent = Math.min(100, Math.max(0, Math.round((loaded * 100) / total)));
+
+          const currentTime = performance.now();
+          const tracker = speedTrackerRef.current;
+          const timeElapsedSec = (currentTime - tracker.lastTime) / 1000;
+
+          let currentSpeed = tracker.smoothedSpeed;
+          if (timeElapsedSec >= 0.25) {
+            const bytesSinceLast = loaded - tracker.lastLoaded;
+            const instantSpeed = bytesSinceLast / timeElapsedSec;
+            currentSpeed = tracker.smoothedSpeed > 0
+              ? (0.75 * tracker.smoothedSpeed + 0.25 * instantSpeed)
+              : instantSpeed;
+            tracker.lastTime = currentTime;
+            tracker.lastLoaded = loaded;
+            tracker.smoothedSpeed = currentSpeed;
+          } else if (tracker.smoothedSpeed === 0 && (currentTime - tracker.startTime) > 200) {
+            const overallElapsed = (currentTime - tracker.startTime) / 1000;
+            currentSpeed = overallElapsed > 0 ? (loaded / overallElapsed) : 0;
+          }
+
+          setUploadProgress({
+            percent,
+            speed: formatDataSpeed(currentSpeed),
+            rawSpeed: currentSpeed,
+            loaded,
+            total,
+            formattedLoaded: formatFileSize(loaded),
+            formattedTotal: formatFileSize(total),
+            fileName: 'Video note',
+            fileIndex: 1,
+            totalFiles: 1,
+            eta: calculateETA(loaded, total, currentSpeed),
+            status: percent >= 100 ? 'processing' : 'uploading',
+          });
+        },
+      });
 
       const attachment = {
         ...data.file,
@@ -375,11 +714,14 @@ export default function MessageComposer() {
       });
 
       if (!isSilent) playSentMessageSound();
-      toast.success('Video note sent!', { id: toastId });
-    } catch {
-      toast.error('Failed to send video note', { id: toastId });
+      toast.success('Video note sent!');
+    } catch (error) {
+      if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') return;
+      toast.error('Failed to send video note');
     } finally {
       setIsUploading(false);
+      setUploadProgress(null);
+      uploadAbortControllerRef.current = null;
     }
   };
 
@@ -456,6 +798,77 @@ export default function MessageComposer() {
         </div>
       )}
 
+      {/* Upload Progress Bar Card with Percentage & Data Speed */}
+      {isUploading && uploadProgress && (
+        <div className="mb-2.5 p-3 rounded-2xl bg-dark-card/95 border border-primary-500/40 shadow-xl backdrop-blur-xl animate-slide-up select-none">
+          {/* Top row: File info + Cancel Button */}
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-xl bg-primary-500/20 text-primary-400 flex items-center justify-center flex-shrink-0 shadow-sm">
+                <UploadCloud className="w-4 h-4 animate-bounce" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-bold text-white truncate max-w-[170px] sm:max-w-xs block">
+                    {uploadProgress.fileName}
+                  </span>
+                  {uploadProgress.totalFiles > 1 && (
+                    <span className="px-1.5 py-0.5 rounded-md bg-primary-500/20 text-primary-300 text-[10px] font-semibold flex-shrink-0">
+                      {uploadProgress.fileIndex}/{uploadProgress.totalFiles}
+                    </span>
+                  )}
+                </div>
+                <p className="text-[10px] text-surface-400">
+                  {uploadProgress.status === 'processing'
+                    ? 'Finalizing and processing on server...'
+                    : `${uploadProgress.formattedLoaded} of ${uploadProgress.formattedTotal}`}
+                </p>
+              </div>
+            </div>
+
+            {/* Cancel Button */}
+            <button
+              type="button"
+              onClick={handleCancelUpload}
+              className="p-1.5 rounded-xl bg-dark-input hover:bg-accent-red/20 text-surface-400 hover:text-accent-red border border-dark-border/80 transition-colors flex-shrink-0 cursor-pointer"
+              title="Cancel Upload"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* Progress Bar Track & Shimmering Fill */}
+          <div className="w-full h-2.5 bg-dark-input/90 rounded-full overflow-hidden p-0.5 border border-dark-border/60 relative">
+            <div
+              className="h-full rounded-full gradient-primary transition-all duration-200 relative overflow-hidden"
+              style={{ width: `${Math.max(2, uploadProgress.percent)}%` }}
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer" />
+            </div>
+          </div>
+
+          {/* Real-time Percentage, Data Speed, and ETA */}
+          <div className="flex items-center justify-between mt-1.5 text-[11px] font-mono">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-primary-400 text-xs">
+                {uploadProgress.percent}%
+              </span>
+              <span className="text-surface-600">•</span>
+              <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                <Zap className="w-3 h-3 text-emerald-400 animate-pulse" />
+                {uploadProgress.speed}
+              </span>
+            </div>
+
+            {uploadProgress.eta && uploadProgress.percent < 100 && (
+              <span className="text-surface-400 text-[10px]">
+                {uploadProgress.eta}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* File Attachment Previews Carousel */}
       {files.length > 0 && (
         <div className="flex gap-2 mb-2 overflow-x-auto pb-1 hide-scrollbar">
@@ -463,42 +876,72 @@ export default function MessageComposer() {
             const isImg = file.type.startsWith('image/');
             const isPdf = file.type === 'application/pdf' || file.name?.toLowerCase().endsWith('.pdf');
             const previewUrl = isImg ? URL.createObjectURL(file) : null;
+            const isCurrentUploading = isUploading && uploadProgress?.fileIndex === idx + 1;
+            const isQueued = isUploading && uploadProgress && idx + 1 > uploadProgress.fileIndex;
+            const isCompleted = isUploading && uploadProgress && idx + 1 < uploadProgress.fileIndex;
 
             if (isPdf) {
               return (
-                <PdfCoverCard
-                  key={idx}
-                  source={file}
-                  fileName={file.name}
-                  fileSize={file.size}
-                  compact={true}
-                  onRemove={() => removeFile(idx)}
-                />
+                <div key={idx} className="relative">
+                  <PdfCoverCard
+                    source={file}
+                    fileName={file.name}
+                    fileSize={file.size}
+                    compact={true}
+                    onRemove={isUploading ? null : () => removeFile(idx)}
+                  />
+                  {isCurrentUploading && (
+                    <div className="absolute inset-0 bg-black/60 backdrop-blur-xs rounded-2xl flex flex-col items-center justify-center p-2 text-center select-none pointer-events-none">
+                      <span className="text-xs font-mono font-bold text-primary-300">{uploadProgress.percent}%</span>
+                      <span className="text-[9px] font-mono text-emerald-400 mt-0.5">{uploadProgress.speed}</span>
+                    </div>
+                  )}
+                  {isQueued && (
+                    <div className="absolute inset-0 bg-black/50 backdrop-blur-xs rounded-2xl flex items-center justify-center p-2 select-none pointer-events-none">
+                      <span className="text-[10px] text-surface-400 font-semibold">Queued</span>
+                    </div>
+                  )}
+                </div>
               );
             }
 
             return (
               <div
                 key={idx}
-                className="relative rounded-2xl bg-dark-input border border-dark-border p-2 flex items-center gap-2 min-w-[140px] max-w-[200px] flex-shrink-0 animate-scale-in"
+                className={`relative rounded-2xl bg-dark-input border p-2 flex items-center gap-2 min-w-[150px] max-w-[220px] flex-shrink-0 animate-scale-in transition-all ${
+                  isCurrentUploading ? 'border-primary-500 shadow-md shadow-primary-500/20' : 'border-dark-border'
+                }`}
               >
                 {isImg && previewUrl ? (
-                  <img src={previewUrl} alt="" className="w-10 h-10 rounded-xl object-cover" />
+                  <img src={previewUrl} alt="" className="w-10 h-10 rounded-xl object-cover flex-shrink-0" />
                 ) : (
-                  <div className="w-10 h-10 rounded-xl bg-primary-500/20 text-primary-400 flex items-center justify-center font-bold text-xs">
+                  <div className="w-10 h-10 rounded-xl bg-primary-500/20 text-primary-400 flex items-center justify-center font-bold text-xs flex-shrink-0">
                     <FileText className="w-5 h-5" />
                   </div>
                 )}
                 <div className="min-w-0 flex-1">
                   <p className="text-[11px] font-bold text-white truncate">{file.name}</p>
-                  <p className="text-[9px] text-surface-400">{(file.size / 1024).toFixed(0)} KB</p>
+                  {isCurrentUploading ? (
+                    <p className="text-[9px] font-mono font-semibold text-emerald-400">
+                      {uploadProgress.percent}% • {uploadProgress.speed}
+                    </p>
+                  ) : isQueued ? (
+                    <p className="text-[9px] text-surface-500">Queued</p>
+                  ) : isCompleted ? (
+                    <p className="text-[9px] text-primary-400 font-semibold">Uploaded</p>
+                  ) : (
+                    <p className="text-[9px] text-surface-400">{formatFileSize(file.size)}</p>
+                  )}
                 </div>
-                <button
-                  onClick={() => removeFile(idx)}
-                  className="w-5 h-5 rounded-full bg-black/60 hover:bg-accent-red text-white flex items-center justify-center transition-colors"
-                >
-                  <X className="w-3 h-3" />
-                </button>
+                {!isUploading && (
+                  <button
+                    onClick={() => removeFile(idx)}
+                    className="w-5 h-5 rounded-full bg-black/60 hover:bg-accent-red text-white flex items-center justify-center transition-colors cursor-pointer flex-shrink-0"
+                    title="Remove file"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
               </div>
             );
           })}

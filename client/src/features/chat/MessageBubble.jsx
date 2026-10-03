@@ -3,7 +3,8 @@ import {
   Check, CheckCheck, Clock, AlertCircle, Reply, Forward, Star,
   Trash2, Copy, Edit3, MoreHorizontal, Download, Play, Pause,
   FileText, MapPin, Users2, BarChart2, Smile, Timer, Pin,
-  MessageSquare, ExternalLink, Globe, Bell, CheckSquare, Eye
+  MessageSquare, ExternalLink, Globe, Bell, CheckSquare, Eye,
+  UploadCloud, Zap, X
 } from 'lucide-react';
 import { format } from 'date-fns';
 import useChatStore from '../../stores/chatStore';
@@ -220,6 +221,7 @@ export default function MessageBubble({
   const StatusIcon = () => {
     if (!isOwn) return null;
     switch (message.status) {
+      case 'uploading':
       case 'sending': return <Clock className="w-3.5 h-3.5 text-surface-400 animate-spin" />;
       case 'sent': return <Check className="w-3.5 h-3.5 text-surface-400" />;
       case 'delivered': return <CheckCheck className="w-3.5 h-3.5 text-surface-300" />;
@@ -424,20 +426,74 @@ export default function MessageBubble({
 
           {/* PHOTOS / IMAGES */}
           {!message.isViewOnce && (message.type === 'image' || message.type === 'gif' || message.type === 'sticker') && message.attachments?.[0]?.url && (
-            <div className="my-1 rounded-xl overflow-hidden max-w-sm">
+            <div className="my-1 rounded-xl overflow-hidden max-w-sm relative">
               <img
                 src={message.attachments[0].url}
                 alt=""
                 onClick={() => onOpenImageViewer && onOpenImageViewer(message.attachments, 0)}
                 className="w-full h-auto max-h-80 object-cover rounded-xl cursor-pointer hover:opacity-95 transition-opacity"
               />
+              {/* In-Bubble Upload Progress Overlay for Photos */}
+              {message.uploadProgress && message.status === 'uploading' && (
+                <div className="absolute inset-0 bg-black/65 backdrop-blur-xs flex flex-col items-center justify-center p-3 text-center select-none z-10">
+                  <div className="w-12 h-12 rounded-full border-2 border-primary-500/40 border-t-primary-400 animate-spin mb-2 flex items-center justify-center">
+                    <span className="text-xs font-mono font-bold text-white">
+                      {message.uploadProgress.percent || 0}%
+                    </span>
+                  </div>
+                  <span className="text-xs font-mono font-bold text-emerald-400 flex items-center gap-1">
+                    <Zap className="w-3 h-3 text-emerald-400 animate-pulse" />
+                    {message.uploadProgress.speed || '0 KB/s'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (typeof window !== 'undefined' && window.__cancelUpload) {
+                        window.__cancelUpload(message.clientId || message._id);
+                      }
+                    }}
+                    className="mt-2 px-2.5 py-1 rounded-xl bg-black/60 hover:bg-accent-red/30 text-surface-300 hover:text-white text-[10px] flex items-center gap-1 transition-colors cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                    <span>Cancel</span>
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
           {/* VIDEOS */}
           {!message.isViewOnce && message.type === 'video' && message.attachments?.[0]?.url && (
-            <div className="my-1 max-w-sm sm:max-w-md">
+            <div className="my-1 max-w-sm sm:max-w-md relative">
               <CustomVideoPlayer src={message.attachments[0].url} isOwn={isOwn} />
+              {/* In-Bubble Upload Progress Overlay for Videos */}
+              {message.uploadProgress && message.status === 'uploading' && (
+                <div className="absolute inset-0 bg-black/65 backdrop-blur-xs rounded-2xl flex flex-col items-center justify-center p-3 text-center select-none z-20">
+                  <div className="w-12 h-12 rounded-full border-2 border-primary-500/40 border-t-primary-400 animate-spin mb-2 flex items-center justify-center">
+                    <span className="text-xs font-mono font-bold text-white">
+                      {message.uploadProgress.percent || 0}%
+                    </span>
+                  </div>
+                  <span className="text-xs font-mono font-bold text-emerald-400 flex items-center gap-1">
+                    <Zap className="w-3 h-3 text-emerald-400 animate-pulse" />
+                    {message.uploadProgress.speed || '0 KB/s'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (typeof window !== 'undefined' && window.__cancelUpload) {
+                        window.__cancelUpload(message.clientId || message._id);
+                      }
+                    }}
+                    className="mt-2 px-2.5 py-1 rounded-xl bg-black/60 hover:bg-accent-red/30 text-surface-300 hover:text-white text-[10px] flex items-center gap-1 transition-colors cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                    <span>Cancel</span>
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -452,10 +508,82 @@ export default function MessageBubble({
             </div>
           )}
 
-          {/* DOCUMENTS & FILES (WhatsApp-Style PDF with Cover Page & Doc preview) */}
-          {(message.type === 'document' || message.type === 'file') && message.attachments?.[0]?.url && (() => {
-            const att = message.attachments[0];
+          {/* DOCUMENTS & FILES (WhatsApp-Style PDF with Cover Page & In-Bubble Upload Progress) */}
+          {(message.type === 'document' || message.type === 'file') && (message.attachments?.[0] || message.uploadProgress) && (() => {
+            const att = message.attachments?.[0] || {};
             const isPdf = att.fileName?.toLowerCase().endsWith('.pdf') || att.mimeType === 'application/pdf' || att.url?.toLowerCase().includes('.pdf');
+
+            // If actively uploading, render WhatsApp-Style In-Bubble Upload Card
+            if (message.uploadProgress && message.status === 'uploading') {
+              return (
+                <div className="my-1.5 p-3 rounded-2xl bg-black/30 border border-white/10 select-none">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-primary-500/20 text-primary-300 flex items-center justify-center flex-shrink-0 font-bold">
+                        <FileText className="w-5 h-5 text-primary-300" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-white truncate max-w-[170px] sm:max-w-xs">
+                          {att.fileName || message.uploadProgress.fileName || 'Document'}
+                        </p>
+                        <p className="text-[10px] text-surface-300">
+                          {message.uploadProgress.status === 'processing'
+                            ? 'Finalizing on server...'
+                            : `${message.uploadProgress.formattedLoaded || `${((message.uploadProgress.loaded || 0)/1024/1024).toFixed(1)} MB`} of ${message.uploadProgress.formattedTotal || `${((message.uploadProgress.total || att.fileSize || 0)/1024/1024).toFixed(1)} MB`}`}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (typeof window !== 'undefined' && window.__cancelUpload) {
+                          window.__cancelUpload(message.clientId || message._id);
+                        }
+                      }}
+                      className="p-1.5 rounded-xl bg-black/40 hover:bg-accent-red/20 text-surface-400 hover:text-accent-red border border-white/10 transition-colors flex-shrink-0 cursor-pointer"
+                      title="Cancel Upload"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {/* Progress Bar Track & Shimmering Fill */}
+                  <div className="w-full h-2 bg-black/50 rounded-full overflow-hidden p-0.5 border border-white/10 relative">
+                    <div
+                      className="h-full rounded-full gradient-primary transition-all duration-200 relative overflow-hidden"
+                      style={{ width: `${Math.max(3, message.uploadProgress.percent || 0)}%` }}
+                    >
+                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer" />
+                    </div>
+                  </div>
+
+                  {/* Real-time Percentage & Speed */}
+                  <div className="flex items-center justify-between mt-1.5 text-[11px] font-mono">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-primary-300 text-xs">
+                        {message.uploadProgress.percent || 0}%
+                      </span>
+                      <span className="text-surface-600">•</span>
+                      <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                        <Zap className="w-3 h-3 text-emerald-400 animate-pulse" />
+                        {message.uploadProgress.speed || '0 KB/s'}
+                      </span>
+                    </div>
+
+                    {message.uploadProgress.eta && message.uploadProgress.percent < 100 && (
+                      <span className="text-surface-400 text-[10px]">
+                        {message.uploadProgress.eta}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            }
+
+            // Normal sent document preview:
+            if (!att.url) return null;
 
             if (isPdf) {
               return (
@@ -524,7 +652,7 @@ export default function MessageBubble({
                         att.mimeType
                       );
                     }}
-                    className="p-2 rounded-xl hover:bg-white/10 text-surface-300 hover:text-white transition-all flex-shrink-0 active:scale-95"
+                    className="p-2 rounded-xl hover:bg-white/10 text-surface-300 hover:text-white transition-all flex-shrink-0 active:scale-95 cursor-pointer"
                     title="Download File"
                   >
                     <Download className="w-4 h-4" />

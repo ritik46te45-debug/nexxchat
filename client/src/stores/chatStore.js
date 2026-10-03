@@ -252,7 +252,7 @@ const useChatStore = create((set, get) => ({
       // Mark optimistic message as failed
       set((state) => ({
         messages: state.messages.map(m =>
-          m._optimistic && m.status === 'sending'
+          m._optimistic && (m.status === 'sending' || m.status === 'uploading')
             ? { ...m, status: 'failed' }
             : m
         ),
@@ -260,6 +260,26 @@ const useChatStore = create((set, get) => ({
       console.error('Send message error:', error);
       throw error;
     }
+  },
+
+  addOptimisticMessage: (optimisticMsg) => {
+    set((state) => ({
+      messages: [...state.messages, optimisticMsg],
+    }));
+  },
+
+  updateOptimisticMessage: (clientId, updates) => {
+    set((state) => ({
+      messages: state.messages.map((m) =>
+        m.clientId === clientId || m._id === clientId ? { ...m, ...updates } : m
+      ),
+    }));
+  },
+
+  removeOptimisticMessage: (clientId) => {
+    set((state) => ({
+      messages: state.messages.filter((m) => m.clientId !== clientId && m._id !== clientId),
+    }));
   },
 
   editMessage: async (messageId, content) => {
