@@ -3,6 +3,28 @@ import api from '../lib/api';
 import { getSocket } from '../lib/socket';
 import useAuthStore from './authStore';
 
+export const sortConversations = (conversations) => {
+  if (!Array.isArray(conversations)) return [];
+  return [...conversations].sort((a, b) => {
+    // 1. Pinned conversations always on top
+    const aPinned = a._participant?.isPinned || a.isPinned ? 1 : 0;
+    const bPinned = b._participant?.isPinned || b.isPinned ? 1 : 0;
+    if (aPinned !== bPinned) return bPinned - aPinned;
+
+    // 2. Strict latest activity timestamp (0ms instant ordering)
+    const getConvTime = (c) => {
+      if (!c) return 0;
+      const tMsg = c.lastMessage?.createdAt ? new Date(c.lastMessage.createdAt).getTime() : 0;
+      const tLast = c.lastMessageAt ? new Date(c.lastMessageAt).getTime() : 0;
+      const tUpd = c.updatedAt ? new Date(c.updatedAt).getTime() : 0;
+      const tCre = c.createdAt ? new Date(c.createdAt).getTime() : 0;
+      return Math.max(tMsg, tLast, tUpd, tCre);
+    };
+
+    return getConvTime(b) - getConvTime(a);
+  });
+};
+
 const useChatStore = create((set, get) => ({
   conversations: [],
   activeConversation: null,
@@ -44,9 +66,10 @@ const useChatStore = create((set, get) => ({
 
       const unreadTotal = convs.reduce((sum, c) => {
         const myP = c._participant || c.participants?.find(p => (p.user?._id || p.user)?.toString() === myId);
-        return sum + (myP?.unreadCount || 0);
+        const count = typeof c.unreadCount === 'number' ? c.unreadCount : (myP?.unreadCount || 0);
+        return sum + Math.max(0, count);
       }, 0);
-      set({ conversations: convs, isLoadingConversations: false, unreadTotal });
+      set({ conversations: sortConversations(convs), isLoadingConversations: false, unreadTotal });
     } catch (error) {
       console.error('Fetch conversations error:', error);
       set({ isLoadingConversations: false });
@@ -87,7 +110,7 @@ const useChatStore = create((set, get) => ({
       set((state) => {
         const exists = state.conversations.find(c => c._id === conv._id);
         if (!exists) {
-          return { conversations: [conv, ...state.conversations] };
+          return { conversations: sortConversations([conv, ...state.conversations]) };
         }
         return {};
       });
@@ -230,6 +253,9 @@ const useChatStore = create((set, get) => ({
       set((state) => ({
         messages: [...state.messages, optimisticMsg],
       }));
+
+      // Immediately jump conversation to top of chat list (0ms instant)
+      get().updateConversationInList(conversationId, optimisticMsg);
 
       // Direct HTTP send (matching reactToMessage / editMessage pattern)
       const { data } = await api.post(`/messages/${conversationId}`, {
@@ -453,8 +479,12 @@ const useChatStore = create((set, get) => ({
         });
         const unreadTotal = convs.reduce((sum, c) => {
           const myP = c._participant || c.participants?.find((p) => (p.user?._id || p.user)?.toString() === myId);
-          return sum + (myP?.unreadCount || c.unreadCount || 0);
+          const count = typeof c.unreadCount === 'number' ? c.unreadCount : (myP?.unreadCount || 0);
+          return sum + Math.max(0, count);
         }, 0);
+        if (typeof window !== 'undefined' && window.electronAPI?.setBadgeCount) {
+          window.electronAPI.setBadgeCount(unreadTotal);
+        }
         return { conversations: convs, unreadTotal };
       });
     } catch (error) {
@@ -507,13 +537,24 @@ const useChatStore = create((set, get) => ({
     const senderId = (lastMessage?.sender?._id || lastMessage?.sender)?.toString();
     const isFromMe = Boolean(senderId && myId && senderId === myId);
 
+    const activeConvId = (state.activeConversation?._id || state.activeConversation?.id || state.activeConversation)?.toString();
+    const isCurrentlyActive = Boolean(
+      activeConvId &&
+      activeConvId === targetId &&
+      typeof document !== 'undefined' &&
+      !document.hidden
+    );
+
     const convs = [...state.conversations];
     const idx = convs.findIndex((c) => c._id?.toString() === targetId);
 
     if (idx !== -1) {
       const myP = convs[idx]._participant || convs[idx].participants?.find((p) => (p.user?._id || p.user)?.toString() === myId);
-      const currentUnread = typeof convs[idx].unreadCount === 'number' && convs[idx].unreadCount > 0 ? convs[idx].unreadCount : (myP?.unreadCount || 0);
-      const newUnread = isFromMe ? 0 : currentUnread + 1;
+      const currentUnread = typeof convs[idx].unreadCount === 'number'
+        ? convs[idx].unreadCount
+        : (typeof myP?.unreadCount === 'number' ? myP.unreadCount : 0);
+
+      const newUnread = (isFromMe || isCurrentlyActive) ? 0 : Math.max(0, currentUnread + 1);
 
       const updatedConv = {
         ...convs[idx],
@@ -531,20 +572,24 @@ const useChatStore = create((set, get) => ({
         ),
       };
 
-      // Move to top of chat list
-      convs.splice(idx, 1);
-      convs.unshift(updatedConv);
+      convs[idx] = updatedConv;
+      const sortedConvs = sortConversations(convs);
 
-      const unreadTotal = convs.reduce((sum, c) => {
+      const unreadTotal = sortedConvs.reduce((sum, c) => {
         const pObj = c._participant || c.participants?.find((p) => (p.user?._id || p.user)?.toString() === myId);
-        return sum + (pObj?.unreadCount || c.unreadCount || 0);
+        const count = typeof c.unreadCount === 'number' ? c.unreadCount : (pObj?.unreadCount || 0);
+        return sum + Math.max(0, count);
       }, 0);
 
       if (typeof window !== 'undefined' && window.electronAPI?.setBadgeCount) {
         window.electronAPI.setBadgeCount(unreadTotal);
       }
 
-      set({ conversations: [...convs], unreadTotal });
+      set({ conversations: sortedConvs, unreadTotal });
+
+      if (isCurrentlyActive && !isFromMe) {
+        get().markAsRead(targetId);
+      }
     } else {
       // If conversation is new or not in the current list, fetch fresh conversations
       get().fetchConversations();

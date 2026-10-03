@@ -53,11 +53,11 @@ export const getOrCreateConversation = async (req, res) => {
       conversation: conversation._id,
       sender: { $ne: req.userId },
       isDeletedForEveryone: { $ne: true },
+      deletedFor: { $ne: req.userId },
+      'readBy.user': { $ne: req.userId },
     };
     if (lastReadAt) {
       unreadFilter.createdAt = { $gt: lastReadAt };
-    } else {
-      unreadFilter['readBy.user'] = { $ne: req.userId };
     }
     const actualUnread = await Message.countDocuments(unreadFilter);
 
@@ -108,11 +108,11 @@ export const getConversations = async (req, res) => {
           conversation: conv._id,
           sender: { $ne: req.userId },
           isDeletedForEveryone: { $ne: true },
+          deletedFor: { $ne: req.userId },
+          'readBy.user': { $ne: req.userId },
         };
         if (lastReadAt) {
           filter.createdAt = { $gt: lastReadAt };
-        } else {
-          filter['readBy.user'] = { $ne: req.userId };
         }
         const count = await Message.countDocuments(filter);
         unreadMap.set(conv._id.toString(), count);
@@ -160,6 +160,27 @@ export const getConversations = async (req, res) => {
       }
 
       return true;
+    });
+
+    // Strictly sort: pinned conversations first, then newest activity timestamp on top
+    filtered.sort((a, b) => {
+      const aPinned = a._participant?.isPinned || a.isPinned ? 1 : 0;
+      const bPinned = b._participant?.isPinned || b.isPinned ? 1 : 0;
+      if (aPinned !== bPinned) return bPinned - aPinned;
+
+      const aTime = Math.max(
+        new Date(a.lastMessage?.createdAt || 0).getTime(),
+        new Date(a.lastMessageAt || 0).getTime(),
+        new Date(a.updatedAt || 0).getTime(),
+        new Date(a.createdAt || 0).getTime()
+      );
+      const bTime = Math.max(
+        new Date(b.lastMessage?.createdAt || 0).getTime(),
+        new Date(b.lastMessageAt || 0).getTime(),
+        new Date(b.updatedAt || 0).getTime(),
+        new Date(b.createdAt || 0).getTime()
+      );
+      return bTime - aTime;
     });
 
     // Asynchronously delete orphaned conversations & their messages so they don't linger in DB
@@ -210,7 +231,30 @@ export const getConversation = async (req, res) => {
       }
     }
 
-    res.json({ conversation });
+    const convObj = conversation.toObject ? conversation.toObject() : conversation;
+    const myParticipant = convObj.participants?.find(
+      (p) => (p.user?._id || p.user)?.toString() === req.userId.toString()
+    );
+    const lastReadAt = myParticipant?.lastReadAt;
+    const unreadFilter = {
+      conversation: conversation._id,
+      sender: { $ne: req.userId },
+      isDeletedForEveryone: { $ne: true },
+      deletedFor: { $ne: req.userId },
+      'readBy.user': { $ne: req.userId },
+    };
+    if (lastReadAt) {
+      unreadFilter.createdAt = { $gt: lastReadAt };
+    }
+    const actualUnread = await Message.countDocuments(unreadFilter);
+
+    res.json({
+      conversation: {
+        ...convObj,
+        _participant: myParticipant ? { ...myParticipant, unreadCount: actualUnread } : null,
+        unreadCount: actualUnread,
+      },
+    });
   } catch (error) {
     console.error('Get conversation error:', error);
     res.status(500).json({ error: 'Failed to get conversation' });

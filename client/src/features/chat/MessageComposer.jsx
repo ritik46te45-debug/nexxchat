@@ -314,6 +314,7 @@ export default function MessageComposer() {
             };
 
             useChatStore.getState().addOptimisticMessage(optimisticMsg);
+            useChatStore.getState().updateConversationInList(conversationId, optimisticMsg);
             setUploadProgress(initialUploadProgress);
 
             const formData = new FormData();

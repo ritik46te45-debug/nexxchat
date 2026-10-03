@@ -39,13 +39,19 @@ export default function ChatList({ onOpenProfile }) {
       });
     }
 
-    // Sort: pinned first, then by last message time
+    // Sort: pinned first, then strictly by newest activity timestamp (0ms ordering)
     convs.sort((a, b) => {
-      const aPinned = a._participant?.isPinned ? 1 : 0;
-      const bPinned = b._participant?.isPinned ? 1 : 0;
-      const timeA = new Date(a.lastMessageAt || a.updatedAt || 0).getTime();
-      const timeB = new Date(b.lastMessageAt || b.updatedAt || 0).getTime();
-      return timeB - timeA;
+      const aPinned = a._participant?.isPinned || a.isPinned ? 1 : 0;
+      const bPinned = b._participant?.isPinned || b.isPinned ? 1 : 0;
+      if (aPinned !== bPinned) return bPinned - aPinned;
+
+      const getConvTime = (c) => Math.max(
+        new Date(c.lastMessage?.createdAt || 0).getTime(),
+        new Date(c.lastMessageAt || 0).getTime(),
+        new Date(c.updatedAt || 0).getTime(),
+        new Date(c.createdAt || 0).getTime()
+      );
+      return getConvTime(b) - getConvTime(a);
     });
 
     return convs;
@@ -195,11 +201,16 @@ function ConversationItem({ conversation, userId, isActive, onClick, typingUsers
   const myParticipant = conversation._participant || conversation.participants?.find(
     (p) => (p.user?._id || p.user)?.toString() === myId
   );
-  const unread = Number(
-    typeof conversation.unreadCount === 'number' && conversation.unreadCount > 0
-      ? conversation.unreadCount
-      : (myParticipant?.unreadCount || 0)
-  );
+  const unread = isActive
+    ? 0
+    : Math.max(
+        0,
+        Number(
+          typeof conversation.unreadCount === 'number'
+            ? conversation.unreadCount
+            : (typeof myParticipant?.unreadCount === 'number' ? myParticipant.unreadCount : 0)
+        )
+      );
   const isPinned = myParticipant?.isPinned || conversation.isPinned;
   const isMuted = myParticipant?.isMuted || conversation.isMuted;
   const lastMessage = conversation.lastMessage;
@@ -243,7 +254,7 @@ function ConversationItem({ conversation, userId, isActive, onClick, typingUsers
   };
 
   const preview = getPreview();
-  const timeStr = lastMessage?.createdAt || conversation.lastMessageAt;
+  const timeStr = lastMessage?.createdAt || conversation.lastMessageAt || conversation.updatedAt || conversation.createdAt;
 
   return (
     <button

@@ -1,6 +1,6 @@
 {
   "name": "nexchat-server",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "NexChat — Production-grade messaging platform backend",
   "main": "src/index.js",
   "type": "module",
