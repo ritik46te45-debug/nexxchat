@@ -16,7 +16,7 @@ import toast from 'react-hot-toast';
 
 export default function SettingsTab({ onOpenProfile }) {
   const { user, updateUser, logout } = useAuthStore();
-  const { theme, setTheme, setShowWallpaperModal } = useUIStore();
+  const { theme, setTheme, setShowWallpaperModal, isMobile, setSidebarView } = useUIStore();
   const [searchQuery, setSearchQuery] = useState('');
 
   const [privacy, setPrivacy] = useState(user?.privacy || {});
@@ -260,14 +260,23 @@ export default function SettingsTab({ onOpenProfile }) {
     <div className="flex flex-col h-full bg-dark-bg select-none">
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-4 border-b border-dark-border">
-        {activeSection !== 'main' && (
+        {activeSection !== 'main' ? (
           <button
             onClick={() => setActiveSection('main')}
-            className="p-1 rounded-lg text-surface-400 hover:text-white hover:bg-dark-hover"
+            className="p-1.5 rounded-xl text-surface-400 hover:text-white hover:bg-dark-hover transition-colors cursor-pointer"
+            title="Back to settings menu"
           >
             ←
           </button>
-        )}
+        ) : isMobile ? (
+          <button
+            onClick={() => setSidebarView('chats')}
+            className="p-1.5 rounded-xl text-surface-400 hover:text-white hover:bg-dark-hover transition-colors cursor-pointer"
+            title="Back to chats"
+          >
+            ←
+          </button>
+        ) : null}
         <h1 className="text-xl font-bold text-white">
           {activeSection === 'main' && 'Settings'}
           {activeSection === 'privacy' && 'Privacy & Security'}

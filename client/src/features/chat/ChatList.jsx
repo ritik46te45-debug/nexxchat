@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Search, Plus, Edit3, Users, Archive, Pin, Volume2, VolumeX, Bell } from 'lucide-react';
+import { Search, Plus, Edit3, Users, Archive, Pin, Volume2, VolumeX, Bell, Settings } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import useChatStore from '../../stores/chatStore';
 import useAuthStore from '../../stores/authStore';
@@ -86,6 +86,13 @@ export default function ChatList({ onOpenProfile }) {
           </div>
 
           <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setSidebarView('settings')}
+              className="w-9 h-9 rounded-xl bg-dark-input text-surface-400 hover:text-white hover:bg-dark-hover flex items-center justify-center transition-all border border-dark-border cursor-pointer"
+              title="Settings"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
             <button
               onClick={() => setShowNewGroup(true)}
               className="w-9 h-9 rounded-xl bg-dark-input text-surface-400 hover:text-white hover:bg-dark-hover flex items-center justify-center transition-all border border-dark-border"

@@ -40,9 +40,9 @@ export default function Sidebar({ onOpenProfile }) {
       { id: 'chats', icon: MessageSquare, label: 'Chats', badge: unreadTotal },
       { id: 'status', icon: Sparkles, label: 'Status' },
       { id: 'calls', icon: Phone, label: 'Calls' },
-      { id: 'notifications', icon: Bell, label: 'Alerts', badge: unreadNotifCount },
       { id: 'contacts', icon: Users, label: 'Friends' },
-      { id: 'home', icon: Home, label: 'Home' },
+      { id: 'notifications', icon: Bell, label: 'Alerts', badge: unreadNotifCount },
+      { id: 'settings', icon: Settings, label: 'Settings' },
     ];
 
     return (
@@ -53,12 +53,13 @@ export default function Sidebar({ onOpenProfile }) {
               key={id}
               onClick={() => setSidebarView(id)}
               className={`
-                relative flex flex-col items-center justify-center gap-0.5 py-1 px-2.5 rounded-xl transition-all duration-200
+                relative flex flex-col items-center justify-center gap-0.5 py-1 px-2 rounded-xl transition-all duration-200 cursor-pointer
                 ${sidebarView === id
                   ? 'text-primary-400 font-semibold'
                   : 'text-surface-500 hover:text-surface-300 active:text-surface-200'
                 }
               `}
+              title={label}
             >
               <Icon className="w-5 h-5" />
               <span className="text-[10px] font-medium leading-tight">{label}</span>
@@ -69,22 +70,6 @@ export default function Sidebar({ onOpenProfile }) {
               )}
             </button>
           ))}
-
-          {/* Direct Profile Tab Button for Mobile */}
-          <button
-            onClick={onOpenProfile}
-            className="relative flex flex-col items-center justify-center gap-0.5 py-1 px-2.5 rounded-xl transition-all duration-200 text-surface-500 hover:text-surface-300 active:text-surface-200 cursor-pointer"
-            title="Edit Profile & DP"
-          >
-            {user?.avatar?.url ? (
-              <img src={user.avatar.url} alt="" className="w-5 h-5 rounded-full object-cover ring-1 ring-primary-500" />
-            ) : (
-              <div className="w-5 h-5 rounded-full gradient-primary text-[10px] font-bold text-white flex items-center justify-center">
-                {(user?.displayName || 'U').charAt(0).toUpperCase()}
-              </div>
-            )}
-            <span className="text-[10px] font-medium leading-tight">You</span>
-          </button>
         </nav>
       </div>
     );
