@@ -40,7 +40,7 @@ const io = new Server(httpServer, {
   },
   pingTimeout: 60000,
   pingInterval: 25000,
-  maxHttpBufferSize: 1e8, // 100MB
+  maxHttpBufferSize: 5e8, // 500MB
 });
 
 // Make io accessible in controllers

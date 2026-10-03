@@ -185,6 +185,8 @@ export default function MessageComposer() {
     }
   };
 
+  const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
+
   // Clipboard Image Paste handler (Ctrl+V)
   const handlePaste = (e) => {
     const items = e.clipboardData?.items;
@@ -194,14 +196,20 @@ export default function MessageComposer() {
     for (let i = 0; i < items.length; i++) {
       if (items[i].type.indexOf('image') !== -1 || items[i].type.indexOf('video') !== -1) {
         const file = items[i].getAsFile();
-        if (file) pastedFiles.push(file);
+        if (file) {
+          if (file.size > MAX_FILE_SIZE) {
+            toast.error('Pasted file exceeds the 500MB limit.');
+          } else {
+            pastedFiles.push(file);
+          }
+        }
       }
     }
 
     if (pastedFiles.length > 0) {
       e.preventDefault();
       setFiles((prev) => [...prev, ...pastedFiles]);
-      toast.success(`Pasted ${pastedFiles.length} image${pastedFiles.length > 1 ? 's' : ''}`);
+      toast.success(`Pasted ${pastedFiles.length} file${pastedFiles.length > 1 ? 's' : ''}`);
     }
   };
 
@@ -727,10 +735,20 @@ export default function MessageComposer() {
 
   const handleFileSelect = (e) => {
     const selected = Array.from(e.target.files || []);
-    if (selected.length > 0) {
-      setFiles((prev) => [...prev, ...selected]);
+    const valid = [];
+    for (const f of selected) {
+      if (f.size > MAX_FILE_SIZE) {
+        toast.error(`"${f.name}" exceeds the 500MB limit (${(f.size / (1024 * 1024)).toFixed(1)}MB).`);
+      } else {
+        valid.push(f);
+      }
+    }
+    if (valid.length > 0) {
+      setFiles((prev) => [...prev, ...valid]);
     }
     setShowAttachMenu(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (mediaInputRef.current) mediaInputRef.current.value = '';
   };
 
   const removeFile = (index) => {
@@ -798,87 +816,13 @@ export default function MessageComposer() {
         </div>
       )}
 
-      {/* Upload Progress Bar Card with Percentage & Data Speed */}
-      {isUploading && uploadProgress && (
-        <div className="mb-2.5 p-3 rounded-2xl bg-dark-card/95 border border-primary-500/40 shadow-xl backdrop-blur-xl animate-slide-up select-none">
-          {/* Top row: File info + Cancel Button */}
-          <div className="flex items-center justify-between gap-2 mb-2">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-8 h-8 rounded-xl bg-primary-500/20 text-primary-400 flex items-center justify-center flex-shrink-0 shadow-sm">
-                <UploadCloud className="w-4 h-4 animate-bounce" />
-              </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-bold text-white truncate max-w-[170px] sm:max-w-xs block">
-                    {uploadProgress.fileName}
-                  </span>
-                  {uploadProgress.totalFiles > 1 && (
-                    <span className="px-1.5 py-0.5 rounded-md bg-primary-500/20 text-primary-300 text-[10px] font-semibold flex-shrink-0">
-                      {uploadProgress.fileIndex}/{uploadProgress.totalFiles}
-                    </span>
-                  )}
-                </div>
-                <p className="text-[10px] text-surface-400">
-                  {uploadProgress.status === 'processing'
-                    ? 'Finalizing and processing on server...'
-                    : `${uploadProgress.formattedLoaded} of ${uploadProgress.formattedTotal}`}
-                </p>
-              </div>
-            </div>
-
-            {/* Cancel Button */}
-            <button
-              type="button"
-              onClick={handleCancelUpload}
-              className="p-1.5 rounded-xl bg-dark-input hover:bg-accent-red/20 text-surface-400 hover:text-accent-red border border-dark-border/80 transition-colors flex-shrink-0 cursor-pointer"
-              title="Cancel Upload"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          {/* Progress Bar Track & Shimmering Fill */}
-          <div className="w-full h-2.5 bg-dark-input/90 rounded-full overflow-hidden p-0.5 border border-dark-border/60 relative">
-            <div
-              className="h-full rounded-full gradient-primary transition-all duration-200 relative overflow-hidden"
-              style={{ width: `${Math.max(2, uploadProgress.percent)}%` }}
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer" />
-            </div>
-          </div>
-
-          {/* Real-time Percentage, Data Speed, and ETA */}
-          <div className="flex items-center justify-between mt-1.5 text-[11px] font-mono">
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-primary-400 text-xs">
-                {uploadProgress.percent}%
-              </span>
-              <span className="text-surface-600">•</span>
-              <span className="text-emerald-400 font-semibold flex items-center gap-1">
-                <Zap className="w-3 h-3 text-emerald-400 animate-pulse" />
-                {uploadProgress.speed}
-              </span>
-            </div>
-
-            {uploadProgress.eta && uploadProgress.percent < 100 && (
-              <span className="text-surface-400 text-[10px]">
-                {uploadProgress.eta}
-              </span>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* File Attachment Previews Carousel */}
+      {/* File Attachment Previews (before sending) */}
       {files.length > 0 && (
         <div className="flex gap-2 mb-2 overflow-x-auto pb-1 hide-scrollbar">
           {files.map((file, idx) => {
             const isImg = file.type.startsWith('image/');
             const isPdf = file.type === 'application/pdf' || file.name?.toLowerCase().endsWith('.pdf');
             const previewUrl = isImg ? URL.createObjectURL(file) : null;
-            const isCurrentUploading = isUploading && uploadProgress?.fileIndex === idx + 1;
-            const isQueued = isUploading && uploadProgress && idx + 1 > uploadProgress.fileIndex;
-            const isCompleted = isUploading && uploadProgress && idx + 1 < uploadProgress.fileIndex;
 
             if (isPdf) {
               return (
@@ -888,19 +832,8 @@ export default function MessageComposer() {
                     fileName={file.name}
                     fileSize={file.size}
                     compact={true}
-                    onRemove={isUploading ? null : () => removeFile(idx)}
+                    onRemove={() => removeFile(idx)}
                   />
-                  {isCurrentUploading && (
-                    <div className="absolute inset-0 bg-black/60 backdrop-blur-xs rounded-2xl flex flex-col items-center justify-center p-2 text-center select-none pointer-events-none">
-                      <span className="text-xs font-mono font-bold text-primary-300">{uploadProgress.percent}%</span>
-                      <span className="text-[9px] font-mono text-emerald-400 mt-0.5">{uploadProgress.speed}</span>
-                    </div>
-                  )}
-                  {isQueued && (
-                    <div className="absolute inset-0 bg-black/50 backdrop-blur-xs rounded-2xl flex items-center justify-center p-2 select-none pointer-events-none">
-                      <span className="text-[10px] text-surface-400 font-semibold">Queued</span>
-                    </div>
-                  )}
                 </div>
               );
             }
@@ -908,9 +841,7 @@ export default function MessageComposer() {
             return (
               <div
                 key={idx}
-                className={`relative rounded-2xl bg-dark-input border p-2 flex items-center gap-2 min-w-[150px] max-w-[220px] flex-shrink-0 animate-scale-in transition-all ${
-                  isCurrentUploading ? 'border-primary-500 shadow-md shadow-primary-500/20' : 'border-dark-border'
-                }`}
+                className="relative rounded-2xl bg-dark-input border border-dark-border p-2 flex items-center gap-2 min-w-[150px] max-w-[220px] flex-shrink-0 animate-scale-in transition-all"
               >
                 {isImg && previewUrl ? (
                   <img src={previewUrl} alt="" className="w-10 h-10 rounded-xl object-cover flex-shrink-0" />
@@ -921,27 +852,16 @@ export default function MessageComposer() {
                 )}
                 <div className="min-w-0 flex-1">
                   <p className="text-[11px] font-bold text-white truncate">{file.name}</p>
-                  {isCurrentUploading ? (
-                    <p className="text-[9px] font-mono font-semibold text-emerald-400">
-                      {uploadProgress.percent}% • {uploadProgress.speed}
-                    </p>
-                  ) : isQueued ? (
-                    <p className="text-[9px] text-surface-500">Queued</p>
-                  ) : isCompleted ? (
-                    <p className="text-[9px] text-primary-400 font-semibold">Uploaded</p>
-                  ) : (
-                    <p className="text-[9px] text-surface-400">{formatFileSize(file.size)}</p>
-                  )}
+                  <p className="text-[9px] text-surface-400">{formatFileSize(file.size)}</p>
                 </div>
-                {!isUploading && (
-                  <button
-                    onClick={() => removeFile(idx)}
-                    className="w-5 h-5 rounded-full bg-black/60 hover:bg-accent-red text-white flex items-center justify-center transition-colors cursor-pointer flex-shrink-0"
-                    title="Remove file"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => removeFile(idx)}
+                  className="w-5 h-5 rounded-full bg-black/60 hover:bg-accent-red text-white flex items-center justify-center transition-colors cursor-pointer flex-shrink-0"
+                  title="Remove file"
+                >
+                  <X className="w-3 h-3" />
+                </button>
               </div>
             );
           })}

@@ -436,7 +436,7 @@ export default function MessageBubble({
               {/* In-Bubble Upload Progress Overlay for Photos */}
               {message.uploadProgress && message.status === 'uploading' && (
                 <div className="absolute inset-0 bg-black/65 backdrop-blur-xs flex flex-col items-center justify-center p-3 text-center select-none z-10">
-                  <div className="w-12 h-12 rounded-full border-2 border-primary-500/40 border-t-primary-400 animate-spin mb-2 flex items-center justify-center">
+                  <div className="w-11 h-11 rounded-full border-2 border-primary-500/40 border-t-primary-400 animate-spin mb-1.5 flex items-center justify-center">
                     <span className="text-xs font-mono font-bold text-white">
                       {message.uploadProgress.percent || 0}%
                     </span>
@@ -444,6 +444,17 @@ export default function MessageBubble({
                   <span className="text-xs font-mono font-bold text-emerald-400 flex items-center gap-1">
                     <Zap className="w-3 h-3 text-emerald-400 animate-pulse" />
                     {message.uploadProgress.speed || '0 KB/s'}
+                  </span>
+                  <div className="w-3/4 max-w-[180px] h-1.5 bg-black/60 rounded-full overflow-hidden mt-2 border border-white/10 relative">
+                    <div
+                      className="h-full rounded-full gradient-primary transition-all duration-200 relative overflow-hidden"
+                      style={{ width: `${Math.max(3, message.uploadProgress.percent || 0)}%` }}
+                    >
+                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer" />
+                    </div>
+                  </div>
+                  <span className="text-[10px] text-surface-300 font-mono mt-1">
+                    {message.uploadProgress.formattedLoaded || '0 B'} of {message.uploadProgress.formattedTotal || ''}
                   </span>
                   <button
                     type="button"
@@ -470,7 +481,7 @@ export default function MessageBubble({
               {/* In-Bubble Upload Progress Overlay for Videos */}
               {message.uploadProgress && message.status === 'uploading' && (
                 <div className="absolute inset-0 bg-black/65 backdrop-blur-xs rounded-2xl flex flex-col items-center justify-center p-3 text-center select-none z-20">
-                  <div className="w-12 h-12 rounded-full border-2 border-primary-500/40 border-t-primary-400 animate-spin mb-2 flex items-center justify-center">
+                  <div className="w-11 h-11 rounded-full border-2 border-primary-500/40 border-t-primary-400 animate-spin mb-1.5 flex items-center justify-center">
                     <span className="text-xs font-mono font-bold text-white">
                       {message.uploadProgress.percent || 0}%
                     </span>
@@ -478,6 +489,17 @@ export default function MessageBubble({
                   <span className="text-xs font-mono font-bold text-emerald-400 flex items-center gap-1">
                     <Zap className="w-3 h-3 text-emerald-400 animate-pulse" />
                     {message.uploadProgress.speed || '0 KB/s'}
+                  </span>
+                  <div className="w-3/4 max-w-[180px] h-1.5 bg-black/60 rounded-full overflow-hidden mt-2 border border-white/10 relative">
+                    <div
+                      className="h-full rounded-full gradient-primary transition-all duration-200 relative overflow-hidden"
+                      style={{ width: `${Math.max(3, message.uploadProgress.percent || 0)}%` }}
+                    >
+                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer" />
+                    </div>
+                  </div>
+                  <span className="text-[10px] text-surface-300 font-mono mt-1">
+                    {message.uploadProgress.formattedLoaded || '0 B'} of {message.uploadProgress.formattedTotal || ''}
                   </span>
                   <button
                     type="button"

@@ -38,11 +38,11 @@ const ALL_ALLOWED = [...ALLOWED_TYPES.image, ...ALLOWED_TYPES.video, ...ALLOWED_
 // Dangerous executable extensions to block
 const BLOCKED_EXTENSIONS = ['.exe', '.bat', '.cmd', '.scr', '.pif', '.com', '.vbs', '.js', '.wsh', '.wsf', '.msi', '.ps1', '.sh'];
 
-// Max file sizes (bytes)
+// Max file sizes (bytes) - 500MB for all file types
 const MAX_SIZES = {
-  image: 25 * 1024 * 1024,    // 25MB
+  image: 500 * 1024 * 1024,    // 500MB
   video: 500 * 1024 * 1024,   // 500MB
-  audio: 100 * 1024 * 1024,   // 100MB
+  audio: 500 * 1024 * 1024,   // 500MB
   document: 500 * 1024 * 1024 // 500MB
 };
 
@@ -211,24 +211,18 @@ export const uploadFile = async (req, res) => {
         if (ghResult) {
           fileUrl = ghResult.url;
           publicId = ghResult.publicId;
-        } else if (size <= 2 * 1024 * 1024) {
-          fileUrl = await saveFilePersistently(buffer, category, sanitizedName, effectiveMime);
         } else {
-          return res.status(400).json({ error: `Upload failed: ${cloudErr.message}` });
+          fileUrl = await saveFilePersistently(buffer, category, sanitizedName, effectiveMime);
         }
       }
     } else {
-      // Exceeds Cloudinary limit — try GitHub Releases
+      // Exceeds Cloudinary limit — try GitHub Releases, or save persistently to disk
       const ghResult = await uploadToGitHubReleases(sanitizedName, buffer, effectiveMime);
       if (ghResult) {
         fileUrl = ghResult.url;
         publicId = ghResult.publicId;
-      } else if (size <= 2 * 1024 * 1024) {
-        fileUrl = await saveFilePersistently(buffer, category, sanitizedName, effectiveMime);
       } else {
-        return res.status(400).json({
-          error: `File size (${(size / 1024 / 1024).toFixed(1)}MB) exceeds Cloudinary free tier limit (10MB for documents/images, 100MB for video).`,
-        });
+        fileUrl = await saveFilePersistently(buffer, category, sanitizedName, effectiveMime);
       }
     }
 
@@ -294,11 +288,8 @@ export const uploadMultipleFiles = async (req, res) => {
             if (ghResult) {
               fileUrl = ghResult.url;
               publicId = ghResult.publicId;
-            } else if (size <= 2 * 1024 * 1024) {
-              fileUrl = await saveFilePersistently(buffer, category, sanitizedName, effectiveMime);
             } else {
-              errors.push({ file: originalname, error: `Upload failed: ${cloudErr.message}` });
-              continue;
+              fileUrl = await saveFilePersistently(buffer, category, sanitizedName, effectiveMime);
             }
           }
         } else {
@@ -306,14 +297,8 @@ export const uploadMultipleFiles = async (req, res) => {
           if (ghResult) {
             fileUrl = ghResult.url;
             publicId = ghResult.publicId;
-          } else if (size <= 2 * 1024 * 1024) {
-            fileUrl = await saveFilePersistently(buffer, category, sanitizedName, effectiveMime);
           } else {
-            errors.push({
-              file: originalname,
-              error: `File size (${(size / 1024 / 1024).toFixed(1)}MB) exceeds Cloudinary free tier limit (10MB for documents/images, 100MB for video).`,
-            });
-            continue;
+            fileUrl = await saveFilePersistently(buffer, category, sanitizedName, effectiveMime);
           }
         }
 
