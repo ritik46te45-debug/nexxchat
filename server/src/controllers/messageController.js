@@ -216,15 +216,16 @@ export const sendMessage = async (req, res) => {
 export const getMessages = async (req, res) => {
   try {
     const { conversationId } = req.params;
-    const { page = 1, limit = 50, before } = req.query;
+    const { page = 1, limit = 30, before } = req.query;
+    const parsedLimit = Math.min(Math.max(1, parseInt(limit) || 30), 100);
 
-    // Verify user is participant
-    const conversation = await Conversation.findOne({
+    // Fast index-only existence check
+    const isParticipant = await Conversation.exists({
       _id: conversationId,
       'participants.user': req.userId,
     });
 
-    if (!conversation) {
+    if (!isParticipant) {
       return res.status(404).json({ error: 'Conversation not found' });
     }
 
@@ -241,7 +242,9 @@ export const getMessages = async (req, res) => {
       query.createdAt = { $lt: new Date(before) };
     }
 
+    // Lean query returning plain JSON objects without heavy Mongoose Document overhead
     const messages = await Message.find(query)
+      .select('-__v')
       .populate('sender', 'username displayName avatar')
       .populate({
         path: 'replyTo',
@@ -250,21 +253,18 @@ export const getMessages = async (req, res) => {
       })
       .populate('reactions.user', 'username displayName')
       .sort({ createdAt: -1 })
-      .limit(parseInt(limit))
-      .skip(before ? 0 : (parseInt(page) - 1) * parseInt(limit));
+      .limit(parsedLimit)
+      .skip(before ? 0 : (parseInt(page) - 1) * parsedLimit)
+      .lean();
 
-    const total = await Message.countDocuments({
-      conversation: conversationId,
-      deletedFor: { $ne: req.userId },
-    });
+    const hasMore = messages.length === parsedLimit;
 
     res.json({
       messages: messages.reverse(),
       pagination: {
         page: parseInt(page),
-        limit: parseInt(limit),
-        total,
-        hasMore: before ? messages.length === parseInt(limit) : (parseInt(page) * parseInt(limit)) < total,
+        limit: parsedLimit,
+        hasMore,
       },
     });
   } catch (error) {

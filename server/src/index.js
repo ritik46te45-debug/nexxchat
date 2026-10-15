@@ -159,6 +159,16 @@ const PORT = process.env.PORT || 5000;
 const startServer = async () => {
   try {
     await connectDB();
+
+    // Reset all users to offline on server startup to wipe any stale flags from previous server runs
+    try {
+      const { default: User } = await import('./models/User.js');
+      await User.updateMany({}, { $set: { isOnline: false, socketIds: [] } });
+      console.log('✅ Cleared stale presence state from database');
+    } catch (e) {
+      console.warn('Presence reset note:', e.message);
+    }
+
     setupSocket(io);
 
     httpServer.listen(PORT, () => {

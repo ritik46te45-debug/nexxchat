@@ -40,7 +40,8 @@ export default function HomeTab({ onStartCall, onOpenNewChat, onOpenNewGroup }) 
       if (c.type === 'private') {
         const other = c.participants?.find((p) => (p.user?._id || p.user)?.toString() !== myId);
         if (other && typeof other.user === 'object') {
-          const isOnline = other.user.isOnline || (onlineUsers?.has && onlineUsers.has(other.user._id?.toString()));
+          const otherId = (other.user._id?._id || other.user._id || other.user)?.toString();
+          const isOnline = Boolean(otherId && onlineUsers?.has && onlineUsers.has(otherId));
           if (isOnline) {
             friends.push({ user: other.user, conversation: c });
           }

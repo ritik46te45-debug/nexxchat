@@ -58,7 +58,7 @@ function App() {
   const initialize = useAuthStore((s) => s.initialize);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const user = useAuthStore((s) => s.user);
-  const { addMessage, setTypingUser, clearTypingUser, setRecordingUser, clearRecordingUser, setUserOnline, setUserOffline, updateMessageInList, fetchConversations, syncMissedMessages } = useChatStore();
+  const { addMessage, setTypingUser, clearTypingUser, setRecordingUser, clearRecordingUser, setUserOnline, setUserOffline, setOnlineUsers, updateMessageInList, fetchConversations, syncMissedMessages } = useChatStore();
   const { setOnline, setReconnecting } = useUIStore();
 
   // Use ref for user to avoid re-mounting socket listeners on profile changes
@@ -281,6 +281,9 @@ function App() {
       clearRecordingUser(conversationId, userId);
     };
 
+    const handleOnlineList = ({ userIds } = {}) => {
+      setOnlineUsers(userIds || []);
+    };
     const handleUserOnline = ({ userId }) => setUserOnline(userId);
     const handleUserOffline = ({ userId }) => setUserOffline(userId);
 
@@ -359,12 +362,14 @@ function App() {
       setReconnecting(false);
       fetchConversations();
       syncMissedMessages();
+      socket.emit('users:get_online');
     };
     const handleDisconnect = () => setReconnecting(true);
     const handleConnect = () => {
       setReconnecting(false);
       fetchConversations();
       syncMissedMessages();
+      socket.emit('users:get_online');
     };
 
     // Attach listeners
@@ -380,6 +385,7 @@ function App() {
     socket.on('recording:stop', handleRecordingStop);
     socket.on('user:online', handleUserOnline);
     socket.on('user:offline', handleUserOffline);
+    socket.on('users:online_list', handleOnlineList);
     socket.on('notification:new', handleNotificationNew);
     socket.on('friend:request', handleFriendRequest);
     socket.on('friend:accepted', handleFriendAccepted);
@@ -405,6 +411,7 @@ function App() {
       socket.off('recording:stop', handleRecordingStop);
       socket.off('user:online', handleUserOnline);
       socket.off('user:offline', handleUserOffline);
+      socket.off('users:online_list', handleOnlineList);
       socket.off('notification:new', handleNotificationNew);
       socket.off('friend:request', handleFriendRequest);
       socket.off('friend:accepted', handleFriendAccepted);

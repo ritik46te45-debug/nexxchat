@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import Conversation from '../models/Conversation.js';
 import Message from '../models/Message.js';
 import User from '../models/User.js';
+import { connectionManager } from '../socket/index.js';
 
 // CREATE OR GET PRIVATE CONVERSATION
 export const getOrCreateConversation = async (req, res) => {
@@ -151,6 +152,13 @@ export const getConversations = async (req, res) => {
       if (convObj.lastMessage && convObj.lastMessage.deletedFor?.some(id => id.toString() === req.userId.toString())) {
         convObj.lastMessage = null;
       }
+      // Populate live real-time presence from connectionManager
+      convObj.participants?.forEach(p => {
+        if (p.user && typeof p.user === 'object') {
+          const uId = (p.user._id || p.user)?.toString();
+          p.user.isOnline = connectionManager.isUserOnline(uId);
+        }
+      });
       return {
         ...convObj,
         _participant: myParticipant ? { ...myParticipant, unreadCount: actualUnread } : null,

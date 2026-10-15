@@ -327,9 +327,9 @@ function getOtherUser(conversation, userId) {
 }
 
 function isUserOnline(conversation, userId, onlineUsers) {
-  if (conversation.type === 'group') return false;
+  if (conversation.type === 'group' || conversation.type === 'channel') return false;
   const other = getOtherUser(conversation, userId);
   if (!other) return false;
   const otherId = (other._id || other)?.toString();
-  return Boolean(other.isOnline || (otherId && onlineUsers?.has && onlineUsers.has(otherId)));
+  return Boolean(otherId && onlineUsers?.has && onlineUsers.has(otherId));
 }

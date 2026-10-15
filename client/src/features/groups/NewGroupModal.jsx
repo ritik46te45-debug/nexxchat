@@ -22,7 +22,7 @@ export default function NewGroupModal({ onClose }) {
   const [disappearingDuration, setDisappearingDuration] = useState('off');
   const fileInputRef = useRef(null);
 
-  const { setActiveConversation, addConversation } = useChatStore();
+  const { setActiveConversation, addConversation, onlineUsers } = useChatStore();
   const { isMobile, setShowChatOnMobile } = useUIStore();
 
   useEffect(() => {
@@ -239,7 +239,7 @@ export default function NewGroupModal({ onClose }) {
                               {(friend.displayName || 'U').charAt(0).toUpperCase()}
                             </div>
                           )}
-                          {friend.isOnline && (
+                          {Boolean(friend._id && onlineUsers?.has && onlineUsers.has(friend._id.toString())) && (
                             <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-accent-green border-2 border-dark-card" />
                           )}
                         </div>

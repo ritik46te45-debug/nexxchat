@@ -280,7 +280,8 @@ export default function ContactsTab({ onStartCall }) {
               const canSeeOnline = !friend?.privacy?.online || friend.privacy.online !== 'nobody';
               const canSeeAbout = !friend?.privacy?.about || friend.privacy.about !== 'nobody';
 
-              const isOnline = (friend.isOnline || onlineUsers.has(friend._id?.toString())) && canSeeOnline;
+              const friendId = (friend._id?._id || friend._id)?.toString();
+              const isOnline = Boolean(friendId && onlineUsers?.has && onlineUsers.has(friendId)) && canSeeOnline;
               return (
                 <div
                   key={friend._id}

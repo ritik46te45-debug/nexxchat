@@ -186,8 +186,9 @@ export default function ChatWindow({ onStartCall }) {
     ? activeConversation.groupAvatar?.url
     : (canSeeProfilePhoto ? otherUser?.avatar?.url : null);
 
+  const otherUserId = (otherUser?._id?._id || otherUser?._id)?.toString();
   const isOnline = otherUser && canSeeOnline
-    ? Boolean(otherUser.isOnline || (onlineUsers && typeof onlineUsers.has === 'function' && onlineUsers.has(otherUser._id?.toString())))
+    ? Boolean(otherUserId && onlineUsers && typeof onlineUsers.has === 'function' && onlineUsers.has(otherUserId))
     : false;
 
   // Computed block status for active 1-on-1 recipient
@@ -837,8 +838,8 @@ export default function ChatWindow({ onStartCall }) {
 
         {/* Messages Scroll Container */}
         <div className="flex-1 min-h-0 relative overflow-hidden flex flex-col">
-          {/* Centered smooth loader until messages are aligned at latest message */}
-          {(!isChatReady || (isLoadingMessages && messages.length === 0)) && (
+          {/* Centered smooth loader only when fetching empty chat */}
+          {isLoadingMessages && messages.length === 0 && (
             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-dark-bg">
               <Loader2 className="w-8 h-8 animate-spin text-primary-400" />
             </div>
@@ -848,7 +849,7 @@ export default function ChatWindow({ onStartCall }) {
             ref={messagesContainerRef}
             onScroll={handleScroll}
             className={`flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 sm:p-4 space-y-1 hide-scrollbar bg-dark-bg relative transition-opacity duration-150 ${
-              !isChatReady ? 'opacity-0 pointer-events-none' : 'opacity-100'
+              isLoadingMessages && messages.length === 0 ? 'opacity-0 pointer-events-none' : 'opacity-100'
             }`}
           >
             {/* Top Loading Spinner for Infinite History Scroll (pagination) */}

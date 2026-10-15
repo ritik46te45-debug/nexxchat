@@ -66,16 +66,51 @@ export const setupSocket = (io) => {
       }
     });
 
-    // Broadcast online status to friends
-    const user = await User.findById(userId);
-    if (user?.friends) {
-      user.friends.forEach(friendId => {
-        const friendSockets = connectionManager.getUserSockets(friendId.toString());
-        friendSockets.forEach(sid => {
-          io.to(sid).emit('user:online', { userId, lastSeen: new Date() });
+    // Send currently online user IDs to the newly connected user immediately!
+    const onlineIds = connectionManager.getOnlineUserIds();
+    socket.emit('users:online_list', { userIds: onlineIds });
+
+    // Helper to find all peers (friends + all participants of user's conversations)
+    const broadcastPresence = async (event, payload) => {
+      try {
+        const targetIds = new Set();
+        // 1. All participants across all user's conversations
+        const userConversations = await Conversation.find({
+          'participants.user': userId,
+        }).select('participants.user').lean();
+        
+        userConversations.forEach(c => {
+          (c.participants || []).forEach(p => {
+            const pId = (p.user?._id || p.user)?.toString();
+            if (pId && pId !== userId.toString()) targetIds.add(pId);
+          });
         });
-      });
-    }
+
+        // 2. All friends
+        const u = await User.findById(userId).select('friends').lean();
+        if (u?.friends) {
+          u.friends.forEach(f => {
+            const fId = (f?._id || f)?.toString();
+            if (fId && fId !== userId.toString()) targetIds.add(fId);
+          });
+        }
+
+        // Broadcast to all peers
+        targetIds.forEach(targetId => {
+          io.to(targetId).to(`user:${targetId}`).emit(event, payload);
+        });
+      } catch (err) {
+        console.warn(`Presence broadcast error (${event}):`, err.message);
+      }
+    };
+
+    // Broadcast that this user is now online
+    broadcastPresence('user:online', { userId, lastSeen: new Date() });
+
+    // Allow client to request fresh online users list at any time
+    socket.on('users:get_online', () => {
+      socket.emit('users:online_list', { userIds: connectionManager.getOnlineUserIds() });
+    });
 
     // ====== TYPING ======
     socket.on('typing:start', ({ conversationId }) => {
@@ -637,19 +672,11 @@ export const setupSocket = (io) => {
           $pull: { socketIds: socket.id },
         });
 
-        // Broadcast offline status
-        const offlineUser = await User.findById(userId);
-        if (offlineUser?.friends) {
-          offlineUser.friends.forEach(friendId => {
-            const friendSockets = connectionManager.getUserSockets(friendId.toString());
-            friendSockets.forEach(sid => {
-              io.to(sid).emit('user:offline', {
-                userId,
-                lastSeen: new Date(),
-              });
-            });
-          });
-        }
+        // Broadcast offline status to all conversation participants & friends
+        broadcastPresence('user:offline', {
+          userId,
+          lastSeen: new Date(),
+        });
       } else {
         await User.findByIdAndUpdate(userId, {
           $pull: { socketIds: socket.id },

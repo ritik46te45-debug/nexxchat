@@ -40,6 +40,7 @@ const useChatStore = create((set, get) => ({
   conversations: [],
   activeConversation: null,
   messages: [],
+  messagesCache: {}, // { [conversationId]: { messages: [], hasMore: boolean } }
   isLoadingConversations: false,
   isLoadingMessages: false,
   hasMoreMessages: true,
@@ -138,17 +139,45 @@ const useChatStore = create((set, get) => ({
   setActiveConversation: (conversation) => {
     // Bump generation so any in-flight fetchMessages for the OLD conversation is discarded
     const gen = (get()._fetchGeneration || 0) + 1;
-    set({
-      activeConversation: conversation,
-      messages: [],
-      hasMoreMessages: true,
-      isLoadingMessages: !!conversation,
-      _fetchGeneration: gen,
-    });
-    if (conversation) {
-      get().fetchMessages(conversation._id);
-      get().markAsRead(conversation._id);
+    if (!conversation) {
+      set({
+        activeConversation: null,
+        messages: [],
+        hasMoreMessages: false,
+        isLoadingMessages: false,
+        _fetchGeneration: gen,
+      });
+      return;
     }
+
+    const convId = (conversation._id || conversation.id)?.toString();
+    const cached = get().messagesCache[convId];
+
+    if (cached && Array.isArray(cached.messages) && cached.messages.length > 0) {
+      // 0ms instant display from memory cache — no spinner, zero delay!
+      set({
+        activeConversation: conversation,
+        messages: cached.messages,
+        hasMoreMessages: cached.hasMore ?? false,
+        isLoadingMessages: false,
+        _fetchGeneration: gen,
+      });
+      // Silently revalidate in background (SWR pattern)
+      get().fetchMessages(convId, null, true);
+    } else {
+      // Optimistically display lastMessage if available so chat window is never blank
+      const initialMessages = conversation.lastMessage ? [conversation.lastMessage] : [];
+      set({
+        activeConversation: conversation,
+        messages: initialMessages,
+        hasMoreMessages: true,
+        isLoadingMessages: initialMessages.length === 0,
+        _fetchGeneration: gen,
+      });
+      get().fetchMessages(convId);
+    }
+
+    get().markAsRead(convId);
   },
 
   addConversation: (conv) => {
@@ -197,12 +226,16 @@ const useChatStore = create((set, get) => ({
           },
         });
       }
-      set((state) => ({
-        conversations: state.conversations.map((c) =>
+      set((s) => ({
+        conversations: s.conversations.map((c) =>
           c._id?.toString() === conversationId?.toString()
             ? { ...c, lastMessage: null, unreadCount: 0 }
             : c
         ),
+        messagesCache: conversationId ? {
+          ...s.messagesCache,
+          [conversationId.toString()]: { messages: [], hasMore: false },
+        } : s.messagesCache,
       }));
     } catch (error) {
       console.error('Clear conversation error:', error);
@@ -221,8 +254,12 @@ const useChatStore = create((set, get) => ({
         (state.activeConversation?._id || state.activeConversation?.id)?.toString() ===
         conversationId?.toString();
 
+      const nextCache = { ...state.messagesCache };
+      if (conversationId) delete nextCache[conversationId.toString()];
+
       set({
         conversations: nextConversations,
+        messagesCache: nextCache,
         ...(isCurrentActive ? { activeConversation: null, messages: [] } : {}),
       });
     } catch (error) {
@@ -232,27 +269,49 @@ const useChatStore = create((set, get) => ({
   },
 
   // ====== MESSAGES ======
-  fetchMessages: async (conversationId, before = null) => {
+  fetchMessages: async (conversationId, before = null, silent = false) => {
     const genAtStart = get()._fetchGeneration;
-    if (!before) {
-      // Only set loading for initial fetch — pagination keeps existing messages visible
+    const convIdStr = conversationId?.toString();
+    if (!before && !silent) {
+      // Only set loading for initial fetch when not silent and not cached
       set({ isLoadingMessages: true });
     }
     try {
-      const params = { limit: 50 };
+      const params = { limit: 30 };
       if (before) params.before = before;
-      const { data } = await api.get(`/messages/${conversationId}`, { params });
+      const { data } = await api.get(`/messages/${convIdStr}`, { params });
 
-      // Guard: discard this response if the user switched to a different conversation while we were fetching
+      const incoming = data.messages || [];
+      const hasMore = Boolean(data.pagination?.hasMore);
+
+      // Guard: if user switched conversation during fetch, store in cache for that conversation anyway
       if (get()._fetchGeneration !== genAtStart) {
+        if (!before && convIdStr) {
+          set((state) => ({
+            messagesCache: {
+              ...state.messagesCache,
+              [convIdStr]: { messages: incoming, hasMore },
+            },
+          }));
+        }
         return;
       }
 
-      set((state) => ({
-        messages: before ? [...data.messages, ...state.messages] : data.messages,
-        hasMoreMessages: data.pagination?.hasMore || false,
-        isLoadingMessages: false,
-      }));
+      set((state) => {
+        const nextMessages = before ? [...incoming, ...state.messages] : incoming;
+        return {
+          messages: nextMessages,
+          hasMoreMessages: hasMore,
+          isLoadingMessages: false,
+          messagesCache: convIdStr ? {
+            ...state.messagesCache,
+            [convIdStr]: {
+              messages: nextMessages,
+              hasMore,
+            },
+          } : state.messagesCache,
+        };
+      });
     } catch (error) {
       console.error('Fetch messages error:', error);
       // Only clear loading if we're still on the same conversation
@@ -279,9 +338,20 @@ const useChatStore = create((set, get) => ({
         _optimistic: true,
       };
 
-      set((state) => ({
-        messages: [...state.messages, optimisticMsg],
-      }));
+      set((state) => {
+        const nextMsgs = [...state.messages, optimisticMsg];
+        const convKey = conversationId?.toString();
+        return {
+          messages: nextMsgs,
+          messagesCache: convKey ? {
+            ...state.messagesCache,
+            [convKey]: {
+              messages: nextMsgs,
+              hasMore: state.messagesCache[convKey]?.hasMore ?? false,
+            },
+          } : state.messagesCache,
+        };
+      });
 
       // Immediately jump conversation to top of chat list (0ms instant)
       get().updateConversationInList(conversationId, optimisticMsg);
@@ -293,11 +363,22 @@ const useChatStore = create((set, get) => ({
       });
 
       // Replace optimistic message with canonical server message
-      set((state) => ({
-        messages: state.messages.map(m =>
+      set((state) => {
+        const nextMsgs = state.messages.map(m =>
           m.clientId === clientId ? data.message : m
-        ),
-      }));
+        );
+        const convKey = conversationId?.toString();
+        return {
+          messages: nextMsgs,
+          messagesCache: convKey ? {
+            ...state.messagesCache,
+            [convKey]: {
+              messages: nextMsgs,
+              hasMore: state.messagesCache[convKey]?.hasMore ?? false,
+            },
+          } : state.messagesCache,
+        };
+      });
 
       // Update conversation list
       get().updateConversationInList(conversationId, data.message);
@@ -544,7 +625,37 @@ const useChatStore = create((set, get) => ({
       } else {
         msgs.push(message);
       }
-      set({ messages: [...msgs] });
+      set((s) => ({
+        messages: msgs,
+        messagesCache: {
+          ...s.messagesCache,
+          [msgConvId]: {
+            messages: msgs,
+            hasMore: s.messagesCache[msgConvId]?.hasMore ?? s.hasMoreMessages,
+          },
+        },
+      }));
+    } else if (msgConvId) {
+      const cached = state.messagesCache[msgConvId];
+      if (cached && Array.isArray(cached.messages)) {
+        const msgs = [...cached.messages];
+        const mId = (message._id || message.id)?.toString();
+        const matchIdx = msgs.findIndex(m =>
+          (m.clientId && message.clientId && m.clientId === message.clientId) ||
+          ((m._id || m.id) && mId && (m._id || m.id).toString() === mId)
+        );
+        if (matchIdx !== -1) {
+          msgs[matchIdx] = message;
+        } else {
+          msgs.push(message);
+        }
+        set((s) => ({
+          messagesCache: {
+            ...s.messagesCache,
+            [msgConvId]: { ...cached, messages: msgs },
+          },
+        }));
+      }
     }
     state.updateConversationInList(msgConvId, message);
   },
@@ -680,18 +791,30 @@ const useChatStore = create((set, get) => ({
     });
   },
 
+  setOnlineUsers: (userIds) => {
+    const list = Array.isArray(userIds) ? userIds : [];
+    const normalized = new Set(
+      list.map((id) => (id?._id || id)?.toString()).filter(Boolean)
+    );
+    set({ onlineUsers: normalized });
+  },
+
   setUserOnline: (userId) => {
+    if (!userId) return;
+    const strId = (userId?._id || userId)?.toString();
     set((state) => {
       const online = new Set(state.onlineUsers);
-      online.add(userId);
+      online.add(strId);
       return { onlineUsers: online };
     });
   },
 
   setUserOffline: (userId) => {
+    if (!userId) return;
+    const strId = (userId?._id || userId)?.toString();
     set((state) => {
       const online = new Set(state.onlineUsers);
-      online.delete(userId);
+      online.delete(strId);
       return { onlineUsers: online };
     });
   },
