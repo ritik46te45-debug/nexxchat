@@ -160,7 +160,9 @@ function updateTrayMenu() {
 
 // Create Windows System Tray
 function createTray() {
-  const iconPath = path.join(__dirname, '../client/public/favicon.png');
+  const localIcon = path.join(__dirname, 'icon.png');
+  const fallbackIcon = path.join(__dirname, '../client/public/favicon.png');
+  const iconPath = fs.existsSync(localIcon) ? localIcon : fallbackIcon;
   let trayIcon;
   try {
     trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });

@@ -14,7 +14,10 @@ export const getOrCreateConversation = async (req, res) => {
 
     // Check if blocked
     const currentUser = await User.findById(req.userId);
-    if (currentUser.blockedUsers.includes(userId)) {
+    const isSelfBlocked = currentUser?.blockedUsers?.some(
+      id => (id?._id || id)?.toString() === userId.toString()
+    );
+    if (isSelfBlocked) {
       return res.status(403).json({ error: 'User is blocked' });
     }
 
@@ -22,7 +25,10 @@ export const getOrCreateConversation = async (req, res) => {
     if (!targetUser) {
       return res.status(404).json({ error: 'User not found' });
     }
-    if (targetUser.blockedUsers.includes(req.userId)) {
+    const isTargetBlocked = targetUser?.blockedUsers?.some(
+      id => (id?._id || id)?.toString() === req.userId.toString()
+    );
+    if (isTargetBlocked) {
       return res.status(403).json({ error: 'Cannot start conversation' });
     }
 
@@ -41,6 +47,19 @@ export const getOrCreateConversation = async (req, res) => {
       conversation = await Conversation.findById(conversation._id)
         .populate('participants.user', 'username displayName avatar isOnline lastSeen about userCode privacy friends')
         .populate('lastMessage');
+    } else {
+      // If conversation was soft-deleted by current user, restore it
+      let wasDeleted = false;
+      conversation.participants.forEach(p => {
+        if ((p.user?._id || p.user)?.toString() === req.userId.toString() && p.isDeleted) {
+          p.isDeleted = false;
+          p.deletedAt = null;
+          wasDeleted = true;
+        }
+      });
+      if (wasDeleted) {
+        await conversation.save();
+      }
     }
 
     const convObj = conversation.toObject ? conversation.toObject() : conversation;
@@ -162,25 +181,33 @@ export const getConversations = async (req, res) => {
       return true;
     });
 
+    const getConvTime = (c) => {
+      if (!c) return 0;
+      if (c.lastMessage?.createdAt) {
+        const t = new Date(c.lastMessage.createdAt).getTime();
+        if (!isNaN(t) && t > 0) return t;
+      }
+      if (c.lastMessageAt) {
+        const t = new Date(c.lastMessageAt).getTime();
+        if (!isNaN(t) && t > 0) return t;
+      }
+      if (c.createdAt) {
+        const t = new Date(c.createdAt).getTime();
+        if (!isNaN(t) && t > 0) return t;
+      }
+      return 0;
+    };
+
     // Strictly sort: pinned conversations first, then newest activity timestamp on top
     filtered.sort((a, b) => {
       const aPinned = a._participant?.isPinned || a.isPinned ? 1 : 0;
       const bPinned = b._participant?.isPinned || b.isPinned ? 1 : 0;
       if (aPinned !== bPinned) return bPinned - aPinned;
 
-      const aTime = Math.max(
-        new Date(a.lastMessage?.createdAt || 0).getTime(),
-        new Date(a.lastMessageAt || 0).getTime(),
-        new Date(a.updatedAt || 0).getTime(),
-        new Date(a.createdAt || 0).getTime()
-      );
-      const bTime = Math.max(
-        new Date(b.lastMessage?.createdAt || 0).getTime(),
-        new Date(b.lastMessageAt || 0).getTime(),
-        new Date(b.updatedAt || 0).getTime(),
-        new Date(b.createdAt || 0).getTime()
-      );
-      return bTime - aTime;
+      const aTime = getConvTime(a);
+      const bTime = getConvTime(b);
+      if (bTime !== aTime) return bTime - aTime;
+      return (b._id?.toString() || '').localeCompare(a._id?.toString() || '');
     });
 
     // Asynchronously delete orphaned conversations & their messages so they don't linger in DB

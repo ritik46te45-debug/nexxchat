@@ -18,12 +18,15 @@ export const sendFriendRequest = async (req, res) => {
     }
 
     // Check if blocked
-    if (targetUser.blockedUsers.includes(req.userId) || req.user.blockedUsers.includes(userId)) {
+    const isTargetBlocked = targetUser.blockedUsers?.some(id => (id?._id || id)?.toString() === req.userId.toString());
+    const isUserBlocked = req.user.blockedUsers?.some(id => (id?._id || id)?.toString() === userId.toString());
+    if (isTargetBlocked || isUserBlocked) {
       return res.status(403).json({ error: 'Cannot send friend request' });
     }
 
     // Check if already friends
-    if (req.user.friends.includes(userId)) {
+    const isAlreadyFriend = req.user.friends?.some(id => (id?._id || id)?.toString() === userId.toString());
+    if (isAlreadyFriend) {
       return res.status(400).json({ error: 'Already friends' });
     }
 
@@ -250,6 +253,17 @@ export const getFriends = async (req, res) => {
       const validFriendIds = validFriends.map((f) => f._id);
       User.findByIdAndUpdate(req.userId, { friends: validFriendIds }).catch(console.error);
     }
+
+    // Sort friends: online first, then alphabetical A-Z by name
+    validFriends.sort((a, b) => {
+      const aOnline = a.isOnline ? 1 : 0;
+      const bOnline = b.isOnline ? 1 : 0;
+      if (aOnline !== bOnline) return bOnline - aOnline;
+
+      const aName = (a.displayName || a.username || '').toLowerCase();
+      const bName = (b.displayName || b.username || '').toLowerCase();
+      return aName.localeCompare(bName);
+    });
 
     res.json({ friends: validFriends });
   } catch (error) {

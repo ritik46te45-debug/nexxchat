@@ -326,7 +326,7 @@ export const refreshTokenHandler = async (req, res) => {
 // LOGOUT
 export const logout = async (req, res) => {
   try {
-    const refreshToken = req.cookies?.refreshToken;
+    const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken || req.headers['x-refresh-token'];
     if (refreshToken) {
       await Session.findOneAndUpdate({ refreshToken }, { isRevoked: true });
     }

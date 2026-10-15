@@ -14,8 +14,18 @@ const callSchema = new mongoose.Schema({
   receiver: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true,
+    required: false,
+    default: null,
   },
+  participants: [{
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    joinedAt: { type: Date, default: Date.now },
+    leftAt: { type: Date, default: null },
+  }],
+  deletedFor: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+  }],
   type: {
     type: String,
     enum: ['voice', 'video'],

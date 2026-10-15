@@ -79,33 +79,59 @@ export const setupSocket = (io) => {
 
     // ====== TYPING ======
     socket.on('typing:start', ({ conversationId }) => {
-      broadcastToConversation(io, conversationId, userId, 'typing:start', {
+      if (!conversationId) return;
+      const cid = conversationId.toString();
+      socket.to(`conv:${cid}`).to(cid).emit('typing:start', {
         userId,
-        conversationId,
+        conversationId: cid,
+        displayName: socket.user?.displayName,
+      });
+      broadcastToConversation(io, cid, userId, 'typing:start', {
+        userId,
+        conversationId: cid,
         displayName: socket.user?.displayName,
       });
     });
 
     socket.on('typing:stop', ({ conversationId }) => {
-      broadcastToConversation(io, conversationId, userId, 'typing:stop', {
+      if (!conversationId) return;
+      const cid = conversationId.toString();
+      socket.to(`conv:${cid}`).to(cid).emit('typing:stop', {
         userId,
-        conversationId,
+        conversationId: cid,
+      });
+      broadcastToConversation(io, cid, userId, 'typing:stop', {
+        userId,
+        conversationId: cid,
       });
     });
 
     // ====== RECORDING ======
     socket.on('recording:start', ({ conversationId }) => {
-      broadcastToConversation(io, conversationId, userId, 'recording:start', {
+      if (!conversationId) return;
+      const cid = conversationId.toString();
+      socket.to(`conv:${cid}`).to(cid).emit('recording:start', {
         userId,
-        conversationId,
+        conversationId: cid,
+        displayName: socket.user?.displayName,
+      });
+      broadcastToConversation(io, cid, userId, 'recording:start', {
+        userId,
+        conversationId: cid,
         displayName: socket.user?.displayName,
       });
     });
 
     socket.on('recording:stop', ({ conversationId }) => {
-      broadcastToConversation(io, conversationId, userId, 'recording:stop', {
+      if (!conversationId) return;
+      const cid = conversationId.toString();
+      socket.to(`conv:${cid}`).to(cid).emit('recording:stop', {
         userId,
-        conversationId,
+        conversationId: cid,
+      });
+      broadcastToConversation(io, cid, userId, 'recording:stop', {
+        userId,
+        conversationId: cid,
       });
     });
 
@@ -633,14 +659,30 @@ export const setupSocket = (io) => {
   });
 };
 
+// In-memory cache for active conversation participants to prevent hammering DB on typing/recording
+const convParticipantsCache = new Map();
+
 // Helper: broadcast to all participants in a conversation except sender
 export async function broadcastToConversation(io, conversationId, senderId, event, data) {
   try {
-    const conversation = await Conversation.findById(conversationId);
-    if (!conversation) return;
+    if (!conversationId) return;
+    const cid = conversationId.toString();
+    const now = Date.now();
+    let cached = convParticipantsCache.get(cid);
 
-    conversation.participants.forEach(p => {
-      const pUserId = (p.user?._id || p.user || p)?.toString();
+    if (!cached || cached.expiresAt < now) {
+      const conversation = await Conversation.findById(cid).select('participants.user');
+      if (!conversation) return;
+      const pIds = (conversation.participants || []).map(p => (p.user?._id || p.user || p)?.toString()).filter(Boolean);
+      cached = { participants: pIds, expiresAt: now + 60000 };
+      convParticipantsCache.set(cid, cached);
+      if (convParticipantsCache.size > 2000) {
+        const firstKey = convParticipantsCache.keys().next().value;
+        convParticipantsCache.delete(firstKey);
+      }
+    }
+
+    cached.participants.forEach(pUserId => {
       if (pUserId !== senderId.toString()) {
         const sockets = connectionManager.getUserSockets(pUserId);
         sockets.forEach(sid => {

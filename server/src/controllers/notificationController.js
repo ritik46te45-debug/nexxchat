@@ -2,6 +2,7 @@ import User from '../models/User.js';
 import Notification from '../models/Notification.js';
 import Device from '../models/Device.js';
 import { getVapidPublicKey, sendPushNotification } from '../config/webPush.js';
+import { dispatchPush } from '../services/pushService.js';
 
 // GET VAPID PUBLIC KEY
 export const getPublicKey = (req, res) => {

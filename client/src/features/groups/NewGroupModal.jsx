@@ -22,7 +22,7 @@ export default function NewGroupModal({ onClose }) {
   const [disappearingDuration, setDisappearingDuration] = useState('off');
   const fileInputRef = useRef(null);
 
-  const { setActiveConversation } = useChatStore();
+  const { setActiveConversation, addConversation } = useChatStore();
   const { isMobile, setShowChatOnMobile } = useUIStore();
 
   useEffect(() => {
@@ -94,7 +94,10 @@ export default function NewGroupModal({ onClose }) {
       });
 
       toast.success(`Group "${groupName}" created!`, { id: toastId });
-      setActiveConversation(data.group);
+      if (data.group) {
+        addConversation(data.group);
+        setActiveConversation(data.group);
+      }
       if (isMobile) setShowChatOnMobile(true);
       onClose();
     } catch (err) {

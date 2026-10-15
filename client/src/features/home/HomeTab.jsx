@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { formatDistanceToNow, format } from 'date-fns';
 import useAuthStore from '../../stores/authStore';
-import useChatStore from '../../stores/chatStore';
+import useChatStore, { getConvTime } from '../../stores/chatStore';
 import useUIStore from '../../stores/uiStore';
 import toast from 'react-hot-toast';
 
@@ -33,20 +33,21 @@ export default function HomeTab({ onStartCall, onOpenNewChat, onOpenNewGroup }) 
     return 'Good evening';
   }, []);
 
-  // Filter online friends
+  // Filter online friends and sort by latest activity
   const onlineFriendsList = useMemo(() => {
     const friends = [];
     (conversations || []).forEach((c) => {
       if (c.type === 'private') {
         const other = c.participants?.find((p) => (p.user?._id || p.user)?.toString() !== myId);
         if (other && typeof other.user === 'object') {
-          const isOnline = other.user.isOnline || onlineUsers.has(other.user._id?.toString());
+          const isOnline = other.user.isOnline || (onlineUsers?.has && onlineUsers.has(other.user._id?.toString()));
           if (isOnline) {
             friends.push({ user: other.user, conversation: c });
           }
         }
       }
     });
+    friends.sort((a, b) => getConvTime(b.conversation) - getConvTime(a.conversation));
     return friends;
   }, [conversations, myId, onlineUsers]);
 
@@ -55,9 +56,10 @@ export default function HomeTab({ onStartCall, onOpenNewChat, onOpenNewGroup }) 
     return (conversations || []).filter((c) => c._participant?.isPinned);
   }, [conversations]);
 
-  // Recent conversations (top 5)
+  // Recent conversations (top 5 sorted by newest activity)
   const recentConversations = useMemo(() => {
-    return (conversations || []).slice(0, 5);
+    const sorted = [...(conversations || [])].sort((a, b) => getConvTime(b) - getConvTime(a));
+    return sorted.slice(0, 5);
   }, [conversations]);
 
   const handleSelectConversation = (conv) => {

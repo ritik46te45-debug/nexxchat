@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { BrowserRouter, HashRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { Toaster } from 'react-hot-toast';
+import toast, { Toaster } from 'react-hot-toast';
 import useAuthStore from './stores/authStore';
 import useChatStore from './stores/chatStore';
 import useUIStore from './stores/uiStore';
@@ -333,6 +333,28 @@ function App() {
       fetchConversations();
     };
 
+    const handleConversationNew = ({ conversation }) => {
+      if (conversation) {
+        useChatStore.getState().addConversation(conversation);
+      } else {
+        fetchConversations();
+      }
+    };
+
+    const handleGroupUpdated = ({ conversationId, updates, group }) => {
+      if (group) {
+        useChatStore.getState().updateConversationInStore(conversationId, group);
+      } else if (updates) {
+        useChatStore.getState().updateConversationInStore(conversationId, updates);
+      } else {
+        fetchConversations();
+      }
+    };
+
+    const handleGroupMemberChange = () => {
+      fetchConversations();
+    };
+
     const handleReconnect = () => {
       setReconnecting(false);
       fetchConversations();
@@ -361,6 +383,11 @@ function App() {
     socket.on('notification:new', handleNotificationNew);
     socket.on('friend:request', handleFriendRequest);
     socket.on('friend:accepted', handleFriendAccepted);
+    socket.on('conversation:new', handleConversationNew);
+    socket.on('group:updated', handleGroupUpdated);
+    socket.on('group:members_added', handleGroupMemberChange);
+    socket.on('group:member_removed', handleGroupMemberChange);
+    socket.on('group:left', handleGroupMemberChange);
     socket.on('reconnect', handleReconnect);
     socket.on('disconnect', handleDisconnect);
     socket.on('connect', handleConnect);
@@ -381,6 +408,11 @@ function App() {
       socket.off('notification:new', handleNotificationNew);
       socket.off('friend:request', handleFriendRequest);
       socket.off('friend:accepted', handleFriendAccepted);
+      socket.off('conversation:new', handleConversationNew);
+      socket.off('group:updated', handleGroupUpdated);
+      socket.off('group:members_added', handleGroupMemberChange);
+      socket.off('group:member_removed', handleGroupMemberChange);
+      socket.off('group:left', handleGroupMemberChange);
       socket.off('reconnect', handleReconnect);
       socket.off('disconnect', handleDisconnect);
       socket.off('connect', handleConnect);

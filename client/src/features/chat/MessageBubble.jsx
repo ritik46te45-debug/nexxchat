@@ -15,6 +15,7 @@ import CustomVideoPlayer from './CustomVideoPlayer';
 import PdfViewerModal from './PdfViewerModal';
 import PdfCoverCard from './PdfCoverCard';
 import { downloadFile } from '../../lib/fileDownload';
+import { resolveMediaUrl } from '../../lib/api';
 import toast from 'react-hot-toast';
 
 const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', '🎉', '👏', '💯', '🚀'];
@@ -251,7 +252,7 @@ export default function MessageBubble({
           <div className="flex flex-col items-center">
             <div className="w-48 h-48 sm:w-56 sm:h-56 rounded-full overflow-hidden border-4 border-primary-500 shadow-2xl bg-black relative flex items-center justify-center">
               <video
-                src={message.attachments[0].url}
+                src={resolveMediaUrl(message.attachments[0].url)}
                 playsInline
                 controls
                 className="w-full h-full object-cover rounded-full"
@@ -428,7 +429,7 @@ export default function MessageBubble({
           {!message.isViewOnce && (message.type === 'image' || message.type === 'gif' || message.type === 'sticker') && message.attachments?.[0]?.url && (
             <div className="my-1 rounded-xl overflow-hidden max-w-sm relative">
               <img
-                src={message.attachments[0].url}
+                src={resolveMediaUrl(message.attachments[0].url)}
                 alt=""
                 onClick={() => onOpenImageViewer && onOpenImageViewer(message.attachments, 0)}
                 className="w-full h-auto max-h-80 object-cover rounded-xl cursor-pointer hover:opacity-95 transition-opacity"
@@ -477,7 +478,7 @@ export default function MessageBubble({
           {/* VIDEOS */}
           {!message.isViewOnce && message.type === 'video' && message.attachments?.[0]?.url && (
             <div className="my-1 max-w-sm sm:max-w-md relative">
-              <CustomVideoPlayer src={message.attachments[0].url} isOwn={isOwn} />
+              <CustomVideoPlayer src={resolveMediaUrl(message.attachments[0].url)} isOwn={isOwn} />
               {/* In-Bubble Upload Progress Overlay for Videos */}
               {message.uploadProgress && message.status === 'uploading' && (
                 <div className="absolute inset-0 bg-black/65 backdrop-blur-xs rounded-2xl flex flex-col items-center justify-center p-3 text-center select-none z-20">
@@ -523,7 +524,7 @@ export default function MessageBubble({
           {(message.type === 'voice' || message.type === 'audio') && message.attachments?.[0]?.url && (
             <div className="my-1">
               <AudioWaveformPlayer
-                src={message.attachments[0].url}
+                src={resolveMediaUrl(message.attachments[0].url)}
                 duration={message.attachments[0].duration}
                 isOwn={isOwn}
               />
@@ -608,10 +609,11 @@ export default function MessageBubble({
             if (!att.url) return null;
 
             if (isPdf) {
+              const resolvedPdfUrl = resolveMediaUrl(att.url);
               return (
                 <div className="my-1.5">
                   <PdfCoverCard
-                    source={att.url}
+                    source={resolvedPdfUrl}
                     fileName={att.fileName}
                     fileSize={att.fileSize}
                     isOwn={isOwn}
@@ -623,7 +625,7 @@ export default function MessageBubble({
                   <PdfViewerModal
                     isOpen={showPdfViewer}
                     onClose={() => setShowPdfViewer(false)}
-                    pdfUrl={att.url}
+                    pdfUrl={resolvedPdfUrl}
                     fileName={att.fileName}
                     fileSize={att.fileSize}
                   />

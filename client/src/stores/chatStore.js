@@ -3,6 +3,23 @@ import api from '../lib/api';
 import { getSocket } from '../lib/socket';
 import useAuthStore from './authStore';
 
+export const getConvTime = (c) => {
+  if (!c) return 0;
+  if (c.lastMessage?.createdAt) {
+    const t = new Date(c.lastMessage.createdAt).getTime();
+    if (!isNaN(t) && t > 0) return t;
+  }
+  if (c.lastMessageAt) {
+    const t = new Date(c.lastMessageAt).getTime();
+    if (!isNaN(t) && t > 0) return t;
+  }
+  if (c.createdAt) {
+    const t = new Date(c.createdAt).getTime();
+    if (!isNaN(t) && t > 0) return t;
+  }
+  return 0;
+};
+
 export const sortConversations = (conversations) => {
   if (!Array.isArray(conversations)) return [];
   return [...conversations].sort((a, b) => {
@@ -12,16 +29,10 @@ export const sortConversations = (conversations) => {
     if (aPinned !== bPinned) return bPinned - aPinned;
 
     // 2. Strict latest activity timestamp (0ms instant ordering)
-    const getConvTime = (c) => {
-      if (!c) return 0;
-      const tMsg = c.lastMessage?.createdAt ? new Date(c.lastMessage.createdAt).getTime() : 0;
-      const tLast = c.lastMessageAt ? new Date(c.lastMessageAt).getTime() : 0;
-      const tUpd = c.updatedAt ? new Date(c.updatedAt).getTime() : 0;
-      const tCre = c.createdAt ? new Date(c.createdAt).getTime() : 0;
-      return Math.max(tMsg, tLast, tUpd, tCre);
-    };
-
-    return getConvTime(b) - getConvTime(a);
+    const aTime = getConvTime(a);
+    const bTime = getConvTime(b);
+    if (bTime !== aTime) return bTime - aTime;
+    return (b._id?.toString() || '').localeCompare(a._id?.toString() || '');
   });
 };
 
@@ -138,6 +149,24 @@ const useChatStore = create((set, get) => ({
       get().fetchMessages(conversation._id);
       get().markAsRead(conversation._id);
     }
+  },
+
+  addConversation: (conv) => {
+    if (!conv || !conv._id) return;
+    set((state) => {
+      const filtered = state.conversations.filter(c => c._id?.toString() !== conv._id?.toString());
+      return { conversations: sortConversations([conv, ...filtered]) };
+    });
+  },
+
+  updateConversationInStore: (conversationId, updates) => {
+    if (!conversationId) return;
+    set((state) => {
+      const updated = state.conversations.map(c =>
+        c._id?.toString() === conversationId?.toString() ? { ...c, ...updates } : c
+      );
+      return { conversations: sortConversations(updated) };
+    });
   },
 
   updateConversation: async (conversationId, updates) => {

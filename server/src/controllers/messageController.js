@@ -75,7 +75,12 @@ export const sendMessage = async (req, res) => {
         p => p.user.toString() !== req.userId.toString()
       );
       const otherUser = await User.findById(otherParticipant.user);
-      if (otherUser?.blockedUsers.includes(req.userId)) {
+      const isBlocked = otherUser?.blockedUsers?.some(
+        id => (id?._id || id)?.toString() === req.userId.toString()
+      ) || req.user?.blockedUsers?.some(
+        id => (id?._id || id)?.toString() === otherParticipant.user.toString()
+      );
+      if (isBlocked) {
         return res.status(403).json({ error: 'Cannot send message' });
       }
     }

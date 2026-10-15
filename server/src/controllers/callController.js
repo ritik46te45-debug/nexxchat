@@ -6,20 +6,23 @@ export const getCallHistory = async (req, res) => {
     const { page = 1, limit = 30 } = req.query;
 
     const calls = await Call.find({
-      $or: [{ caller: req.userId }, { receiver: req.userId }]
+      $or: [{ caller: req.userId }, { receiver: req.userId }, { 'participants.user': req.userId }],
+      deletedFor: { $ne: req.userId },
     })
       .populate('caller', 'username displayName avatar isOnline')
       .populate('receiver', 'username displayName avatar isOnline')
+      .populate('participants.user', 'username displayName avatar isOnline')
       .populate('conversation', 'type groupName')
       .sort({ createdAt: -1 })
       .limit(parseInt(limit))
       .skip((parseInt(page) - 1) * parseInt(limit));
 
-    // Filter out calls where the other user was deleted from database
+    // Filter out calls where the other user was deleted from database (for 1-on-1 calls)
     const validCalls = calls.filter((call) => {
       const isCaller = (call.caller?._id || call.caller)?.toString() === req.userId.toString();
       const other = isCaller ? call.receiver : call.caller;
-      return other && other._id && (other.displayName || other.username);
+      if (!other) return Boolean(call.participants?.length); // group call
+      return other._id && (other.displayName || other.username);
     });
 
     const total = validCalls.length;
@@ -34,10 +37,15 @@ export const getCallHistory = async (req, res) => {
 // Clear call history
 export const clearCallHistory = async (req, res) => {
   try {
-    // Delete calls where user is caller or receiver
-    await Call.deleteMany({
-      $or: [{ caller: req.userId }, { receiver: req.userId }]
-    });
+    // Soft-delete for current user so other participants still see their call history
+    await Call.updateMany(
+      {
+        $or: [{ caller: req.userId }, { receiver: req.userId }, { 'participants.user': req.userId }],
+      },
+      {
+        $addToSet: { deletedFor: req.userId },
+      }
+    );
 
     res.json({ message: 'Call history cleared' });
   } catch (error) {

@@ -38,6 +38,21 @@ const api = axios.create({
   withCredentials: true,
 });
 
+export const getServerOrigin = () => {
+  const base = getBaseURL();
+  return base.replace(/\/api\/?$/, '');
+};
+
+export const resolveMediaUrl = (url) => {
+  if (!url || typeof url !== 'string') return '';
+  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:') || url.startsWith('data:')) {
+    return url;
+  }
+  const origin = getServerOrigin();
+  const cleanPath = url.startsWith('/') ? url : `/${url}`;
+  return `${origin}${cleanPath}`;
+};
+
 // Request interceptor — attach access token & fix FormData Content-Type
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('accessToken');

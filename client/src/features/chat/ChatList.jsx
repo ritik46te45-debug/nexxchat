@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Search, Plus, Edit3, Users, Archive, Pin, Volume2, VolumeX, Bell, Settings } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
-import useChatStore from '../../stores/chatStore';
+import useChatStore, { getConvTime } from '../../stores/chatStore';
 import useAuthStore from '../../stores/authStore';
 import useUIStore from '../../stores/uiStore';
 import NewChatModal from './NewChatModal';
@@ -45,13 +45,10 @@ export default function ChatList({ onOpenProfile }) {
       const bPinned = b._participant?.isPinned || b.isPinned ? 1 : 0;
       if (aPinned !== bPinned) return bPinned - aPinned;
 
-      const getConvTime = (c) => Math.max(
-        new Date(c.lastMessage?.createdAt || 0).getTime(),
-        new Date(c.lastMessageAt || 0).getTime(),
-        new Date(c.updatedAt || 0).getTime(),
-        new Date(c.createdAt || 0).getTime()
-      );
-      return getConvTime(b) - getConvTime(a);
+      const aTime = getConvTime(a);
+      const bTime = getConvTime(b);
+      if (bTime !== aTime) return bTime - aTime;
+      return (b._id?.toString() || '').localeCompare(a._id?.toString() || '');
     });
 
     return convs;
@@ -334,5 +331,5 @@ function isUserOnline(conversation, userId, onlineUsers) {
   const other = getOtherUser(conversation, userId);
   if (!other) return false;
   const otherId = (other._id || other)?.toString();
-  return other.isOnline || (otherId && onlineUsers.has(otherId));
+  return Boolean(other.isOnline || (otherId && onlineUsers?.has && onlineUsers.has(otherId)));
 }
