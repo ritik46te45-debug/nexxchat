@@ -23,6 +23,12 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '21'
+          cache: 'gradle'
+
+      - name: Setup Android SDK Components
+        run: |
+          yes | sdkmanager --licenses || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" || true
 
       - name: Make Gradlew Executable
         run: chmod +x client/android/gradlew
@@ -44,15 +50,15 @@ jobs:
           cd client
           npm run build
 
-      - name: Sync Capacitor Android
+      - name: Copy Web Assets to Android
         run: |
           cd client
-          npx cap sync android
+          npx cap copy android
 
       - name: Build Release APK with Gradle
         run: |
           cd client/android
-          ./gradlew assembleRelease --no-daemon
+          ./gradlew assembleRelease --no-daemon --stacktrace
 
       - name: Build Debug APK with Gradle
         run: |
