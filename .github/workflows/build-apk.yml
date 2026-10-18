@@ -28,7 +28,7 @@ jobs:
       - name: Setup Android SDK Components
         run: |
           yes | sdkmanager --licenses || true
-          sdkmanager "platforms;android-35" "build-tools;35.0.0" || true
+          sdkmanager "platforms;android-35" "platforms;android-36" "build-tools;35.0.0" || true
 
       - name: Make Gradlew Executable
         run: chmod +x client/android/gradlew
