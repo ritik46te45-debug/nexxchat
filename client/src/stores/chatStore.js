@@ -36,8 +36,20 @@ export const sortConversations = (conversations) => {
   });
 };
 
+const getCachedConversations = () => {
+  if (typeof localStorage === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem('nexchat_cached_conversations');
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+};
+
+const initialCachedConvs = getCachedConversations();
+
 const useChatStore = create((set, get) => ({
-  conversations: [],
+  conversations: initialCachedConvs,
   activeConversation: null,
   messages: [],
   messagesCache: {}, // { [conversationId]: { messages: [], hasMore: boolean } }
@@ -48,7 +60,7 @@ const useChatStore = create((set, get) => ({
   recordingUsers: {}, // { conversationId: { userId: displayName } }
   onlineUsers: new Set(),
   drafts: JSON.parse(localStorage.getItem('nexchat_drafts') || '{}'),
-  unreadTotal: 0,
+  unreadTotal: initialCachedConvs.reduce((sum, c) => sum + (c.unreadCount || 0), 0),
   lastSyncTime: null,
 
   // ====== CONVERSATIONS ======
@@ -81,7 +93,11 @@ const useChatStore = create((set, get) => ({
         const count = typeof c.unreadCount === 'number' ? c.unreadCount : (myP?.unreadCount || 0);
         return sum + Math.max(0, count);
       }, 0);
-      set({ conversations: sortConversations(convs), isLoadingConversations: false, unreadTotal });
+      const sorted = sortConversations(convs);
+      set({ conversations: sorted, isLoadingConversations: false, unreadTotal });
+      try {
+        localStorage.setItem('nexchat_cached_conversations', JSON.stringify(sorted.slice(0, 50)));
+      } catch (e) {}
     } catch (error) {
       console.error('Fetch conversations error:', error);
       set({ isLoadingConversations: false });

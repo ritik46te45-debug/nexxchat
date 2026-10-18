@@ -116,29 +116,6 @@ export const getConversations = async (req, res) => {
       .limit(parseInt(limit))
       .skip((parseInt(page) - 1) * parseInt(limit));
 
-    // Calculate exact unread message counts from DB using lastReadAt threshold
-    const unreadMap = new Map();
-    await Promise.all(
-      conversations.map(async (conv) => {
-        const myP = conv.participants?.find(
-          (p) => (p.user?._id || p.user)?.toString() === req.userId.toString()
-        );
-        const lastReadAt = myP?.lastReadAt;
-        const filter = {
-          conversation: conv._id,
-          sender: { $ne: req.userId },
-          isDeletedForEveryone: { $ne: true },
-          deletedFor: { $ne: req.userId },
-          'readBy.user': { $ne: req.userId },
-        };
-        if (lastReadAt) {
-          filter.createdAt = { $gt: lastReadAt };
-        }
-        const count = await Message.countDocuments(filter);
-        unreadMap.set(conv._id.toString(), count);
-      })
-    );
-
     // Track orphaned conversations where user was deleted from DB to clean up
     const orphanedConvIds = [];
 
@@ -148,7 +125,7 @@ export const getConversations = async (req, res) => {
       const myParticipant = convObj.participants?.find(
         (p) => (p.user?._id || p.user)?.toString() === req.userId.toString()
       );
-      const actualUnread = unreadMap.get(conv._id.toString()) || 0;
+      const actualUnread = typeof myParticipant?.unreadCount === 'number' ? myParticipant.unreadCount : 0;
       if (convObj.lastMessage && convObj.lastMessage.deletedFor?.some(id => id.toString() === req.userId.toString())) {
         convObj.lastMessage = null;
       }

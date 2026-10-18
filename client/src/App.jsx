@@ -239,6 +239,7 @@ function App() {
     // Only fetch here if socket is already connected and won't fire 'connect'
     const socket = getSocket();
     if (socket?.connected) {
+      setReconnecting(false);
       debouncedFetch();
     }
     if (!socket) return;
@@ -499,14 +500,14 @@ function App() {
 
     const handleDisconnect = (reason) => {
       console.log('[REALTIME] Socket disconnected event:', reason);
-      // Give socket a 4-second grace window to reconnect silently before alarming user with banner
+      // Give socket a 10-second grace window to reconnect silently before alarming user with banner
       if (reconnectTimer) clearTimeout(reconnectTimer);
       reconnectTimer = setTimeout(() => {
         const s = getSocket();
         if (s && !s.connected) {
           setReconnecting(true);
         }
-      }, 4000);
+      }, 10000);
     };
 
     const handleConnect = () => {

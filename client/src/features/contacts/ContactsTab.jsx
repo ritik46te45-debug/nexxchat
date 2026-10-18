@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Users, UserPlus, Clock, Ban, MessageCircle, Phone, Video, Check, X, Search, Loader2 } from 'lucide-react';
 import api from '../../lib/api';
+import { getSocket } from '../../lib/socket';
 import useAuthStore from '../../stores/authStore';
 import useChatStore from '../../stores/chatStore';
 import useUIStore from '../../stores/uiStore';
@@ -21,19 +22,25 @@ export default function ContactsTab({ onStartCall }) {
   const { getOrCreateConversation, setActiveConversation, onlineUsers } = useChatStore();
   const { isMobile, setShowChatOnMobile, setSidebarView } = useUIStore();
 
-  useEffect(() => {
-    loadData();
-  }, [activeTab]);
-
   const loadData = async () => {
     setIsLoading(true);
     try {
       if (activeTab === 'friends') {
-        const { data } = await api.get('/friends');
-        const validFriends = (data.friends || []).filter(
+        const [friendsRes, pendingRes, sentRes] = await Promise.all([
+          api.get('/friends'),
+          api.get('/friends/requests/pending').catch(() => ({ data: { requests: [] } })),
+          api.get('/friends/requests/sent').catch(() => ({ data: { requests: [] } })),
+        ]);
+        const validFriends = (friendsRes.data.friends || []).filter(
           (f) => f && f._id && (f.displayName || f.username)
         );
         setFriends(validFriends);
+        if (pendingRes?.data?.requests) {
+          setPendingRequests(pendingRes.data.requests.filter(r => r && r.from && r.from._id));
+        }
+        if (sentRes?.data?.requests) {
+          setSentRequests(sentRes.data.requests.filter(r => r && r.to && r.to._id));
+        }
       } else if (activeTab === 'requests') {
         const [pendingRes, sentRes] = await Promise.all([
           api.get('/friends/requests/pending'),
@@ -60,6 +67,30 @@ export default function ContactsTab({ onStartCall }) {
       setIsLoading(false);
     }
   };
+
+  const loadContacts = loadData;
+
+  useEffect(() => {
+    loadData();
+  }, [activeTab]);
+
+  // Real-time socket updates for incoming and accepted friend requests
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+
+    const handleReq = () => {
+      loadData();
+    };
+
+    socket.on('friend:request', handleReq);
+    socket.on('friend:accepted', handleReq);
+
+    return () => {
+      socket.off('friend:request', handleReq);
+      socket.off('friend:accepted', handleReq);
+    };
+  }, []);
 
   // Search users
   useEffect(() => {

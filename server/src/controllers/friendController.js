@@ -30,26 +30,34 @@ export const sendFriendRequest = async (req, res) => {
       return res.status(400).json({ error: 'Already friends' });
     }
 
-    // Check for existing request
-    const existingRequest = await FriendRequest.findOne({
-      $or: [
-        { from: req.userId, to: userId, status: 'pending' },
-        { from: userId, to: req.userId, status: 'pending' },
-      ],
-    });
+    // Check for existing incoming request
+    const existingIncoming = await FriendRequest.findOne({ from: userId, to: req.userId, status: 'pending' });
+    if (existingIncoming) {
+      return res.status(400).json({ error: 'This user has already sent you a friend request' });
+    }
 
-    if (existingRequest) {
-      if (existingRequest.from.toString() === userId) {
-        return res.status(400).json({ error: 'This user has already sent you a friend request' });
-      }
+    // Check for existing outgoing request
+    const existingOutgoing = await FriendRequest.findOne({ from: req.userId, to: userId, status: 'pending' });
+    if (existingOutgoing) {
       return res.status(400).json({ error: 'Friend request already sent' });
     }
 
-    const friendRequest = await FriendRequest.create({
-      from: req.userId,
-      to: userId,
-      message: message || '',
-    });
+    // Upsert or reactivate: if a previous rejected/cancelled request exists between them, re-activate it
+    let friendRequest = await FriendRequest.findOne({ from: req.userId, to: userId });
+    if (friendRequest) {
+      friendRequest.status = 'pending';
+      friendRequest.message = message || '';
+      await friendRequest.save();
+    } else {
+      friendRequest = await FriendRequest.create({
+        from: req.userId,
+        to: userId,
+        message: message || '',
+      });
+    }
+
+    await friendRequest.populate('from', 'username displayName avatar isOnline');
+    await friendRequest.populate('to', 'username displayName avatar isOnline');
 
     // Create notification
     await Notification.create({
@@ -77,9 +85,6 @@ export const sendFriendRequest = async (req, res) => {
 
     res.status(201).json({ message: 'Friend request sent', request: friendRequest });
   } catch (error) {
-    if (error.code === 11000) {
-      return res.status(400).json({ error: 'Friend request already exists' });
-    }
     console.error('Send friend request error:', error);
     res.status(500).json({ error: 'Failed to send friend request' });
   }
