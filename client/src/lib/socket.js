@@ -135,6 +135,22 @@ export const disconnectSocket = () => {
   }
 };
 
+export const ensureSocketConnected = () => {
+  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('accessToken') : null;
+  if (!token) return null;
+  const deviceId = getOrCreateDeviceId();
+
+  if (!socket) {
+    return connectSocket(token);
+  }
+
+  socket.auth = { token, deviceId };
+  if (!socket.connected) {
+    socket.connect();
+  }
+  return socket;
+};
+
 export const getSocket = () => {
   if (!socket) {
     const token = typeof localStorage !== 'undefined' ? localStorage.getItem('accessToken') : null;
@@ -143,4 +159,4 @@ export const getSocket = () => {
   return socket;
 };
 
-export default { connectSocket, disconnectSocket, getSocket, updateSocketToken, getSocketURL };
+export default { connectSocket, disconnectSocket, getSocket, updateSocketToken, ensureSocketConnected, getSocketURL };

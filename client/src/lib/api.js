@@ -133,8 +133,13 @@ api.interceptors.response.use(
         return api(originalRequest);
       } catch (refreshError) {
         processQueue(refreshError, null);
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('refreshToken');
+        // ONLY clear credentials if server explicitly rejected with 401
+        // Never clear credentials on 502/503/504, cold-start, or network offline
+        if (refreshError.response?.status === 401) {
+          localStorage.removeItem('accessToken');
+          localStorage.removeItem('refreshToken');
+          localStorage.removeItem('nexchat_user');
+        }
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;

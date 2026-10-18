@@ -6,7 +6,7 @@ import { App as CapApp } from '@capacitor/app';
 import useAuthStore from './stores/authStore';
 import useChatStore from './stores/chatStore';
 import useUIStore from './stores/uiStore';
-import { getSocket } from './lib/socket';
+import { getSocket, ensureSocketConnected } from './lib/socket';
 import { playIncomingMessageSound, showSystemNotification, requestNotificationPermission } from './lib/notifications';
 import { initPushNotifications } from './lib/capacitorPush';
 import api from './lib/api';
@@ -123,6 +123,43 @@ function App() {
 
     return () => {
       if (sub?.remove) sub.remove();
+    };
+  }, []);
+
+  // Instant background-to-foreground socket resumption (phone unlock, tab switch, app resume)
+  useEffect(() => {
+    const handleForeground = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        const s = ensureSocketConnected();
+        if (s && !s.connected) {
+          console.log('[REALTIME] Tab/App foregrounded — reconnecting socket immediately');
+          s.connect();
+        }
+      }
+    };
+
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleForeground);
+    }
+    if (typeof window !== 'undefined') {
+      window.addEventListener('focus', handleForeground);
+    }
+
+    let capSub = null;
+    try {
+      CapApp.addListener('appStateChange', ({ isActive }) => {
+        if (isActive) handleForeground();
+      }).then((s) => { capSub = s; }).catch(() => {});
+    } catch (e) {}
+
+    return () => {
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleForeground);
+      }
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('focus', handleForeground);
+      }
+      if (capSub?.remove) capSub.remove();
     };
   }, []);
 
@@ -402,14 +439,36 @@ function App() {
       fetchConversations();
     };
 
+    let reconnectTimer = null;
+
     const handleReconnect = () => {
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
       setReconnecting(false);
       fetchConversations();
       syncMissedMessages();
       socket.emit('users:get_online');
     };
-    const handleDisconnect = () => setReconnecting(true);
+
+    const handleDisconnect = (reason) => {
+      console.log('[REALTIME] Socket disconnected event:', reason);
+      // Give socket a 4-second grace window to reconnect silently before alarming user with banner
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      reconnectTimer = setTimeout(() => {
+        const s = getSocket();
+        if (s && !s.connected) {
+          setReconnecting(true);
+        }
+      }, 4000);
+    };
+
     const handleConnect = () => {
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
       setReconnecting(false);
       fetchConversations();
       syncMissedMessages();
@@ -467,6 +526,7 @@ function App() {
       socket.off('reconnect', handleReconnect);
       socket.off('disconnect', handleDisconnect);
       socket.off('connect', handleConnect);
+      if (reconnectTimer) clearTimeout(reconnectTimer);
     };
   }, [isAuthenticated]);
 

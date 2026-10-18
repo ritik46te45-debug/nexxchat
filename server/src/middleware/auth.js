@@ -3,8 +3,11 @@ import User from '../models/User.js';
 
 // Generate access token (long-lived 30 days for continuous login across tabs and restarts)
 export const generateAccessToken = (userId) => {
+  const expires = process.env.JWT_ACCESS_EXPIRES && !['15m', '30m', '1h', '2h', '1d', '7d'].includes(process.env.JWT_ACCESS_EXPIRES)
+    ? process.env.JWT_ACCESS_EXPIRES
+    : '30d';
   return jwt.sign({ userId }, process.env.JWT_ACCESS_SECRET, {
-    expiresIn: process.env.JWT_ACCESS_EXPIRES || '30d',
+    expiresIn: expires,
   });
 };
 

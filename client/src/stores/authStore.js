@@ -2,66 +2,130 @@ import { create } from 'zustand';
 import api from '../lib/api';
 import { connectSocket, disconnectSocket } from '../lib/socket';
 
+// Helper to retrieve initial cached state synchronously on page refresh
+const getInitialAuthState = () => {
+  if (typeof localStorage === 'undefined') {
+    return { user: null, isAuthenticated: false, isLoading: false };
+  }
+  const token = localStorage.getItem('accessToken');
+  const refreshToken = localStorage.getItem('refreshToken');
+  let cachedUser = null;
+  try {
+    const raw = localStorage.getItem('nexchat_user');
+    if (raw) cachedUser = JSON.parse(raw);
+  } catch (e) {
+    cachedUser = null;
+  }
+
+  const hasTokens = Boolean(token || refreshToken);
+  return {
+    // If we have stored tokens AND a cached user profile, user is authenticated instantly on refresh!
+    user: cachedUser,
+    isAuthenticated: Boolean(hasTokens && cachedUser),
+    isLoading: Boolean(hasTokens && !cachedUser),
+  };
+};
+
+const persistAuth = (data) => {
+  if (!data) return;
+  if (data.accessToken) localStorage.setItem('accessToken', data.accessToken);
+  if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
+  if (data.user) {
+    try {
+      localStorage.setItem('nexchat_user', JSON.stringify(data.user));
+    } catch (e) {}
+  }
+};
+
+const clearAuth = () => {
+  localStorage.removeItem('accessToken');
+  localStorage.removeItem('refreshToken');
+  localStorage.removeItem('nexchat_user');
+  sessionStorage.removeItem('nexchat_unlocked_session');
+};
+
+const initial = getInitialAuthState();
+
 const useAuthStore = create((set, get) => ({
-  user: null,
-  isAuthenticated: false,
-  isLoading: true,
+  user: initial.user,
+  isAuthenticated: initial.isAuthenticated,
+  isLoading: initial.isLoading,
   error: null,
 
   // Initialize — check if user is already logged in with persistent session
   initialize: async () => {
+    let token = localStorage.getItem('accessToken');
+    const refreshToken = localStorage.getItem('refreshToken');
+
+    if (!token && !refreshToken) {
+      clearAuth();
+      set({ isLoading: false, isAuthenticated: false, user: null });
+      return;
+    }
+
     try {
-      let token = localStorage.getItem('accessToken');
-      const refreshToken = localStorage.getItem('refreshToken');
-
-      if (!token && !refreshToken) {
-        set({ isLoading: false, isAuthenticated: false, user: null });
-        return;
-      }
-
       // If accessToken is missing but refreshToken exists, refresh immediately
       if (!token && refreshToken) {
         try {
           const { data } = await api.post('/auth/refresh', { refreshToken });
           token = data.accessToken;
-          localStorage.setItem('accessToken', token);
-          if (data.refreshToken) {
-            localStorage.setItem('refreshToken', data.refreshToken);
+          persistAuth(data);
+        } catch (refreshErr) {
+          // Only clear session if explicitly rejected with 401
+          if (refreshErr.response?.status === 401) {
+            clearAuth();
+            set({ isLoading: false, isAuthenticated: false, user: null });
+            return;
+          }
+          // On network/cold-start issues, retain cached session
+          const cached = get().user;
+          set({ isLoading: false, isAuthenticated: Boolean(cached) });
+          return;
+        }
+      }
+
+      // Verify and sync profile with server
+      const { data } = await api.get('/auth/me');
+      if (data?.user) {
+        persistAuth(data);
+        set({ user: data.user, isAuthenticated: true, isLoading: false });
+        connectSocket(token);
+      }
+    } catch (error) {
+      const status = error.response?.status;
+      console.warn('[AUTH] Session verification note:', status || error.message);
+
+      // ONLY on explicit 401 Unauthorized do we attempt silent recovery or logout
+      if (status === 401) {
+        try {
+          const storedRefreshToken = localStorage.getItem('refreshToken');
+          if (storedRefreshToken) {
+            const { data } = await api.post('/auth/refresh', { refreshToken: storedRefreshToken });
+            persistAuth(data);
+            const meRes = await api.get('/auth/me');
+            if (meRes.data?.user) {
+              persistAuth(meRes.data);
+              set({ user: meRes.data.user, isAuthenticated: true, isLoading: false });
+              connectSocket(data.accessToken);
+              return;
+            }
           }
         } catch (refreshErr) {
-          localStorage.removeItem('accessToken');
-          localStorage.removeItem('refreshToken');
-          set({ isLoading: false, isAuthenticated: false, user: null });
-          return;
-        }
-      }
-
-      const { data } = await api.get('/auth/me');
-      set({ user: data.user, isAuthenticated: true, isLoading: false });
-      connectSocket(token);
-    } catch (error) {
-      // Try one final refresh attempt if me failed
-      try {
-        const refreshToken = localStorage.getItem('refreshToken');
-        if (refreshToken) {
-          const { data } = await api.post('/auth/refresh', { refreshToken });
-          const newToken = data.accessToken;
-          localStorage.setItem('accessToken', newToken);
-          if (data.refreshToken) {
-            localStorage.setItem('refreshToken', data.refreshToken);
+          if (refreshErr.response?.status === 401) {
+            // Both access and refresh tokens rejected by server
+            clearAuth();
+            set({ isLoading: false, isAuthenticated: false, user: null });
+            return;
           }
-          const meRes = await api.get('/auth/me');
-          set({ user: meRes.data.user, isAuthenticated: true, isLoading: false });
-          connectSocket(newToken);
-          return;
         }
-      } catch (e) {
-        // Refresh failed, clean up
       }
 
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('refreshToken');
-      set({ isLoading: false, isAuthenticated: false, user: null });
+      // For network errors, timeouts, 429, 500, 502, 503, 504:
+      // NEVER delete tokens or log out the user!
+      // Keep their session authenticated from cache and connect socket.
+      const existingUser = get().user;
+      set({ isLoading: false, isAuthenticated: Boolean(existingUser || token) });
+      if (token) connectSocket(token);
     }
   },
 
@@ -70,10 +134,7 @@ const useAuthStore = create((set, get) => ({
     set({ error: null });
     try {
       const { data } = await api.post('/auth/register', formData);
-      localStorage.setItem('accessToken', data.accessToken);
-      if (data.refreshToken) {
-        localStorage.setItem('refreshToken', data.refreshToken);
-      }
+      persistAuth(data);
       set({ user: data.user, isAuthenticated: true, isLoading: false });
       connectSocket(data.accessToken);
       return data;
@@ -92,10 +153,7 @@ const useAuthStore = create((set, get) => ({
       if (data.requires2FA) {
         return { requires2FA: true, tempToken: data.tempToken };
       }
-      localStorage.setItem('accessToken', data.accessToken);
-      if (data.refreshToken) {
-        localStorage.setItem('refreshToken', data.refreshToken);
-      }
+      persistAuth(data);
       set({ user: data.user, isAuthenticated: true, isLoading: false });
       connectSocket(data.accessToken);
       return data;
@@ -120,10 +178,7 @@ const useAuthStore = create((set, get) => ({
     set({ error: null });
     try {
       const { data } = await api.post('/auth/2fa/verify-login', { tempToken, token, backupCode });
-      localStorage.setItem('accessToken', data.accessToken);
-      if (data.refreshToken) {
-        localStorage.setItem('refreshToken', data.refreshToken);
-      }
+      persistAuth(data);
       set({ user: data.user, isAuthenticated: true, isLoading: false });
       connectSocket(data.accessToken);
       return data;
@@ -140,10 +195,7 @@ const useAuthStore = create((set, get) => ({
     try {
       const payload = typeof authPayload === 'string' ? { credential: authPayload } : authPayload;
       const { data } = await api.post('/auth/google', payload);
-      localStorage.setItem('accessToken', data.accessToken);
-      if (data.refreshToken) {
-        localStorage.setItem('refreshToken', data.refreshToken);
-      }
+      persistAuth(data);
       set({ user: data.user, isAuthenticated: true, isLoading: false });
       connectSocket(data.accessToken);
       return data;
@@ -162,18 +214,22 @@ const useAuthStore = create((set, get) => ({
     } catch (e) {
       // ignore
     }
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
-    sessionStorage.removeItem('nexchat_unlocked_session');
+    clearAuth();
     disconnectSocket();
     set({ user: null, isAuthenticated: false, error: null, isLoading: false });
   },
 
-  // Update user in store
+  // Update user in store & cache
   updateUser: (updates) => {
-    set((state) => ({
-      user: state.user ? { ...state.user, ...updates } : null,
-    }));
+    set((state) => {
+      const updated = state.user ? { ...state.user, ...updates } : null;
+      if (updated) {
+        try {
+          localStorage.setItem('nexchat_user', JSON.stringify(updated));
+        } catch (e) {}
+      }
+      return { user: updated };
+    });
   },
 
   clearError: () => set({ error: null }),

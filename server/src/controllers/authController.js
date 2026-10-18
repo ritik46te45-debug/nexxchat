@@ -268,9 +268,32 @@ export const refreshTokenHandler = async (req, res) => {
       return res.status(401).json({ error: 'Refresh token required' });
     }
 
-    // Find session
-    const session = await Session.findOne({ refreshToken, isRevoked: false });
+    // Find session by current refresh token
+    let session = await Session.findOne({ refreshToken, isRevoked: false });
+
+    // Grace window check: If recently rotated in the last 60 seconds (concurrency/race condition),
+    // allow the previous refresh token and return the active session credentials!
     if (!session) {
+      const graceSession = await Session.findOne({
+        previousRefreshToken: refreshToken,
+        isRevoked: false,
+      });
+
+      if (
+        graceSession &&
+        graceSession.rotatedAt &&
+        (Date.now() - new Date(graceSession.rotatedAt).getTime() < 60000)
+      ) {
+        const user = await User.findById(graceSession.user);
+        if (user && !user.isBanned) {
+          const freshAccessToken = generateAccessToken(user._id);
+          return res.json({
+            accessToken: freshAccessToken,
+            refreshToken: graceSession.refreshToken,
+          });
+        }
+      }
+
       return res.status(401).json({ error: 'Invalid refresh token' });
     }
 
@@ -290,11 +313,13 @@ export const refreshTokenHandler = async (req, res) => {
       return res.status(401).json({ error: 'User not found or banned' });
     }
 
-    // Rotate refresh token
+    // Rotate refresh token with grace window tracking
     const newAccessToken = generateAccessToken(user._id);
     const newRefreshToken = generateRefreshToken(user._id);
 
-    // Update session
+    // Update session with grace tracking
+    session.previousRefreshToken = refreshToken;
+    session.rotatedAt = new Date();
     session.refreshToken = newRefreshToken;
     session.lastActive = new Date();
     await session.save();

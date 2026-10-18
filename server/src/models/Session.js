@@ -17,6 +17,8 @@ const sessionSchema = new mongoose.Schema({
   ip: { type: String, default: '' },
   lastActive: { type: Date, default: Date.now },
   isRevoked: { type: Boolean, default: false },
+  previousRefreshToken: { type: String, default: null },
+  rotatedAt: { type: Date, default: null },
   expiresAt: {
     type: Date,
     required: true,
