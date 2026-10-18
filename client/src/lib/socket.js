@@ -1,4 +1,5 @@
 import { io } from 'socket.io-client';
+import { Capacitor } from '@capacitor/core';
 
 let socket = null;
 
@@ -9,9 +10,10 @@ export const getSocketURL = () => {
   }
   if (typeof window !== 'undefined') {
     const isCapacitorNative = Boolean(
+      Capacitor?.isNativePlatform?.() ||
       window.Capacitor?.isNativePlatform?.() ||
       window.location.protocol === 'capacitor:' ||
-      (window.location.hostname === 'localhost' && window.Capacitor)
+      (window.location.hostname === 'localhost' && Boolean(window.Capacitor))
     );
     if (isCapacitorNative) {
       return 'https://nexxchat-5d29.onrender.com';

@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { BrowserRouter, HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import toast, { Toaster } from 'react-hot-toast';
+import { Capacitor } from '@capacitor/core';
+import { App as CapApp } from '@capacitor/app';
 import useAuthStore from './stores/authStore';
 import useChatStore from './stores/chatStore';
 import useUIStore from './stores/uiStore';
@@ -15,8 +17,11 @@ import MainLayout from './components/layout/MainLayout';
 
 const isDesktopOrNative = typeof window !== 'undefined' && (
   Boolean(window.electronAPI?.isElectron) ||
+  Boolean(Capacitor?.isNativePlatform?.()) ||
   Boolean(window.Capacitor?.isNativePlatform?.()) ||
-  window.location.protocol === 'file:'
+  window.location.protocol === 'file:' ||
+  window.location.protocol === 'capacitor:' ||
+  (window.location.hostname === 'localhost' && Boolean(window.Capacitor))
 );
 
 const AppRouter = isDesktopOrNative ? HashRouter : BrowserRouter;
@@ -81,6 +86,45 @@ function App() {
       });
     }
   }, [initialize]);
+
+  // Handle native Android deep-links (e.g. app.nexchat.messenger://auth?token=...&refreshToken=...)
+  useEffect(() => {
+    let sub = null;
+    const processDeepLink = async (rawUrl) => {
+      if (!rawUrl) return;
+      console.log('[DEEP LINK] Received URL:', rawUrl);
+      try {
+        const normalized = rawUrl.replace(/^(app\.nexchat\.messenger|nexchat):\/\//i, 'https://localhost/');
+        const parsed = new URL(normalized);
+        const token = parsed.searchParams.get('token');
+        const refreshToken = parsed.searchParams.get('refreshToken');
+        if (token) {
+          localStorage.setItem('accessToken', token);
+          if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
+          toast.success('Successfully authenticated! Welcome back 🎉');
+          await useAuthStore.getState().initialize();
+        }
+      } catch (err) {
+        console.error('[DEEP LINK] Parse error:', err);
+      }
+    };
+
+    try {
+      CapApp.getLaunchUrl?.().then((launch) => {
+        if (launch?.url) processDeepLink(launch.url);
+      }).catch(() => {});
+
+      CapApp.addListener('appUrlOpen', (event) => {
+        if (event?.url) processDeepLink(event.url);
+      }).then((s) => { sub = s; }).catch(() => {});
+    } catch (e) {
+      console.warn('Capacitor App listener note:', e);
+    }
+
+    return () => {
+      if (sub?.remove) sub.remove();
+    };
+  }, []);
 
   // Request notification permissions, register Push (Capacitor FCM / Web VAPID), and fetch notification count
   useEffect(() => {

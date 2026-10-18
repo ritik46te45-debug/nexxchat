@@ -189,6 +189,10 @@ export default function RegisterPage() {
               try {
                 toast.loading('Connecting with Google...', { id: 'google-auth' });
                 const authResult = await triggerGoogleAuth();
+                if (authResult?.isExternalAuth) {
+                  toast.success('Complete sign-in in browser. You will return here automatically!', { id: 'google-auth', duration: 7000 });
+                  return;
+                }
                 await googleLogin(authResult);
                 toast.success('Signed in with Google!', { id: 'google-auth' });
               } catch (err) {

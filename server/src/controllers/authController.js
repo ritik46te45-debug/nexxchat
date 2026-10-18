@@ -112,7 +112,10 @@ export const login = async (req, res) => {
 
     // Check if user has a password (could be Google-only account)
     if (!user.password) {
-      return res.status(401).json({ error: 'Please use Google login for this account' });
+      return res.status(401).json({
+        error: 'This account was created with Google. Tap "Continue with Google" or use "Forgot Password" to set a password for direct login.',
+        isGoogleOnly: true,
+      });
     }
 
     const isMatch = await user.comparePassword(password);
@@ -400,7 +403,8 @@ export const forgotPassword = async (req, res) => {
     if (!clientOrigin && req.get('referer')) {
       try { clientOrigin = new URL(req.get('referer')).origin; } catch {}
     }
-    if (!clientOrigin) {
+    // Mobile APK (Capacitor) runs on localhost/capacitor origin; ensure email links point to public web app
+    if (!clientOrigin || clientOrigin.includes('localhost') || clientOrigin.startsWith('capacitor:')) {
       clientOrigin = process.env.CLIENT_URL || 'https://nexxchat-zeta.vercel.app';
     }
     clientOrigin = clientOrigin.replace(/\/+$/, '');

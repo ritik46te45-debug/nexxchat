@@ -16,7 +16,25 @@ export default function LoginPage() {
   const [requires2FA, setRequires2FA] = useState(false);
   const [tempToken, setTempToken] = useState(null);
   const [totpCode, setTotpCode] = useState('');
+  const [androidAuthSuccess, setAndroidAuthSuccess] = useState(null);
+
+  const searchParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
+  const isAndroidAuthMode = searchParams.get('android') === 'true' || searchParams.get('android_auth') === '1';
+
   const { login, googleLogin, verify2FALogin, error, clearError } = useAuthStore();
+
+  // If opened in browser with ?android=true and already authenticated, immediately deep link back
+  useEffect(() => {
+    if (isAndroidAuthMode && typeof window !== 'undefined') {
+      const storedToken = localStorage.getItem('accessToken');
+      const storedRefresh = localStorage.getItem('refreshToken');
+      if (storedToken) {
+        setAndroidAuthSuccess({ token: storedToken, refreshToken: storedRefresh });
+        const deepLink = `app.nexchat.messenger://auth?token=${encodeURIComponent(storedToken)}&refreshToken=${encodeURIComponent(storedRefresh || '')}`;
+        window.location.href = deepLink;
+      }
+    }
+  }, [isAndroidAuthMode]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -32,6 +50,11 @@ export default function LoginPage() {
         return;
       }
       toast.success('Welcome back!');
+      if (isAndroidAuthMode && res?.accessToken) {
+        setAndroidAuthSuccess({ token: res.accessToken, refreshToken: res.refreshToken });
+        const deepLink = `app.nexchat.messenger://auth?token=${encodeURIComponent(res.accessToken)}&refreshToken=${encodeURIComponent(res.refreshToken || '')}`;
+        window.location.href = deepLink;
+      }
     } catch (err) {
       toast.error(err.message);
     } finally {
@@ -45,8 +68,13 @@ export default function LoginPage() {
     setIsSubmitting(true);
     clearError();
     try {
-      await verify2FALogin(tempToken, totpCode.trim());
+      const res = await verify2FALogin(tempToken, totpCode.trim());
       toast.success('2FA verification successful!');
+      if (isAndroidAuthMode && res?.accessToken) {
+        setAndroidAuthSuccess({ token: res.accessToken, refreshToken: res.refreshToken });
+        const deepLink = `app.nexchat.messenger://auth?token=${encodeURIComponent(res.accessToken)}&refreshToken=${encodeURIComponent(res.refreshToken || '')}`;
+        window.location.href = deepLink;
+      }
     } catch (err) {
       toast.error(err.message);
     } finally {
@@ -60,8 +88,22 @@ export default function LoginPage() {
     try {
       toast.loading('Connecting with Google...', { id: 'google-auth' });
       const authResult = await triggerGoogleAuth();
-      await googleLogin(authResult);
+      if (authResult?.isExternalAuth) {
+        toast.dismiss('google-auth');
+        toast('Opening secure Google sign-in in browser... Return to NexChat after selecting your account!', {
+          icon: '🌐',
+          duration: 6000,
+        });
+        return;
+      }
+      const data = await googleLogin(authResult);
       toast.success('Signed in with Google!', { id: 'google-auth' });
+
+      if (isAndroidAuthMode && data?.accessToken) {
+        setAndroidAuthSuccess({ token: data.accessToken, refreshToken: data.refreshToken });
+        const deepLink = `app.nexchat.messenger://auth?token=${encodeURIComponent(data.accessToken)}&refreshToken=${encodeURIComponent(data.refreshToken || '')}`;
+        window.location.href = deepLink;
+      }
     } catch (err) {
       toast.error(err.message || 'Google sign-in failed', { id: 'google-auth' });
     } finally {
@@ -89,7 +131,32 @@ export default function LoginPage() {
 
         {/* Form Card */}
         <div className="glass-card p-6 sm:p-8">
-          {requires2FA ? (
+          {androidAuthSuccess ? (
+            <div className="text-center space-y-4 animate-scale-in">
+              <div className="w-16 h-16 rounded-2xl bg-accent-green/20 text-accent-green flex items-center justify-center mx-auto border border-accent-green/30">
+                <Sparkles className="w-8 h-8" />
+              </div>
+              <h2 className="text-xl font-bold text-white">Login Successful!</h2>
+              <p className="text-xs text-surface-300 leading-relaxed">
+                Returning you to the NexChat Android app... If the app did not open automatically, tap below:
+              </p>
+              <div className="pt-2 space-y-2.5">
+                <a
+                  href={`app.nexchat.messenger://auth?token=${encodeURIComponent(androidAuthSuccess.token)}&refreshToken=${encodeURIComponent(androidAuthSuccess.refreshToken || '')}`}
+                  className="w-full py-3.5 rounded-xl font-semibold text-sm text-white gradient-primary flex items-center justify-center gap-2 shadow-lg shadow-primary-500/25 active:scale-98"
+                >
+                  Open NexChat App
+                  <ArrowRight className="w-4 h-4" />
+                </a>
+                <a
+                  href={`nexchat://auth?token=${encodeURIComponent(androidAuthSuccess.token)}&refreshToken=${encodeURIComponent(androidAuthSuccess.refreshToken || '')}`}
+                  className="block text-xs text-primary-400 hover:underline"
+                >
+                  Alternative Link (nexchat://)
+                </a>
+              </div>
+            </div>
+          ) : requires2FA ? (
             <form onSubmit={handleVerify2FA} className="space-y-4 animate-scale-in">
               <div className="text-center mb-2">
                 <div className="w-12 h-12 rounded-2xl bg-accent-green/20 text-accent-green flex items-center justify-center mx-auto mb-2 border border-accent-green/30">
@@ -193,8 +260,17 @@ export default function LoginPage() {
 
                 {/* Error */}
                 {error && (
-                  <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3.5 py-2 animate-fade-in">
-                    {error}
+                  <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3.5 py-2 animate-fade-in flex flex-col gap-1.5">
+                    <span>{error}</span>
+                    {error.toLowerCase().includes('google') && (
+                      <button
+                        type="button"
+                        onClick={() => setShowForgotModal(true)}
+                        className="text-left text-primary-400 hover:text-primary-300 underline font-medium cursor-pointer mt-0.5"
+                      >
+                        Set password for direct login →
+                      </button>
+                    )}
                   </div>
                 )}
 

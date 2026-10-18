@@ -1,6 +1,16 @@
 import api from './api';
+import { Capacitor } from '@capacitor/core';
 
 let cachedClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '981601345477-vohruribb3i07iegvas4dtsbqo5k9n7q.apps.googleusercontent.com';
+
+export const isNativeMobile = () => {
+  return typeof window !== 'undefined' && Boolean(
+    Capacitor?.isNativePlatform?.() ||
+    window.Capacitor?.isNativePlatform?.() ||
+    window.location.protocol === 'capacitor:' ||
+    (window.location.hostname === 'localhost' && Boolean(window.Capacitor))
+  );
+};
 
 export const getGoogleClientId = async () => {
   if (cachedClientId) return cachedClientId;
@@ -25,6 +35,17 @@ export const triggerGoogleAuth = async () => {
       return res;
     }
     throw new Error('Google sign-in was cancelled or closed');
+  }
+
+  // In Native Mobile (Capacitor Android APK):
+  // Google restricts OAuth inside embedded WebViews (disallowed_useragent)
+  // and blocks localhost origins with "Error 400: redirect_uri_mismatch".
+  // We open the authorized web bridge on Vercel which completes OAuth on the verified
+  // domain and deep-links directly back into the APK!
+  if (isNativeMobile()) {
+    const webAuthBridgeUrl = 'https://nexxchat-zeta.vercel.app/login?android=true';
+    window.open(webAuthBridgeUrl, '_system');
+    return { isExternalAuth: true };
   }
 
   const clientId = await getGoogleClientId();

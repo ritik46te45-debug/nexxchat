@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { Capacitor } from '@capacitor/core';
 import { updateSocketToken } from './socket';
 
 const getBaseURL = () => {
@@ -11,9 +12,10 @@ const getBaseURL = () => {
     // In Capacitor native mobile apps (Android/iOS), window.location.hostname is 'localhost'
     // or protocol is 'capacitor:'! We MUST NOT connect to phone's localhost:5000!
     const isCapacitorNative = Boolean(
+      Capacitor?.isNativePlatform?.() ||
       window.Capacitor?.isNativePlatform?.() ||
       window.location.protocol === 'capacitor:' ||
-      (window.location.hostname === 'localhost' && window.Capacitor)
+      (window.location.hostname === 'localhost' && Boolean(window.Capacitor))
     );
     if (isCapacitorNative) {
       return 'https://nexxchat-5d29.onrender.com/api';
