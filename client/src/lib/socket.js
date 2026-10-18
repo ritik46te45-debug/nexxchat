@@ -61,9 +61,10 @@ export const connectSocket = (token) => {
     auth: { token: authToken, deviceId },
     reconnection: true,
     reconnectionAttempts: Infinity,
-    reconnectionDelay: 1000,
-    reconnectionDelayMax: 5000,
-    timeout: 20000,
+    reconnectionDelay: 2000,      // Start at 2s (was 1s) to avoid Cloudflare 429
+    reconnectionDelayMax: 15000,   // Max 15s between attempts (was 5s)
+    randomizationFactor: 0.5,      // Add jitter to spread out reconnections
+    timeout: 30000,
     transports: ['websocket', 'polling'],
   });
 

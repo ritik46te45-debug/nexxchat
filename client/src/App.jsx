@@ -102,6 +102,9 @@ function App() {
       if (!rawUrl) return;
       console.log('[DEEP LINK] Received URL:', rawUrl);
       try {
+        // Close any open in-app browser tab
+        import('@capacitor/browser').then(({ Browser }) => Browser.close().catch(() => {})).catch(() => {});
+
         const normalized = rawUrl.replace(/^(app\.nexchat\.messenger|nexchat):\/\//i, 'https://localhost/');
         const parsed = new URL(normalized);
         const token = parsed.searchParams.get('token');
@@ -204,22 +207,40 @@ function App() {
         },
       }).catch(() => {});
 
-      api.get('/notifications')
-        .then(({ data }) => {
-          const count = data.unreadCount || (data.notifications || []).filter((n) => !n.isRead).length;
-          useUIStore.getState().setUnreadNotifCount(count);
-        })
-        .catch(() => {});
+      // Delay non-critical notification fetch to reduce initial request burst
+      // (avoids triggering Cloudflare/Render rate limiting)
+      const notifTimer = setTimeout(() => {
+        api.get('/notifications')
+          .then(({ data }) => {
+            const count = data.unreadCount || (data.notifications || []).filter((n) => !n.isRead).length;
+            useUIStore.getState().setUnreadNotifCount(count);
+          })
+          .catch(() => {});
+      }, 2000);
+
+      return () => clearTimeout(notifTimer);
     }
   }, [isAuthenticated]);
 
   // Setup socket listeners when authenticated
-  useEffect(() => {
-    if (!isAuthenticated) return;
+  // Dedup guard: prevent stampede of fetchConversations/syncMissedMessages
+  const lastFetchRef = useRef(0);
+  const debouncedFetch = () => {
+    const now = Date.now();
+    if (now - lastFetchRef.current < 3000) return; // 3s cooldown
+    lastFetchRef.current = now;
     fetchConversations();
     syncMissedMessages();
+  };
 
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    // Let socket 'connect' handler call fetchConversations to avoid duplicates
+    // Only fetch here if socket is already connected and won't fire 'connect'
     const socket = getSocket();
+    if (socket?.connected) {
+      debouncedFetch();
+    }
     if (!socket) return;
 
     const handleNewMessage = (payload) => {
@@ -472,8 +493,7 @@ function App() {
         reconnectTimer = null;
       }
       setReconnecting(false);
-      fetchConversations();
-      syncMissedMessages();
+      debouncedFetch();
       socket.emit('users:get_online');
     };
 
@@ -495,8 +515,7 @@ function App() {
         reconnectTimer = null;
       }
       setReconnecting(false);
-      fetchConversations();
-      syncMissedMessages();
+      debouncedFetch();
       socket.emit('users:get_online');
     };
 

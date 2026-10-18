@@ -102,10 +102,6 @@ export default function LoginPage() {
       const authResult = await authPromise;
       if (authResult?.isExternalAuth) {
         toast.dismiss('google-auth');
-        toast('Opening secure Google sign-in in browser... Return to NexChat after selecting your account!', {
-          icon: '🌐',
-          duration: 6000,
-        });
         return;
       }
       const data = await googleLogin(authResult);

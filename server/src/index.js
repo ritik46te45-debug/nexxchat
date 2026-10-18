@@ -66,11 +66,22 @@ app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
 // Rate limiting (generous for real-time chat, never rate-limit CORS preflight OPTIONS)
+// Custom handler ensures CORS headers are present even on 429 responses
+const rateLimitHandler = (req, res) => {
+  // Explicitly set CORS headers on rate-limited responses so browsers don't report CORS errors
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  }
+  res.status(429).json({ error: 'Too many requests, please try again later' });
+};
+
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 10000,
   skip: (req) => req.method === 'OPTIONS',
-  message: { error: 'Too many requests, please try again later' },
+  handler: rateLimitHandler,
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -81,7 +92,7 @@ const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
   skip: (req) => req.method === 'OPTIONS',
-  message: { error: 'Too many auth attempts, please try again later' },
+  handler: rateLimitHandler,
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -95,10 +106,8 @@ app.use(cookieParser());
 app.use(compression());
 app.use('/uploads', express.static(path.join(process.cwd(), 'public/uploads')));
 
-// Logging
-if (process.env.NODE_ENV !== 'production') {
-  app.use(morgan('dev'));
-}
+// Logging (enable in production too with compact format for debugging CORS/429)
+app.use(morgan(process.env.NODE_ENV === 'production' ? 'short' : 'dev'));
 
 // ====== ROUTES ======
 app.use('/api/auth', authRoutes);
@@ -139,6 +148,13 @@ app.use((req, res) => {
 // Global error handler
 app.use((err, req, res, next) => {
   console.error('❌ Server Error:', err);
+
+  // Ensure CORS headers are present even on error responses
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  }
 
   if (err.name === 'MulterError') {
     if (err.code === 'LIMIT_FILE_SIZE') {

@@ -70,6 +70,43 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// ====== AUTOMATIC RETRY WITH EXPONENTIAL BACKOFF ======
+// Cloudflare/Render infrastructure rate-limits can return 429 WITHOUT CORS headers,
+// which browsers report as generic "CORS policy" or "Network Error". We retry automatically.
+const MAX_RETRIES = 3;
+const RETRY_BASE_DELAY = 1000; // 1 second
+
+const shouldRetry = (error) => {
+  // Network errors (CORS blocked by infra, offline, DNS failure)
+  if (!error.response && (error.code === 'ERR_NETWORK' || error.message?.includes('Network Error'))) return true;
+  // 429 Too Many Requests
+  if (error.response?.status === 429) return true;
+  // 503 Service Unavailable (Render cold start / overloaded)
+  if (error.response?.status === 503) return true;
+  return false;
+};
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+api.interceptors.response.use(undefined, async (error) => {
+  const config = error.config;
+  if (!config) return Promise.reject(error);
+
+  // Don't retry if it's an auth endpoint or already exhausted retries
+  const isAuthEndpoint = config.url?.includes('/auth/login') || config.url?.includes('/auth/register');
+  config.__retryCount = config.__retryCount || 0;
+
+  if (shouldRetry(error) && !isAuthEndpoint && config.__retryCount < MAX_RETRIES) {
+    config.__retryCount += 1;
+    const delay = RETRY_BASE_DELAY * Math.pow(2, config.__retryCount - 1) + Math.random() * 500;
+    console.log(`[API] Retry ${config.__retryCount}/${MAX_RETRIES} for ${config.url} in ${Math.round(delay)}ms`);
+    await sleep(delay);
+    return api(config);
+  }
+
+  return Promise.reject(error);
+});
+
 // Response interceptor — handle token refresh
 let isRefreshing = false;
 let failedQueue = [];
