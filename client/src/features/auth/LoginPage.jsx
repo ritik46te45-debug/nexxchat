@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Eye, EyeOff, Mail, Lock, MessageCircle, ArrowRight, Loader2, Sparkles, HelpCircle } from 'lucide-react';
 import useAuthStore from '../../stores/authStore';
