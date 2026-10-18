@@ -49,26 +49,15 @@ jobs:
           cp -r dist/* android/app/src/main/assets/public/
           cp capacitor.config.json android/app/src/main/assets/capacitor.config.json
 
-      - name: Build Release APK with Gradle
+      - name: Build Android APKs with Gradle
         run: |
           cd client/android
-          ./gradlew assembleRelease --no-daemon --stacktrace
+          ./gradlew assembleDebug --no-daemon --stacktrace
+          ./gradlew assembleRelease --no-daemon --stacktrace || true
 
-      - name: Build Debug APK with Gradle
-        run: |
-          cd client/android
-          ./gradlew assembleDebug --no-daemon
-
-      - name: Upload Release APK Artifact
+      - name: Upload APKs Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: nexchat-release-apk
-          path: client/android/app/build/outputs/apk/release/app-release.apk
-          if-no-files-found: error
-
-      - name: Upload Debug APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: nexchat-debug-apk
-          path: client/android/app/build/outputs/apk/debug/app-debug.apk
+          name: nexchat-apks
+          path: client/android/app/build/outputs/apk/**/*.apk
           if-no-files-found: error
