@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Eye, EyeOff, Mail, Lock, User, MessageCircle, ArrowRight, Loader2, Check, X } from 'lucide-react';
 import useAuthStore from '../../stores/authStore';
-import { triggerGoogleAuth } from '../../lib/googleAuth';
+import { triggerGoogleAuth, initGoogleAuth } from '../../lib/googleAuth';
 import toast from 'react-hot-toast';
 
 export default function RegisterPage() {
@@ -10,6 +10,10 @@ export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { register, googleLogin, error, clearError } = useAuthStore();
+
+  useEffect(() => {
+    initGoogleAuth();
+  }, []);
 
   const passwordChecks = {
     length: form.password.length >= 8,
@@ -187,8 +191,9 @@ export default function RegisterPage() {
             type="button"
             onClick={async () => {
               try {
+                const authPromise = triggerGoogleAuth();
                 toast.loading('Connecting with Google...', { id: 'google-auth' });
-                const authResult = await triggerGoogleAuth();
+                const authResult = await authPromise;
                 if (authResult?.isExternalAuth) {
                   toast.success('Complete sign-in in browser. You will return here automatically!', { id: 'google-auth', duration: 7000 });
                   return;

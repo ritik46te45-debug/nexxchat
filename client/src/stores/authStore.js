@@ -100,7 +100,16 @@ const useAuthStore = create((set, get) => ({
       connectSocket(data.accessToken);
       return data;
     } catch (error) {
-      const msg = error.response?.data?.error || 'Login failed';
+      let msg = error.response?.data?.error;
+      if (!msg) {
+        if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+          msg = 'Server connection timed out. Please try again.';
+        } else if (error.message?.includes('Network Error') || (typeof navigator !== 'undefined' && !navigator.onLine)) {
+          msg = 'Unable to connect to server. Please check your internet connection.';
+        } else {
+          msg = error.message || 'Login failed. Please check your credentials.';
+        }
+      }
       set({ error: msg, isLoading: false });
       throw new Error(msg);
     }
