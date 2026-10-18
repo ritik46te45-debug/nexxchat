@@ -53,29 +53,37 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
 }));
 
-// CORS
-app.use(cors({
+// CORS options configuration
+const corsOptions = {
   origin: (origin, callback) => callback(null, true),
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-}));
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin', 'x-refresh-token'],
+  optionsSuccessStatus: 200,
+};
 
-// Rate limiting
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
+
+// Rate limiting (generous for real-time chat, never rate-limit CORS preflight OPTIONS)
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 500,
+  max: 10000,
+  skip: (req) => req.method === 'OPTIONS',
   message: { error: 'Too many requests, please try again later' },
   standardHeaders: true,
   legacyHeaders: false,
 });
 app.use('/api/', limiter);
 
-// Auth rate limiter (stricter)
+// Auth rate limiter (skip OPTIONS)
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20,
+  max: 100,
+  skip: (req) => req.method === 'OPTIONS',
   message: { error: 'Too many auth attempts, please try again later' },
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);

@@ -44,9 +44,17 @@ function ProtectedRoute({ children }) {
   return isAuthenticated ? children : <Navigate to="/login" replace />;
 }
 
-// Public route — redirect to chat if already authenticated
+// Public route — redirect to chat if already authenticated (except during Android external auth bridge)
 function PublicRoute({ children }) {
   const { isAuthenticated, isLoading } = useAuthStore();
+  const searchParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
+  const isAndroidAuthMode = searchParams.get('android') === 'true' || searchParams.get('android_auth') === '1';
+
+  // If opened from the Android APK for authentication, NEVER redirect to '/'.
+  // LoginPage must handle the session and deep-link back into the APK!
+  if (isAndroidAuthMode) {
+    return children;
+  }
 
   if (isLoading) {
     return (
@@ -124,6 +132,23 @@ function App() {
     return () => {
       if (sub?.remove) sub.remove();
     };
+  }, []);
+
+  // Web Auth Bridge: If opened in external browser with ?android=true and user is already signed in,
+  // immediately bounce back into the Android APK
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('android') === 'true' || params.get('android_auth') === '1') {
+        const token = localStorage.getItem('accessToken');
+        const refresh = localStorage.getItem('refreshToken');
+        if (token) {
+          const deepLink = `app.nexchat.messenger://auth?token=${encodeURIComponent(token)}&refreshToken=${encodeURIComponent(refresh || '')}`;
+          console.log('[ANDROID BRIDGE] Returning to native app:', deepLink);
+          window.location.href = deepLink;
+        }
+      }
+    }
   }, []);
 
   // Instant background-to-foreground socket resumption (phone unlock, tab switch, app resume)

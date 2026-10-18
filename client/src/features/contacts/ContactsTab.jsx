@@ -98,10 +98,12 @@ export default function ContactsTab({ onStartCall }) {
   const handleAcceptRequest = async (requestId) => {
     try {
       await api.post(`/friends/accept/${requestId}`);
-      toast.success('Friend request accepted!');
+      toast.success('Friend request accepted! 🎉');
       setPendingRequests((prev) => prev.filter((r) => r._id !== requestId));
+      loadContacts();
+      useChatStore.getState().fetchConversations();
     } catch (err) {
-      toast.error('Failed to accept request');
+      toast.error(err.response?.data?.error || 'Failed to accept request');
     }
   };
 
@@ -110,8 +112,9 @@ export default function ContactsTab({ onStartCall }) {
       await api.post(`/friends/reject/${requestId}`);
       toast('Request declined');
       setPendingRequests((prev) => prev.filter((r) => r._id !== requestId));
+      loadContacts();
     } catch (err) {
-      toast.error('Failed to decline request');
+      toast.error(err.response?.data?.error || 'Failed to decline request');
     }
   };
 
@@ -120,15 +123,17 @@ export default function ContactsTab({ onStartCall }) {
       await api.post(`/friends/cancel/${requestId}`);
       toast('Request cancelled');
       setSentRequests((prev) => prev.filter((r) => r._id !== requestId));
+      loadContacts();
     } catch (err) {
-      toast.error('Failed to cancel request');
+      toast.error(err.response?.data?.error || 'Failed to cancel request');
     }
   };
 
   const handleSendRequest = async (userId) => {
     try {
       await api.post(`/friends/request/${userId}`);
-      toast.success('Friend request sent!');
+      toast.success('Friend request sent! 👥');
+      loadContacts();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to send request');
     }

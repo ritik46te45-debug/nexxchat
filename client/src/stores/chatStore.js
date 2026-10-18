@@ -565,11 +565,20 @@ const useChatStore = create((set, get) => ({
   markAsRead: async (conversationId) => {
     try {
       if (!conversationId) return;
+      const cid = conversationId.toString();
+      const currentConv = get().conversations.find((c) => c._id?.toString() === cid);
+      const hadUnread = currentConv && (
+        (currentConv.unreadCount && currentConv.unreadCount > 0) ||
+        (currentConv._participant && currentConv._participant.unreadCount > 0)
+      );
+
       const socket = getSocket();
       if (socket) {
-        socket.emit('message:read', { conversationId: conversationId.toString() });
+        socket.emit('message:read', { conversationId: cid });
       }
-      api.post(`/messages/${conversationId}/read`).catch(() => {});
+      if (hadUnread) {
+        api.post(`/messages/${cid}/read`).catch(() => {});
+      }
       const myId = (useAuthStore.getState().user?._id || useAuthStore.getState().user)?.toString();
       set((state) => {
         const convs = state.conversations.map((c) => {
