@@ -1,7 +1,10 @@
 import api from './api';
 import { Capacitor } from '@capacitor/core';
 
-let cachedClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '981601345477-vohruribb3i07iegvas4dtsbqo5k9n7q.apps.googleusercontent.com';
+export const GOOGLE_CLIENT_ID = '981601345477-vohruribb3i07iegvas4dtsbqo5k9n7q.apps.googleusercontent.com';
+let cachedClientId = GOOGLE_CLIENT_ID;
+
+export const getGoogleClientIdSync = () => cachedClientId;
 
 export const isNativeMobile = () => {
   return typeof window !== 'undefined' && Boolean(
@@ -16,19 +19,86 @@ export const getGoogleClientId = async () => {
   if (cachedClientId) return cachedClientId;
   try {
     const { data } = await api.get('/auth/config');
-    cachedClientId = data.googleClientId || '981601345477-vohruribb3i07iegvas4dtsbqo5k9n7q.apps.googleusercontent.com';
+    cachedClientId = data.googleClientId || GOOGLE_CLIENT_ID;
     return cachedClientId;
   } catch (e) {
-    return '981601345477-vohruribb3i07iegvas4dtsbqo5k9n7q.apps.googleusercontent.com';
+    return GOOGLE_CLIENT_ID;
   }
 };
 
 /**
- * Triggers Google Sign-In using OAuth2 popup flow (most reliable)
- * Falls back to ID Token or instant login if client ID is not configured
+ * Ensures Google Identity Services (GSI) library is loaded into the page.
+ */
+export const ensureGoogleLoaded = (timeoutMs = 6000) => {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined') return resolve(false);
+    if (window.google?.accounts?.oauth2 || window.google?.accounts?.id) {
+      return resolve(true);
+    }
+
+    let script = document.querySelector('script[src*="accounts.google.com/gsi/client"]');
+    if (!script) {
+      script = document.createElement('script');
+      script.src = 'https://accounts.google.com/gsi/client';
+      script.async = true;
+      script.defer = true;
+      document.head.appendChild(script);
+    }
+
+    const start = Date.now();
+    const interval = setInterval(() => {
+      if (window.google?.accounts?.oauth2 || window.google?.accounts?.id) {
+        clearInterval(interval);
+        resolve(true);
+      } else if (Date.now() - start >= timeoutMs) {
+        clearInterval(interval);
+        resolve(false);
+      }
+    }, 100);
+  });
+};
+
+/**
+ * Renders official Google Sign-In button into a DOM container element.
+ * This native button is completely immune to browser popup blockers.
+ */
+export const renderGoogleSignInButton = async (containerElement, onCredentialReceived, onError) => {
+  if (!containerElement) return;
+  const isLoaded = await ensureGoogleLoaded();
+  if (!isLoaded || !window.google?.accounts?.id) return;
+
+  const clientId = getGoogleClientIdSync();
+  try {
+    window.google.accounts.id.initialize({
+      client_id: clientId,
+      callback: (response) => {
+        if (response.credential) {
+          onCredentialReceived({ credential: response.credential });
+        } else if (onError) {
+          onError(new Error('No credential received from Google'));
+        }
+      },
+      auto_select: false,
+    });
+
+    containerElement.innerHTML = '';
+    window.google.accounts.id.renderButton(containerElement, {
+      theme: 'filled_black',
+      size: 'large',
+      text: 'continue_with',
+      shape: 'pill',
+      width: Math.min(320, window.innerWidth - 64),
+    });
+  } catch (err) {
+    console.warn('Failed to render official Google button:', err);
+  }
+};
+
+/**
+ * Triggers Google Sign-In using OAuth2 popup flow with automatic fallbacks
  */
 export const triggerGoogleAuth = async () => {
-  // In Desktop Electron environment, use native OAuth popup flow
+  // 1. In Desktop Electron environment, use native OAuth popup flow
   if (typeof window !== 'undefined' && window.electronAPI?.loginWithGoogle) {
     const res = await window.electronAPI.loginWithGoogle();
     if (res && (res.accessToken || res.credential)) {
@@ -37,34 +107,33 @@ export const triggerGoogleAuth = async () => {
     throw new Error('Google sign-in was cancelled or closed');
   }
 
-  // In Native Mobile (Capacitor Android APK):
-  // Google restricts OAuth inside embedded WebViews (disallowed_useragent)
-  // and blocks localhost origins with "Error 400: redirect_uri_mismatch".
-  // We open the authorized web bridge on Vercel which completes OAuth on the verified
-  // domain and deep-links directly back into the APK!
+  // 2. In Native Mobile (Capacitor Android APK)
   if (isNativeMobile()) {
     const webAuthBridgeUrl = 'https://nexxchat-zeta.vercel.app/login?android=true';
     window.open(webAuthBridgeUrl, '_system');
     return { isExternalAuth: true };
   }
 
-  const clientId = await getGoogleClientId();
+  // 3. Ensure Google GSI Script is ready
+  const isLoaded = await ensureGoogleLoaded();
+  if (!isLoaded || !window.google?.accounts) {
+    throw new Error('Google Sign-In is blocked or could not load. Please check your internet, disable ad-blockers, or sign in with email/password.');
+  }
+
+  const clientId = getGoogleClientIdSync();
 
   return new Promise((resolve, reject) => {
+    let handled = false;
 
-    // If no client ID configured, allow one-click dev sign-in
-    if (!clientId) {
-      resolve({ credential: 'mock-google-token-direct' });
-      return;
-    }
-
-    // Try Google OAuth2 Token Client (Standard Google Popup)
-    if (window.google?.accounts?.oauth2) {
+    // A. Try Google OAuth2 Token Client (Popup)
+    if (window.google.accounts.oauth2) {
       try {
         const client = window.google.accounts.oauth2.initTokenClient({
           client_id: clientId,
           scope: 'openid email profile',
           callback: (response) => {
+            if (handled) return;
+            handled = true;
             if (response.error) {
               if (response.error === 'popup_closed_by_user') {
                 reject(new Error('Google sign-in popup was closed'));
@@ -80,7 +149,15 @@ export const triggerGoogleAuth = async () => {
             }
           },
           error_callback: (error) => {
-            reject(new Error(error?.message || 'Google sign-in popup failed to open'));
+            console.warn('Google OAuth error_callback:', error);
+            if (!handled) {
+              handled = true;
+              if (error?.type === 'popup_failed_to_open') {
+                reject(new Error('Popup was blocked by your browser. Please allow popups or tap the official Google button.'));
+              } else {
+                reject(new Error(error?.message || 'Google popup failed to open'));
+              }
+            }
           },
         });
 
@@ -91,12 +168,14 @@ export const triggerGoogleAuth = async () => {
       }
     }
 
-    // Fallback: Google Identity Services ID Token
-    if (window.google?.accounts?.id) {
+    // B. Fallback: Google Identity Services ID Token
+    if (window.google.accounts.id) {
       try {
         window.google.accounts.id.initialize({
           client_id: clientId,
           callback: (response) => {
+            if (handled) return;
+            handled = true;
             if (response.credential) {
               resolve({ credential: response.credential });
             } else {
@@ -106,15 +185,27 @@ export const triggerGoogleAuth = async () => {
           auto_select: false,
         });
 
-        window.google.accounts.id.prompt();
+        window.google.accounts.id.prompt((notification) => {
+          if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+            if (!handled) {
+              handled = true;
+              reject(new Error('Google popup was suppressed by your browser. Please use the official Google button below or allow popups.'));
+            }
+          }
+        });
         return;
       } catch (err) {
-        reject(err);
+        if (!handled) {
+          handled = true;
+          reject(err);
+        }
         return;
       }
     }
 
-    // Fallback
-    resolve({ credential: 'mock-google-token-direct' });
+    if (!handled) {
+      handled = true;
+      reject(new Error('Google Sign-In is unavailable in this browser. Please use Email and Password to sign in.'));
+    }
   });
 };
