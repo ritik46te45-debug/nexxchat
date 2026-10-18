@@ -40,20 +40,14 @@ jobs:
           cache: 'npm'
           cache-dependency-path: 'client/package-lock.json'
 
-      - name: Install Client Dependencies
+      - name: Install Client Dependencies & Build Web Assets
         run: |
           cd client
           npm ci --legacy-peer-deps || npm install --legacy-peer-deps
-
-      - name: Build Web Assets
-        run: |
-          cd client
           npm run build
-
-      - name: Copy Web Assets to Android
-        run: |
-          cd client
-          npx cap copy android
+          mkdir -p android/app/src/main/assets/public
+          cp -r dist/* android/app/src/main/assets/public/
+          cp capacitor.config.json android/app/src/main/assets/capacitor.config.json
 
       - name: Build Release APK with Gradle
         run: |

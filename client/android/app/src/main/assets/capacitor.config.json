@@ -1,0 +1,30 @@
+{
+	"appId": "app.nexchat.messenger",
+	"appName": "NexChat",
+	"webDir": "dist",
+	"bundledWebRuntime": false,
+	"server": {
+		"androidScheme": "https",
+		"cleartext": true
+	},
+	"overrideUserAgent": "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36",
+	"plugins": {
+		"PushNotifications": {
+			"presentationOptions": [
+				"badge",
+				"sound",
+				"alert"
+			]
+		},
+		"LocalNotifications": {
+			"smallIcon": "ic_stat_notification",
+			"iconColor": "#6366f1",
+			"sound": "beep.wav"
+		},
+		"SplashScreen": {
+			"launchShowDuration": 1500,
+			"backgroundColor": "#0f0f1a",
+			"showSpinner": false
+		}
+	}
+}
