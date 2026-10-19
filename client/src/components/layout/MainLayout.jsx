@@ -105,9 +105,33 @@ export default function MainLayout() {
       socket.on('connect', onReconnect);
     }
 
+    // Listen for incoming call notifications tapped from Android system tray
+    const onIncomingPush = (event) => {
+      const data = event.detail || {};
+      const callId = data.callId;
+      const callerId = data.callerId || data.senderId;
+      const displayName = data.callerName || 'Incoming Caller';
+      const type = data.callType || data.type || 'voice';
+      const conversationId = data.conversationId;
+
+      if (callId) {
+        setActiveCall({
+          callId,
+          targetUserId: callerId || 'caller',
+          displayName,
+          avatar: null,
+          type,
+          conversationId,
+          isIncoming: true,
+        });
+      }
+    };
+    window.addEventListener('nexchat:incoming_call', onIncomingPush);
+
     return () => {
       if (cleanup) cleanup();
       if (socket) socket.off('connect', onReconnect);
+      window.removeEventListener('nexchat:incoming_call', onIncomingPush);
     };
   }, []);
 

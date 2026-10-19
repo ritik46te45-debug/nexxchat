@@ -97,13 +97,17 @@ export async function initPushNotifications({ onNavigateToConversation } = {}) {
       console.log('[CAPACITOR PUSH] Foreground notification received:', notification);
     });
 
-    // 6. Handle push action / click (Deep Linking)
+    // 6. Handle push action / click (Deep Linking & Incoming Call Tap)
     PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
       console.log('[CAPACITOR PUSH] Notification clicked:', notification);
       const data = notification.notification?.data || {};
       const conversationId = data.conversationId || data.data?.conversationId;
+      const type = data.type || data.data?.type;
+      const callId = data.callId || data.data?.callId;
 
-      if (conversationId && typeof onNavigateToConversation === 'function') {
+      if (type === 'call' && callId && typeof onIncomingCall === 'function') {
+        onIncomingCall(data);
+      } else if (conversationId && typeof onNavigateToConversation === 'function') {
         onNavigateToConversation(conversationId);
       }
     });
@@ -114,8 +118,14 @@ export async function initPushNotifications({ onNavigateToConversation } = {}) {
       LocalNotifications.requestPermissions().catch(() => {});
       LocalNotifications.addListener('localNotificationActionPerformed', (action) => {
         console.log('[CAPACITOR LOCAL NOTIF] Clicked:', action);
-        const conversationId = action.notification?.extra?.conversationId;
-        if (conversationId && typeof onNavigateToConversation === 'function') {
+        const data = action.notification?.extra || {};
+        const conversationId = data.conversationId;
+        const type = data.type;
+        const callId = data.callId;
+
+        if (type === 'call' && callId && typeof onIncomingCall === 'function') {
+          onIncomingCall(data);
+        } else if (conversationId && typeof onNavigateToConversation === 'function') {
           onNavigateToConversation(conversationId);
         }
       });
@@ -130,51 +140,69 @@ export async function initPushNotifications({ onNavigateToConversation } = {}) {
 
 /**
  * Setup High-Priority Android Notification Channels
+ * IMPORTANT: Do NOT specify sound: 'default' because Android will look for res/raw/default.
+ * Omitting sound allows Android to play the phone's native default notification tone!
  */
 async function createNotificationChannels(PushNotifications) {
   try {
     if (!PushNotifications.createChannel) return;
 
-    // Messages Channel
+    // Remove legacy channels that had broken raw sound references
+    if (PushNotifications.deleteChannel) {
+      await PushNotifications.deleteChannel({ id: 'nexchat_messages' }).catch(() => {});
+      await PushNotifications.deleteChannel({ id: 'nexchat_calls' }).catch(() => {});
+      await PushNotifications.deleteChannel({ id: 'nexchat_groups' }).catch(() => {});
+    }
+
+    // Messages Channel v2 (High priority, uses system default notification ringtone)
     await PushNotifications.createChannel({
-      id: 'nexchat_messages',
+      id: 'nexchat_messages_v2',
       name: 'Messages',
       description: 'Incoming instant messages and chats',
       importance: 5, // High / Heads-up notification
       visibility: 1, // Public on lockscreen
-      sound: 'default',
       vibration: true,
       lights: true,
       lightColor: '#6366F1',
     });
 
-    // Calls Channel (Highest priority)
+    // Calls Channel v2 (Highest priority / Urgent)
     await PushNotifications.createChannel({
-      id: 'nexchat_calls',
+      id: 'nexchat_calls_v2',
       name: 'Voice & Video Calls',
       description: 'Incoming voice and video call alerts',
-      importance: 5, // Urgent / Full screen intent
+      importance: 5, // Urgent / Full screen heads-up intent
       visibility: 1,
-      sound: 'default',
       vibration: true,
       lights: true,
       lightColor: '#10B981',
     });
 
-    // Groups Channel
+    // Groups Channel v2
     await PushNotifications.createChannel({
-      id: 'nexchat_groups',
+      id: 'nexchat_groups_v2',
       name: 'Group Notifications',
       description: 'Group message alerts and mentions',
       importance: 4,
       visibility: 1,
-      sound: 'default',
       vibration: true,
       lights: true,
       lightColor: '#8B5CF6',
     });
 
-    console.log('✅ Android Notification Channels created');
+    // Recreate clean nexchat_messages channel for fallback compatibility
+    await PushNotifications.createChannel({
+      id: 'nexchat_messages',
+      name: 'Messages (Legacy)',
+      description: 'Incoming messages',
+      importance: 5,
+      visibility: 1,
+      vibration: true,
+      lights: true,
+      lightColor: '#6366F1',
+    });
+
+    console.log('✅ Android Notification Channels created with native system tones');
   } catch (e) {
     console.warn('Channel creation note:', e.message);
   }

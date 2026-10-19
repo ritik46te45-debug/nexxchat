@@ -246,10 +246,9 @@ export const showSystemNotification = (titleOrObj, maybeBody, maybeOptions = {})
               id: notifId,
               title: title || 'NexChat',
               body: body || 'New message received',
-              channelId: 'nexchat_messages',
+              channelId: 'nexchat_messages_v2',
               smallIcon: 'ic_stat_notification',
               iconColor: '#6366f1',
-              sound: 'default',
               extra: data || {},
             }
           ]

@@ -98,8 +98,8 @@ const sendFcmPush = async (fcmToken, payload) => {
     }
 
     const channelId = payload.data?.type === 'call'
-      ? 'nexchat_calls'
-      : (payload.data?.type === 'group_message' ? 'nexchat_groups' : 'nexchat_messages');
+      ? 'nexchat_calls_v2'
+      : (payload.data?.type === 'group_message' ? 'nexchat_groups_v2' : 'nexchat_messages_v2');
 
     const fcmMessage = {
       token: fcmToken,
@@ -122,6 +122,8 @@ const sendFcmPush = async (fcmToken, payload) => {
         messageId: String(payload.data?.messageId || ''),
         type: String(payload.data?.type || ''),
         callId: String(payload.data?.callId || ''),
+        callerName: String(payload.title || ''),
+        callType: String(payload.data?.callType || 'voice'),
       },
     };
 
