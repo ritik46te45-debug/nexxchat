@@ -21,10 +21,12 @@ import android.webkit.WebSettings;
 import androidx.annotation.NonNull;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import android.webkit.URLUtil;
 import android.app.DownloadManager;
 import android.os.Environment;
 import android.widget.Toast;
 import com.getcapacitor.BridgeActivity;
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -58,28 +60,58 @@ public class MainActivity extends BridgeActivity {
             runOnUiThread(() -> {
                 try {
                     if (fileUrl == null || fileUrl.trim().isEmpty()) return;
-                    String finalFileName = (fileName != null && !fileName.trim().isEmpty()) ? fileName.trim() : ("download_" + System.currentTimeMillis());
+                    String safeName = (fileName != null && !fileName.trim().isEmpty()) ? fileName.trim() : ("nexchat_" + System.currentTimeMillis());
+                    String cleanName = safeName.replaceAll("[^a-zA-Z0-9._-]", "_");
+                    String destName = cleanName;
+
+                    try {
+                        File downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+                        if (downloadDir != null && downloadDir.exists()) {
+                            File target = new File(downloadDir, destName);
+                            if (target.exists()) {
+                                int dot = cleanName.lastIndexOf('.');
+                                String base = dot > 0 ? cleanName.substring(0, dot) : cleanName;
+                                String ext = dot > 0 ? cleanName.substring(dot) : "";
+                                destName = base + "_" + System.currentTimeMillis() + ext;
+                            }
+                        }
+                    } catch (Exception ignored) {}
+
                     Uri uri = Uri.parse(fileUrl.trim());
 
-                    DownloadManager.Request request = new DownloadManager.Request(uri);
-                    request.setTitle(finalFileName);
-                    request.setDescription("Downloading file from NexChat...");
-                    request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-                    request.allowScanningByMediaScanner();
-                    request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, finalFileName);
+                    try {
+                        DownloadManager.Request request = new DownloadManager.Request(uri);
+                        request.setTitle(destName);
+                        request.setDescription("Downloading file from NexChat...");
+                        request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                            try { request.allowScanningByMediaScanner(); } catch (Exception ignored) {}
+                        }
+                        request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, destName);
 
-                    if (mimeType != null && !mimeType.trim().isEmpty()) {
-                        request.setMimeType(mimeType.trim());
+                        if (mimeType != null && !mimeType.trim().isEmpty()) {
+                            request.setMimeType(mimeType.trim());
+                        }
+
+                        DownloadManager manager = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
+                        if (manager != null) {
+                            manager.enqueue(request);
+                            Toast.makeText(MainActivity.this, "Saving " + destName + " to Downloads / Gallery...", Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                    } catch (Exception dmErr) {
+                        dmErr.printStackTrace();
                     }
 
-                    DownloadManager manager = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
-                    if (manager != null) {
-                        manager.enqueue(request);
-                        Toast.makeText(MainActivity.this, "Downloading " + finalFileName + " to Downloads / Gallery...", Toast.LENGTH_SHORT).show();
-                    }
+                    // Fallback: Launch system browser/download intent directly
+                    Intent browserIntent = new Intent(Intent.ACTION_VIEW, uri);
+                    browserIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(browserIntent);
+                    Toast.makeText(MainActivity.this, "Downloading " + destName + "...", Toast.LENGTH_SHORT).show();
+
                 } catch (Exception e) {
                     e.printStackTrace();
-                    Toast.makeText(MainActivity.this, "Download failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                    Toast.makeText(MainActivity.this, "Download error: " + e.getMessage(), Toast.LENGTH_LONG).show();
                 }
             });
         }
@@ -90,7 +122,14 @@ public class MainActivity extends BridgeActivity {
         super.onCreate(savedInstanceState);
         createNativeNotificationChannels();
         requestMediaPermissions();
+        configureWebViewSettings();
         handleNotificationIntent(getIntent());
+    }
+
+    @Override
+    public void onStart() {
+        super.onStart();
+        configureWebViewSettings();
     }
 
     @Override
@@ -166,9 +205,17 @@ public class MainActivity extends BridgeActivity {
             settings.setJavaScriptCanOpenWindowsAutomatically(true);
             settings.setDomStorageEnabled(true);
             settings.setDatabaseEnabled(true);
+            settings.setAllowFileAccess(true);
+            settings.setAllowContentAccess(true);
 
-            // Register Native JavaScript Bridge for WhatsApp-style PiP & call tracking
+            // Register Native JavaScript Bridge for WhatsApp-style PiP, downloads & call tracking
             getBridge().getWebView().addJavascriptInterface(new NativeBridge(), "NexChatNative");
+
+            // Attach DownloadListener for ANY in-page downloads (<a download>, window.open, etc.)
+            getBridge().getWebView().setDownloadListener((url, userAgent, contentDisposition, mimetype, contentLength) -> {
+                String guessedName = URLUtil.guessFileName(url, contentDisposition, mimetype);
+                new NativeBridge().downloadFile(url, guessedName, mimetype);
+            });
         }
     }
 

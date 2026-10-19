@@ -90,14 +90,33 @@ export const downloadFile = async (rawUrl, originalFileName, mimeType) => {
 
   const proxyUrl = `${backendBase}/api/upload/download?url=${encodeURIComponent(fullUrl)}&filename=${encodeURIComponent(fileName)}`;
 
+  // Check if running inside Capacitor Android app
+  const isCapacitorNative = Boolean(
+    typeof window !== 'undefined' &&
+    (window.Capacitor?.isNativePlatform?.() ||
+     window.location.protocol === 'capacitor:' ||
+     (window.location.hostname === 'localhost' && Boolean(window.Capacitor)))
+  );
+
   // ─── 0. NATIVE ANDROID: Use Android's DownloadManager via NativeBridge ───
   if (typeof window !== 'undefined' && window.NexChatNative?.downloadFile) {
     try {
       window.NexChatNative.downloadFile(proxyUrl, fileName, mimeType || '');
-      toast.success(`Downloading ${fileName}...`, { id: 'file-download', duration: 3000 });
+      toast.success(`Downloading ${fileName} to Downloads / Gallery`, { id: 'file-download', duration: 3500 });
       return;
     } catch (nativeErr) {
-      console.warn('Native download failed, falling back to web strategies:', nativeErr);
+      console.warn('Native download failed, falling back to system browser:', nativeErr);
+    }
+  }
+
+  // ─── 1. CAPACITOR NATIVE FALLBACK: System Browser Download ───
+  if (isCapacitorNative) {
+    try {
+      window.open(proxyUrl, '_system');
+      toast.success(`Downloading ${fileName}...`, { id: 'file-download', duration: 3500 });
+      return;
+    } catch (capErr) {
+      console.warn('System browser open failed:', capErr);
     }
   }
 
