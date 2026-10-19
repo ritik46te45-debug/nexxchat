@@ -60,13 +60,14 @@ export async function initPushNotifications({ onNavigateToConversation } = {}) {
       return false;
     }
 
-    // 3. Register with Apple / Google APNs / FCM
-    await PushNotifications.register();
-
-    // 4. Listen for FCM token
+    // 3. Listen for FCM token BEFORE calling register (Capacitor requirement)
     PushNotifications.addListener('registration', async (token) => {
-      console.log('[CAPACITOR PUSH] FCM Token registered:', token.value);
+      console.log('[CAPACITOR PUSH] FCM Token registered successfully:', token?.value);
       try {
+        if (typeof localStorage !== 'undefined' && token?.value) {
+          localStorage.setItem('nexchat_fcm_token', token.value);
+          localStorage.removeItem('nexchat_fcm_error');
+        }
         const deviceId = getOrCreateDeviceId();
         await api.post('/devices/register', {
           deviceId,
@@ -82,8 +83,14 @@ export async function initPushNotifications({ onNavigateToConversation } = {}) {
     });
 
     PushNotifications.addListener('registrationError', (error) => {
-      console.error('[CAPACITOR PUSH] Registration error:', error);
+      console.error('[CAPACITOR PUSH] FCM Registration error:', error);
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('nexchat_fcm_error', JSON.stringify(error || 'registration_failed'));
+      }
     });
+
+    // 4. Register with Apple / Google APNs / FCM
+    await PushNotifications.register();
 
     // 5. Handle foreground push delivery
     PushNotifications.addListener('pushNotificationReceived', (notification) => {

@@ -11,6 +11,7 @@ import useAuthStore from '../../stores/authStore';
 import useUIStore from '../../stores/uiStore';
 import { playIncomingMessageSound, playSentMessageSound, showSystemNotification } from '../../lib/notifications';
 import { registerPushNotifications } from '../../lib/pushNotifications';
+import { initPushNotifications, isNativePlatform } from '../../lib/capacitorPush';
 import BatteryOnboardingModal from '../auth/BatteryOnboardingModal';
 import toast from 'react-hot-toast';
 
@@ -181,18 +182,27 @@ export default function SettingsTab({ onOpenProfile }) {
     }
   };
 
-  // Web Push Handlers
+  // Push Handlers (Native FCM on Android / Web Push on Browser)
   const handleEnableWebPush = async () => {
     setIsPushRegistering(true);
     try {
-      const success = await registerPushNotifications();
-      if (success) {
-        toast.success('Background Web Push enabled!');
+      if (isNativePlatform()) {
+        const success = await initPushNotifications();
+        if (success) {
+          toast.success('Android FCM push registered successfully!');
+        } else {
+          toast.error('Notification permission denied or FCM pending');
+        }
       } else {
-        toast('Please allow notification permissions in your browser', { icon: '🔔' });
+        const success = await registerPushNotifications();
+        if (success) {
+          toast.success('Background Web Push enabled!');
+        } else {
+          toast('Please allow notification permissions in your browser', { icon: '🔔' });
+        }
       }
-    } catch {
-      toast.error('Failed to register push notifications');
+    } catch (err) {
+      toast.error('Failed to register push: ' + (err.message || 'Error'));
     } finally {
       setIsPushRegistering(false);
     }

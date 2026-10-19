@@ -113,7 +113,7 @@ const sendFcmPush = async (fcmToken, payload) => {
           channelId,
           sound: 'default',
           color: '#6366f1',
-          clickAction: 'OPEN_ACTIVITY',
+          icon: 'ic_stat_notification',
           tag: payload.tag || 'nexchat-msg',
         },
       },
@@ -126,6 +126,7 @@ const sendFcmPush = async (fcmToken, payload) => {
     };
 
     const response = await messaging.send(fcmMessage);
+    console.log(`[PUSH] ✅ FCM Push successfully sent to device (token: ${fcmToken.slice(0, 15)}...) -> msgId: ${response}`);
     return { success: true, messageId: response };
   } catch (error) {
     console.warn('[PUSH] FCM send error:', error.message);
@@ -419,7 +420,10 @@ export const dispatchPush = async (recipientUserId, event, data, options = {}) =
       }
     }
 
+    console.log(`[PUSH] dispatchPush -> user: ${userId} | event: ${event} | devices: ${devices.length} | pushTargets: (VAPID: ${endpointMap.size}, FCM: ${fcmTokens.size})`);
+
     if (endpointMap.size === 0 && fcmTokens.size === 0) {
+      console.log(`[PUSH] dispatchPush skipped -> no active push targets registered for user: ${userId}`);
       return { sent: 0, skipped: 'no_push_targets', errors: 0 };
     }
 
