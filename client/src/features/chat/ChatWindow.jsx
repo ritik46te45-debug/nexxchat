@@ -183,9 +183,10 @@ export default function ChatWindow({ onStartCall }) {
     ? 'Deleted Account'
     : (otherUser?.displayName || otherUser?.username || 'User');
 
+  const rawAvatar = otherUser?.avatar?.url || (typeof otherUser?.avatar === 'string' ? otherUser.avatar : null);
   const avatar = activeConversation?.type === 'group' || activeConversation?.type === 'channel'
-    ? activeConversation.groupAvatar?.url
-    : (canSeeProfilePhoto ? otherUser?.avatar?.url : null);
+    ? (activeConversation.groupAvatar?.url || (typeof activeConversation.groupAvatar === 'string' ? activeConversation.groupAvatar : null))
+    : (canSeeProfilePhoto ? rawAvatar : null);
 
   const otherUserId = (otherUser?._id?._id || otherUser?._id)?.toString();
   const isOnline = otherUser && canSeeOnline
@@ -723,17 +724,6 @@ export default function ChatWindow({ onStartCall }) {
               <Video className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
 
-            {/* Chat Details Toggle */}
-            <button
-              onClick={() => setShowDetailsPanel(!showDetailsPanel)}
-              className={`p-2 rounded-2xl transition-colors ${
-                showDetailsPanel ? 'text-primary-400 bg-primary-500/20' : 'text-surface-400 hover:text-white hover:bg-dark-hover'
-              }`}
-              title="Chat Details & Media"
-            >
-              <Info className="w-4 h-4 sm:w-5 sm:h-5" />
-            </button>
-
             {/* 3-Dots More Options Menu */}
             <div className="relative" ref={moreMenuRef}>
               <button
@@ -751,6 +741,17 @@ export default function ChatWindow({ onStartCall }) {
 
               {showMoreMenu && (
                 <div className="absolute right-0 top-full mt-2 w-52 py-1.5 rounded-2xl bg-dark-card/95 backdrop-blur-xl border border-dark-border shadow-2xl z-50 animate-scale-in select-none">
+                  {/* Chat Media, Links & Docs */}
+                  <button
+                    onClick={() => {
+                      setShowMoreMenu(false);
+                      setShowDetailsPanel(true);
+                    }}
+                    className="w-full px-3.5 py-2.5 text-left text-xs font-semibold flex items-center gap-2.5 text-surface-200 hover:text-white hover:bg-dark-hover transition-colors"
+                  >
+                    <Info className="w-4 h-4 text-primary-400 flex-shrink-0" />
+                    <span>Media, Links & Docs</span>
+                  </button>
                   {/* Block / Unblock User */}
                   {otherUser && (
                     <button

@@ -90,10 +90,17 @@ export const downloadFile = async (rawUrl, originalFileName, mimeType) => {
 
   const proxyUrl = `${backendBase}/api/upload/download?url=${encodeURIComponent(fullUrl)}&filename=${encodeURIComponent(fileName)}`;
 
-  // Unified download strategy for all platforms (Mobile Web, Desktop, & Capacitor)
-  toast.loading(`Downloading ${fileName}...`, { id: 'file-download', duration: 4000 });
+  // ─── 0. NATIVE ANDROID: Use Android's DownloadManager via NativeBridge ───
+  if (typeof window !== 'undefined' && window.NexChatNative?.downloadFile) {
+    try {
+      window.NexChatNative.downloadFile(proxyUrl, fileName, mimeType || '');
+      toast.success(`Downloading ${fileName}...`, { id: 'file-download', duration: 3000 });
+      return;
+    } catch (nativeErr) {
+      console.warn('Native download failed, falling back to web strategies:', nativeErr);
+    }
+  }
 
-  // ─── DESKTOP: Blob download via backend proxy ───
   toast.loading(`Downloading ${fileName}...`, { id: 'file-download', duration: 4000 });
 
   // Strategy 1: Backend Download Proxy via Axios (authenticated, signed, & CORS enabled)

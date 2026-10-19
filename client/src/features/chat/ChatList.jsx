@@ -256,7 +256,10 @@ function ConversationItem({ conversation, userId, isActive, onClick, typingUsers
   const canSeeOnline = !otherUser?.privacy?.online || otherUser.privacy.online === 'everyone' || (otherUser.privacy.online === 'friends' && isFriend);
 
   const name = conversation.type === 'group' ? (conversation.groupName || 'Group') : (otherUser?.displayName || otherUser?.username || 'User');
-  const avatar = conversation.type === 'group' ? conversation.groupAvatar?.url : (canSeeProfilePhoto ? otherUser?.avatar?.url : null);
+  const rawAvatar = otherUser?.avatar?.url || (typeof otherUser?.avatar === 'string' ? otherUser.avatar : null);
+  const avatar = conversation.type === 'group'
+    ? (conversation.groupAvatar?.url || (typeof conversation.groupAvatar === 'string' ? conversation.groupAvatar : null))
+    : (canSeeProfilePhoto ? rawAvatar : null);
   const showOnline = isOnline && canSeeOnline;
 
   const myParticipant = conversation._participant || conversation.participants?.find(

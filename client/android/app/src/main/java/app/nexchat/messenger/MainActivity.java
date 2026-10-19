@@ -21,6 +21,9 @@ import android.webkit.WebSettings;
 import androidx.annotation.NonNull;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import android.app.DownloadManager;
+import android.os.Environment;
+import android.widget.Toast;
 import com.getcapacitor.BridgeActivity;
 import java.util.ArrayList;
 import java.util.List;
@@ -46,6 +49,37 @@ public class MainActivity extends BridgeActivity {
                 NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
                 if (manager != null) {
                     manager.cancelAll();
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void downloadFile(String fileUrl, String fileName, String mimeType) {
+            runOnUiThread(() -> {
+                try {
+                    if (fileUrl == null || fileUrl.trim().isEmpty()) return;
+                    String finalFileName = (fileName != null && !fileName.trim().isEmpty()) ? fileName.trim() : ("download_" + System.currentTimeMillis());
+                    Uri uri = Uri.parse(fileUrl.trim());
+
+                    DownloadManager.Request request = new DownloadManager.Request(uri);
+                    request.setTitle(finalFileName);
+                    request.setDescription("Downloading file from NexChat...");
+                    request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                    request.allowScanningByMediaScanner();
+                    request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, finalFileName);
+
+                    if (mimeType != null && !mimeType.trim().isEmpty()) {
+                        request.setMimeType(mimeType.trim());
+                    }
+
+                    DownloadManager manager = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
+                    if (manager != null) {
+                        manager.enqueue(request);
+                        Toast.makeText(MainActivity.this, "Downloading " + finalFileName + " to Downloads / Gallery...", Toast.LENGTH_SHORT).show();
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    Toast.makeText(MainActivity.this, "Download failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
                 }
             });
         }

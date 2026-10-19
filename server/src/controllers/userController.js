@@ -96,6 +96,15 @@ export const updateAvatar = async (req, res) => {
     };
     await user.save();
 
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('user:avatar_updated', {
+        userId: user._id.toString(),
+        avatar: user.avatar,
+        displayName: user.displayName,
+      });
+    }
+
     res.json({
       message: 'Avatar updated',
       avatar: user.avatar,
@@ -118,6 +127,15 @@ export const removeAvatar = async (req, res) => {
 
     user.avatar = { url: '', publicId: '' };
     await user.save();
+
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('user:avatar_updated', {
+        userId: user._id.toString(),
+        avatar: user.avatar,
+        displayName: user.displayName,
+      });
+    }
 
     res.json({ message: 'Avatar removed', user: user.toSafeObject() });
   } catch (error) {

@@ -492,7 +492,12 @@ function App() {
       socket.emit('users:get_online');
     };
 
+    const handleUserAvatarUpdated = ({ userId, avatar }) => {
+      useChatStore.getState().updateUserAvatar(userId, avatar);
+    };
+
     // Attach listeners
+    socket.on('user:avatar_updated', handleUserAvatarUpdated);
     socket.on('message:new', handleNewMessage);
     socket.on('message:edited', handleMessageEdited);
     socket.on('message:deleted', handleMessageDeleted);
@@ -520,6 +525,7 @@ function App() {
     socket.on('connect', handleConnect);
 
     return () => {
+      socket.off('user:avatar_updated', handleUserAvatarUpdated);
       socket.off('message:new', handleNewMessage);
       socket.off('message:edited', handleMessageEdited);
       socket.off('message:deleted', handleMessageDeleted);

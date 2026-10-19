@@ -193,7 +193,78 @@ const useChatStore = create((set, get) => ({
       get().fetchMessages(convId);
     }
 
+    // Silently revalidate conversation participants (avatar, name, bio) in background
+    api.get(`/conversations/${convId}`).then((res) => {
+      if (res.data?.conversation) {
+        const freshConv = res.data.conversation;
+        set((s) => {
+          const isStillActive = (s.activeConversation?._id || s.activeConversation?.id)?.toString() === convId;
+          const updatedConvs = s.conversations.map((c) =>
+            (c._id || c.id)?.toString() === convId ? { ...c, ...freshConv } : c
+          );
+          return {
+            conversations: updatedConvs,
+            activeConversation: isStillActive ? { ...s.activeConversation, ...freshConv } : s.activeConversation,
+          };
+        });
+      }
+    }).catch(() => {});
+
     get().markAsRead(convId);
+  },
+
+  updateUserAvatar: (userId, avatar) => {
+    if (!userId) return;
+    const uid = userId.toString();
+    set((state) => {
+      const updatedConvs = state.conversations.map((c) => {
+        let hasParticipant = false;
+        const newParticipants = (c.participants || []).map((p) => {
+          const pId = (p.user?._id || p.user)?.toString();
+          if (pId === uid) {
+            hasParticipant = true;
+            return {
+              ...p,
+              user: typeof p.user === 'object' && p.user !== null
+                ? { ...p.user, avatar }
+                : { _id: p.user, avatar },
+            };
+          }
+          return p;
+        });
+
+        if (hasParticipant) {
+          return { ...c, participants: newParticipants };
+        }
+        return c;
+      });
+
+      let updatedActive = state.activeConversation;
+      if (updatedActive) {
+        const otherP = updatedActive.participants?.find((p) => (p.user?._id || p.user)?.toString() === uid);
+        if (otherP) {
+          const updatedActiveParticipants = updatedActive.participants.map((p) => {
+            if ((p.user?._id || p.user)?.toString() === uid) {
+              return {
+                ...p,
+                user: typeof p.user === 'object' && p.user !== null ? { ...p.user, avatar } : { _id: p.user, avatar },
+              };
+            }
+            return p;
+          });
+          updatedActive = { ...updatedActive, participants: updatedActiveParticipants };
+        }
+      }
+
+      try {
+        localStorage.setItem('nexchat_cached_conversations', JSON.stringify(updatedConvs.slice(0, 50)));
+      } catch (e) {}
+
+      return {
+        conversations: updatedConvs,
+        activeConversation: updatedActive,
+      };
+    });
   },
 
   addConversation: (conv) => {

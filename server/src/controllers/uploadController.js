@@ -479,8 +479,9 @@ export const downloadFileProxy = async (req, res) => {
     }
 
     const contentType = response.headers.get('content-type') || (safeFilename.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream');
+    const dispositionType = req.query.inline === 'true' ? 'inline' : 'attachment';
     res.setHeader('Content-Type', contentType);
-    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(safeFilename)}"`);
+    res.setHeader('Content-Disposition', `${dispositionType}; filename="${encodeURIComponent(safeFilename)}"`);
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, Content-Type');
 

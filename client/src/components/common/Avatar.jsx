@@ -9,11 +9,11 @@ export default function Avatar({
   className = '',
   textClassName = '',
 }) {
-  const [hasError, setHasError] = useState(false);
+  const rawSrc = typeof src === 'object' && src !== null ? src.url : src;
 
   useEffect(() => {
     setHasError(false);
-  }, [src]);
+  }, [rawSrc]);
 
   const sizeClasses = {
     xs: 'w-5 h-5 text-[10px]',
@@ -24,13 +24,19 @@ export default function Avatar({
   };
 
   const initial = (name || '?').trim().charAt(0).toUpperCase() || 'U';
-  const resolvedUrl = src ? resolveMediaUrl(src) : '';
+  let resolvedUrl = rawSrc ? resolveMediaUrl(rawSrc) : '';
+  if (resolvedUrl && resolvedUrl.startsWith('http://') && typeof window !== 'undefined' && window.location?.protocol === 'https:') {
+    resolvedUrl = resolvedUrl.replace(/^http:\/\//i, 'https://');
+  }
 
   if (resolvedUrl && !hasError) {
     return (
       <img
         src={resolvedUrl}
         alt={alt || name}
+        referrerPolicy="no-referrer"
+        crossOrigin="anonymous"
+        loading="lazy"
         onError={() => setHasError(true)}
         className={`${sizeClasses[size] || sizeClasses.md} rounded-full object-cover flex-shrink-0 ${className}`}
       />
