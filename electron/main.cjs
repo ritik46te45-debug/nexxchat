@@ -2,6 +2,11 @@ const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, Notification, dial
 const path = require('path');
 const fs = require('fs');
 
+// Set Application User Model ID for Windows Action Center / Toast Notifications
+if (process.platform === 'win32') {
+  app.setAppUserModelId('app.nexchat.desktop');
+}
+
 let mainWindow = null;
 let tray = null;
 let isQuitting = false;
@@ -54,6 +59,7 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      backgroundThrottling: false,
     },
   });
 
@@ -292,15 +298,18 @@ ipcMain.handle('electron-google-oauth', async () => {
 
 ipcMain.on('show-notification', (event, { title, body, icon, conversationId }) => {
   if (Notification.isSupported()) {
+    const defaultIcon = path.join(__dirname, 'icon.png');
+    const iconPath = fs.existsSync(defaultIcon) ? defaultIcon : (icon ? path.join(__dirname, '../client/public/favicon.png') : undefined);
     const notif = new Notification({
       title: title || 'NexChat',
       body: body || 'New message received',
-      icon: icon ? path.join(__dirname, '../client/public/favicon.png') : undefined,
+      icon: iconPath,
       silent: false,
     });
 
     notif.on('click', () => {
       if (mainWindow) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
         mainWindow.show();
         mainWindow.focus();
         if (conversationId) {
@@ -313,19 +322,34 @@ ipcMain.on('show-notification', (event, { title, body, icon, conversationId }) =
   }
 });
 
-// App Lifecycle
-app.whenReady().then(() => {
-  createWindow();
-  createTray();
+// Enforce single instance lock so duplicate windows are not spawned
+const gotTheLock = app.requestSingleInstanceLock();
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
-    } else if (mainWindow) {
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.show();
+      mainWindow.focus();
     }
   });
-});
+
+  // App Lifecycle
+  app.whenReady().then(() => {
+    createWindow();
+    createTray();
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createWindow();
+      } else if (mainWindow) {
+        mainWindow.show();
+      }
+    });
+  });
+}
 
 app.on('before-quit', () => {
   isQuitting = true;

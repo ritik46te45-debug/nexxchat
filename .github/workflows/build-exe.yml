@@ -1,0 +1,53 @@
+name: Build Windows Desktop EXE
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'electron/**'
+      - 'client/**'
+      - 'package.json'
+      - '.github/workflows/build-exe.yml'
+  workflow_dispatch:
+
+jobs:
+  build-exe:
+    name: Build Windows EXE (Installer & Portable)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Client Dependencies & Build Web Assets
+        shell: bash
+        run: |
+          cd client
+          npm install --legacy-peer-deps
+          npm run build
+
+      - name: Install Root Dependencies
+        shell: bash
+        run: |
+          npm install --legacy-peer-deps
+
+      - name: Build Windows Executables with Electron-Builder
+        shell: bash
+        run: |
+          npx electron-builder --win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Windows EXE Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexchat-windows-exe
+          path: release/*.exe
+          if-no-files-found: error
