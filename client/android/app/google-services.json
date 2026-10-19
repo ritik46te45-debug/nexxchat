@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "118206405691",
+    "project_number": "57615014473",
     "project_id": "nexchat-af1ce",
-    "storage_bucket": "nexchat-af1ce.appspot.com"
+    "storage_bucket": "nexchat-af1ce.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:118206405691:android:3e0d8fa099307f9c8f001",
+        "mobilesdk_app_id": "1:57615014473:android:4809ee03c7fe5c74137d98",
         "android_client_info": {
           "package_name": "app.nexchat.messenger"
         }
@@ -15,26 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyDummyKeyForFCMRegistration12345678"
-        }
-      ],
-      "services": {
-        "appinvite_service": {
-          "other_platform_oauth_client": []
-        }
-      }
-    },
-    {
-      "client_info": {
-        "mobilesdk_app_id": "1:118206405691:android:3e0d8fa099307f9c8f002",
-        "android_client_info": {
-          "package_name": "app.nexchat.messenger.debug"
-        }
-      },
-      "oauth_client": [],
-      "api_key": [
-        {
-          "current_key": "AIzaSyDummyKeyForFCMRegistration12345678"
+          "current_key": "AIzaSyB9yldhLkKIq1je6H9sGpb7ZbewjoB5Ldg"
         }
       ],
       "services": {
