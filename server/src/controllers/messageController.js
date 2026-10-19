@@ -810,7 +810,7 @@ export const syncMessages = async (req, res) => {
     // Find all conversations the user is in
     const userConvs = await Conversation.find({
       'participants.user': req.userId,
-    }).select('_id');
+    }).select('_id').lean();
 
     const convIds = userConvs.map(c => c._id);
 
@@ -820,6 +820,7 @@ export const syncMessages = async (req, res) => {
       updatedAt: { $gt: sinceDate },
       deletedFor: { $ne: req.userId },
     })
+      .select('-__v')
       .populate('sender', 'username displayName avatar')
       .populate({
         path: 'replyTo',
@@ -827,7 +828,8 @@ export const syncMessages = async (req, res) => {
         populate: { path: 'sender', select: 'username displayName' },
       })
       .sort({ createdAt: 1 })
-      .limit(200);
+      .limit(50)
+      .lean();
 
     res.json({
       messages: missedMessages,

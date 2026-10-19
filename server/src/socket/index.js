@@ -7,9 +7,6 @@ import Call from '../models/Call.js';
 import connectionManager from './connectionManager.js';
 import { dispatchPush } from '../services/pushService.js';
 
-// Track active calls in memory: Map<callId, { caller, receiver, type, conversationId }>
-const activeCalls = new Map();
-
 export const setupSocket = (io) => {
   // Auth middleware
   io.use(authenticateSocket);
@@ -703,7 +700,7 @@ export async function broadcastToConversation(io, conversationId, senderId, even
       const pIds = (conversation.participants || []).map(p => (p.user?._id || p.user || p)?.toString()).filter(Boolean);
       cached = { participants: pIds, expiresAt: now + 60000 };
       convParticipantsCache.set(cid, cached);
-      if (convParticipantsCache.size > 2000) {
+      if (convParticipantsCache.size > 100) {
         const firstKey = convParticipantsCache.keys().next().value;
         convParticipantsCache.delete(firstKey);
       }

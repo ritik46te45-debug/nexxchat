@@ -107,21 +107,23 @@ export const getConversations = async (req, res) => {
         },
       },
     })
-      .populate('participants.user', 'username displayName avatar isOnline lastSeen about userCode privacy friends')
+      .select('-__v')
+      .populate('participants.user', 'username displayName avatar isOnline lastSeen about')
       .populate({
         path: 'lastMessage',
+        select: '-__v',
         populate: { path: 'sender', select: 'username displayName' },
       })
       .sort({ lastMessageAt: -1 })
       .limit(parseInt(limit))
-      .skip((parseInt(page) - 1) * parseInt(limit));
+      .skip((parseInt(page) - 1) * parseInt(limit))
+      .lean();
 
     // Track orphaned conversations where user was deleted from DB to clean up
     const orphanedConvIds = [];
 
     // Filter out conversations where participant deleted, where other user is deleted, & attach exact unreadCount
-    const filtered = conversations.map((conv) => {
-      const convObj = conv.toObject();
+    const filtered = conversations.map((convObj) => {
       const myParticipant = convObj.participants?.find(
         (p) => (p.user?._id || p.user)?.toString() === req.userId.toString()
       );

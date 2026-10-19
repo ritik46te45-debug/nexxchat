@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "nodemon src/index.js",
-    "start": "node src/index.js",
+    "start": "node --max-old-space-size=450 src/index.js",
     "test": "jest"
   },
   "dependencies": {
