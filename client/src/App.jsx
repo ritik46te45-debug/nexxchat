@@ -100,11 +100,8 @@ function App() {
     let sub = null;
     const processDeepLink = async (rawUrl) => {
       if (!rawUrl) return;
-      console.log('[DEEP LINK] Received URL:', rawUrl);
       try {
-        // Close any open in-app browser tab
-        import('@capacitor/browser').then(({ Browser }) => Browser.close().catch(() => {})).catch(() => {});
-
+        // Close any open in-app browser tab if applicable
         const normalized = rawUrl.replace(/^(app\.nexchat\.messenger|nexchat):\/\//i, 'https://localhost/');
         const parsed = new URL(normalized);
         const token = parsed.searchParams.get('token');
