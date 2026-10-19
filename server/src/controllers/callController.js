@@ -65,3 +65,25 @@ export const getIceConfig = async (req, res) => {
     res.status(500).json({ error: 'Failed to get ICE configuration' });
   }
 };
+
+// Get currently ringing or active call for the user
+export const getActiveCall = async (req, res) => {
+  try {
+    const activeCall = await Call.findOne({
+      $or: [
+        { receiver: req.userId, status: 'ringing', createdAt: { $gte: new Date(Date.now() - 60000) } },
+        { receiver: req.userId, status: 'ongoing', createdAt: { $gte: new Date(Date.now() - 12 * 3600000) } },
+        { caller: req.userId, status: 'ongoing', createdAt: { $gte: new Date(Date.now() - 12 * 3600000) } },
+      ],
+    })
+      .populate('caller', 'username displayName avatar isOnline')
+      .populate('receiver', 'username displayName avatar isOnline')
+      .sort({ createdAt: -1 });
+
+    res.json({ activeCall: activeCall || null });
+  } catch (err) {
+    console.error('Get active call error:', err);
+    res.status(500).json({ error: 'Failed to fetch active call' });
+  }
+};
+

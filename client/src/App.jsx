@@ -205,9 +205,11 @@ function App() {
         onIncomingCall: (callData) => {
           console.log('[PUSH] Incoming call notification tapped:', callData);
           if (typeof window !== 'undefined') {
+            window.__PENDING_INCOMING_CALL = callData;
             window.dispatchEvent(new CustomEvent('nexchat:incoming_call', { detail: callData }));
           }
         },
+
       }).catch(() => {});
 
       // Delay non-critical notification fetch to reduce initial request burst

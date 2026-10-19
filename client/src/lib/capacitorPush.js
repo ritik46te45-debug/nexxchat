@@ -105,8 +105,14 @@ export async function initPushNotifications({ onNavigateToConversation } = {}) {
       const type = data.type || data.data?.type;
       const callId = data.callId || data.data?.callId;
 
-      if (type === 'call' && callId && typeof onIncomingCall === 'function') {
-        onIncomingCall(data);
+      if (type === 'call' && callId) {
+        if (typeof window !== 'undefined') {
+          window.__PENDING_INCOMING_CALL = data;
+          window.dispatchEvent(new CustomEvent('nexchat:incoming_call', { detail: data }));
+        }
+        if (typeof onIncomingCall === 'function') {
+          onIncomingCall(data);
+        }
       } else if (conversationId && typeof onNavigateToConversation === 'function') {
         onNavigateToConversation(conversationId);
       }
@@ -123,8 +129,14 @@ export async function initPushNotifications({ onNavigateToConversation } = {}) {
         const type = data.type;
         const callId = data.callId;
 
-        if (type === 'call' && callId && typeof onIncomingCall === 'function') {
-          onIncomingCall(data);
+        if (type === 'call' && callId) {
+          if (typeof window !== 'undefined') {
+            window.__PENDING_INCOMING_CALL = data;
+            window.dispatchEvent(new CustomEvent('nexchat:incoming_call', { detail: data }));
+          }
+          if (typeof onIncomingCall === 'function') {
+            onIncomingCall(data);
+          }
         } else if (conversationId && typeof onNavigateToConversation === 'function') {
           onNavigateToConversation(conversationId);
         }
@@ -139,62 +151,28 @@ export async function initPushNotifications({ onNavigateToConversation } = {}) {
 }
 
 /**
- * Setup High-Priority Android Notification Channels
- * IMPORTANT: Do NOT specify sound: 'default' because Android will look for res/raw/default.
- * Omitting sound allows Android to play the phone's native default notification tone!
+ * Clean up legacy notification channels and verify v3 channels
+ * High-priority channels with native ringtones are created in MainActivity.java
  */
 async function createNotificationChannels(PushNotifications) {
   try {
     if (!PushNotifications.createChannel) return;
 
-    // Remove legacy channels that had broken raw sound references
+    // Clean up older channels that lacked explicit audio or had broken URIs
     if (PushNotifications.deleteChannel) {
       await PushNotifications.deleteChannel({ id: 'nexchat_messages' }).catch(() => {});
       await PushNotifications.deleteChannel({ id: 'nexchat_calls' }).catch(() => {});
       await PushNotifications.deleteChannel({ id: 'nexchat_groups' }).catch(() => {});
+      await PushNotifications.deleteChannel({ id: 'nexchat_messages_v2' }).catch(() => {});
+      await PushNotifications.deleteChannel({ id: 'nexchat_calls_v2' }).catch(() => {});
+      await PushNotifications.deleteChannel({ id: 'nexchat_groups_v2' }).catch(() => {});
     }
 
-    // Messages Channel v2 (High priority, uses system default notification ringtone)
+    // Ensure fallback v3 channels exist if initialized in hybrid mode
     await PushNotifications.createChannel({
-      id: 'nexchat_messages_v2',
+      id: 'nexchat_messages_v3',
       name: 'Messages',
       description: 'Incoming instant messages and chats',
-      importance: 5, // High / Heads-up notification
-      visibility: 1, // Public on lockscreen
-      vibration: true,
-      lights: true,
-      lightColor: '#6366F1',
-    });
-
-    // Calls Channel v2 (Highest priority / Urgent)
-    await PushNotifications.createChannel({
-      id: 'nexchat_calls_v2',
-      name: 'Voice & Video Calls',
-      description: 'Incoming voice and video call alerts',
-      importance: 5, // Urgent / Full screen heads-up intent
-      visibility: 1,
-      vibration: true,
-      lights: true,
-      lightColor: '#10B981',
-    });
-
-    // Groups Channel v2
-    await PushNotifications.createChannel({
-      id: 'nexchat_groups_v2',
-      name: 'Group Notifications',
-      description: 'Group message alerts and mentions',
-      importance: 4,
-      visibility: 1,
-      vibration: true,
-      lights: true,
-      lightColor: '#8B5CF6',
-    });
-
-    // Recreate clean nexchat_messages channel for fallback compatibility
-    await PushNotifications.createChannel({
-      id: 'nexchat_messages',
-      name: 'Messages (Legacy)',
-      description: 'Incoming messages',
       importance: 5,
       visibility: 1,
       vibration: true,
@@ -202,10 +180,22 @@ async function createNotificationChannels(PushNotifications) {
       lightColor: '#6366F1',
     });
 
-    console.log('✅ Android Notification Channels created with native system tones');
+    await PushNotifications.createChannel({
+      id: 'nexchat_calls_v3',
+      name: 'Voice & Video Calls',
+      description: 'Incoming voice and video call alerts',
+      importance: 5,
+      visibility: 1,
+      vibration: true,
+      lights: true,
+      lightColor: '#10B981',
+    });
+
+    console.log('✅ Android Notification Channels v3 verified');
   } catch (e) {
     console.warn('Channel creation note:', e.message);
   }
 }
 
 export default { initPushNotifications, isNativePlatform, getPlatformName };
+

@@ -97,9 +97,10 @@ const sendFcmPush = async (fcmToken, payload) => {
       return null;
     }
 
-    const channelId = payload.data?.type === 'call'
-      ? 'nexchat_calls_v2'
-      : (payload.data?.type === 'group_message' ? 'nexchat_groups_v2' : 'nexchat_messages_v2');
+    const isCall = payload.data?.type === 'call';
+    const channelId = isCall
+      ? 'nexchat_calls_v3'
+      : (payload.data?.type === 'group_message' ? 'nexchat_groups_v3' : 'nexchat_messages_v3');
 
     const fcmMessage = {
       token: fcmToken,
@@ -111,10 +112,12 @@ const sendFcmPush = async (fcmToken, payload) => {
         priority: 'high',
         notification: {
           channelId,
-          sound: 'default',
+          sound: isCall ? 'ringtone' : 'default',
+          defaultSound: !isCall,
           color: '#6366f1',
           icon: 'ic_stat_notification',
           tag: payload.tag || 'nexchat-msg',
+          clickAction: 'FCM_PLUGIN_ACTIVITY',
         },
       },
       data: {
@@ -122,8 +125,10 @@ const sendFcmPush = async (fcmToken, payload) => {
         messageId: String(payload.data?.messageId || ''),
         type: String(payload.data?.type || ''),
         callId: String(payload.data?.callId || ''),
-        callerName: String(payload.title || ''),
+        callerName: String(payload.data?.callerName || payload.title || ''),
         callType: String(payload.data?.callType || 'voice'),
+        callerId: String(payload.data?.callerId || ''),
+        callerAvatar: String(payload.data?.callerAvatar || ''),
       },
     };
 
@@ -251,6 +256,9 @@ const buildPayload = (event, data, settings) => {
         callId: data.callId,
         conversationId: data.conversationId,
         callType: data.callType,
+        callerId: data.callerId,
+        callerName: data.callerName,
+        callerAvatar: data.callerAvatar,
       };
       break;
     }

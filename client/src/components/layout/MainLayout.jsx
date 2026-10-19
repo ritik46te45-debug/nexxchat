@@ -22,6 +22,9 @@ import CommandPalette from '../../features/command/CommandPalette';
 import NewChatModal from '../../features/chat/NewChatModal';
 import NewGroupModal from '../../features/groups/NewGroupModal';
 import BatteryOnboardingModal from '../../features/auth/BatteryOnboardingModal';
+import { PhoneOff } from 'lucide-react';
+import { App as CapApp } from '@capacitor/app';
+import api from '../../lib/api';
 import ErrorBoundary from '../common/ErrorBoundary';
 import { isNativePlatform, getPlatformName } from '../../lib/capacitorPush';
 
@@ -39,6 +42,14 @@ export default function MainLayout() {
   const [showNewGroup, setShowNewGroup] = useState(false);
   const [showBatteryModal, setShowBatteryModal] = useState(false);
   const [activeCall, setActiveCall] = useState(null);
+  const [isCallPiP, setIsCallPiP] = useState(false);
+  const [pipDuration, setPipDuration] = useState(0);
+
+  const formatTimer = (seconds = 0) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
 
   // Check if first-time mobile/android user needs battery onboarding
   useEffect(() => {
@@ -61,7 +72,7 @@ export default function MainLayout() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [setShowCommandPalette]);
 
-  // Socket listener for incoming calls
+  // Socket listener for incoming calls & automatic pending call synchronization
   useEffect(() => {
     const setupCallListener = () => {
       const socket = getSocket();
@@ -87,6 +98,7 @@ export default function MainLayout() {
             conversationId,
             isIncoming: true,
           });
+          setIsCallPiP(false);
         }
       };
 
@@ -100,6 +112,7 @@ export default function MainLayout() {
     const onReconnect = () => {
       if (cleanup) cleanup();
       cleanup = setupCallListener();
+      checkPendingCalls();
     };
     if (socket) {
       socket.on('connect', onReconnect);
@@ -124,16 +137,87 @@ export default function MainLayout() {
           conversationId,
           isIncoming: true,
         });
+        setIsCallPiP(false);
       }
     };
     window.addEventListener('nexchat:incoming_call', onIncomingPush);
+
+    // If app launched from cold start with a pending call notification
+    if (typeof window !== 'undefined' && window.__PENDING_INCOMING_CALL) {
+      onIncomingPush({ detail: window.__PENDING_INCOMING_CALL });
+      window.__PENDING_INCOMING_CALL = null;
+    }
+
+    // Comprehensive Active/Ringing Call Sync (checks socket + REST)
+    const checkPendingCalls = async () => {
+      const s = getSocket();
+      if (s) {
+        s.emit('call:check-pending');
+      }
+      try {
+        const { data } = await api.get('/calls/active');
+        if (data?.activeCall) {
+          const call = data.activeCall;
+          const myId = (useAuthStore.getState().user?._id || useAuthStore.getState().user)?.toString();
+          const callerId = (call.caller?._id || call.caller)?.toString();
+          if (call.status === 'ringing' && callerId !== myId) {
+            const caller = call.caller;
+            setActiveCall({
+              callId: call._id.toString(),
+              targetUserId: callerId,
+              displayName: caller?.displayName || caller?.username || 'Incoming Caller',
+              avatar: caller?.avatar,
+              type: call.type || 'voice',
+              conversationId: call.conversation?._id || call.conversation,
+              isIncoming: true,
+            });
+            setIsCallPiP(false);
+          }
+        }
+      } catch (e) {}
+    };
+
+    checkPendingCalls();
+
+    const handleForeground = () => {
+      checkPendingCalls();
+    };
+
+    window.addEventListener('focus', handleForeground);
+    const handleVisChange = () => {
+      if (document.visibilityState === 'visible') handleForeground();
+    };
+    document.addEventListener('visibilitychange', handleVisChange);
+
+    let capAppSub = null;
+    let capBackSub = null;
+    try {
+      CapApp.addListener('appStateChange', ({ isActive }) => {
+        if (isActive) handleForeground();
+      }).then((s) => { capAppSub = s; }).catch(() => {});
+
+      CapApp.addListener('backButton', () => {
+        // If a call is active in full screen, WhatsApp minimizes the call to PiP instead of closing the app
+        setActiveCall((curr) => {
+          if (curr) {
+            setIsCallPiP(true);
+          }
+          return curr;
+        });
+      }).then((s) => { capBackSub = s; }).catch(() => {});
+    } catch (e) {}
 
     return () => {
       if (cleanup) cleanup();
       if (socket) socket.off('connect', onReconnect);
       window.removeEventListener('nexchat:incoming_call', onIncomingPush);
+      window.removeEventListener('focus', handleForeground);
+      document.removeEventListener('visibilitychange', handleVisChange);
+      if (capAppSub?.remove) capAppSub.remove();
+      if (capBackSub?.remove) capBackSub.remove();
     };
   }, []);
+
 
   const handleStartCall = useCallback((targetUser, type = 'voice') => {
     const socket = getSocket();
@@ -194,11 +278,16 @@ export default function MainLayout() {
       type: callType,
       isIncoming: false,
     });
+    setIsCallPiP(false);
+    setPipDuration(0);
   }, [activeConversation]);
 
   const handleEndCall = useCallback(() => {
     setActiveCall(null);
+    setIsCallPiP(false);
+    setPipDuration(0);
   }, []);
+
 
   const handleCallIdUpdate = useCallback((newCallId) => {
     setActiveCall((prev) => (prev ? { ...prev, callId: newCallId } : null));
@@ -214,6 +303,40 @@ export default function MainLayout() {
       {(!isOnline || isReconnecting) && (
         <div className="absolute top-0 left-0 right-0 z-50 bg-yellow-600/90 text-white text-center py-1.5 text-xs font-medium animate-slide-down">
           {!isOnline ? '📡 You are offline — messages will sync when back online' : '🔄 Reconnecting to server...'}
+        </div>
+      )}
+
+      {/* WhatsApp-Style Ongoing Call Top Banner (visible when call is minimized) */}
+      {activeCall && isCallPiP && (
+        <div
+          onClick={() => setIsCallPiP(false)}
+          className="absolute top-0 left-0 right-0 z-50 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2.5 flex items-center justify-between cursor-pointer shadow-lg animate-slide-down select-none"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="w-2.5 h-2.5 rounded-full bg-white animate-pulse flex-shrink-0" />
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="text-xs sm:text-sm font-bold tracking-tight">Tap to return to call</span>
+              <span className="text-xs font-mono opacity-90 font-semibold">({formatTimer(pipDuration)})</span>
+              <span className="text-xs font-medium opacity-80 truncate hidden sm:inline">• {activeCall.displayName}</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                const socket = getSocket();
+                if (socket && activeCall.callId) {
+                  socket.emit('call:end', { callId: activeCall.callId, duration: pipDuration });
+                }
+                handleEndCall();
+              }}
+              className="px-3 py-1 rounded-full bg-red-600 hover:bg-red-700 text-white text-xs font-bold flex items-center gap-1 shadow transition-all cursor-pointer"
+              title="End Call"
+            >
+              <PhoneOff className="w-3.5 h-3.5" />
+              <span>End</span>
+            </button>
+          </div>
         </div>
       )}
 
@@ -323,6 +446,9 @@ export default function MainLayout() {
           isIncoming={activeCall.isIncoming}
           onEndCall={handleEndCall}
           onCallIdUpdate={handleCallIdUpdate}
+          isFloatingPiP={isCallPiP}
+          onPiPChange={setIsCallPiP}
+          onDurationUpdate={setPipDuration}
         />
       )}
 

@@ -107,10 +107,40 @@ export const setupSocket = (io) => {
     // Broadcast that this user is now online
     broadcastPresence('user:online', { userId, lastSeen: new Date() });
 
+    // Automatically check and emit any pending ringing incoming call (reconnect / app launch sync)
+    const checkAndEmitPendingCall = async () => {
+      try {
+        const ringingCall = await Call.findOne({
+          receiver: userId,
+          status: 'ringing',
+          createdAt: { $gte: new Date(Date.now() - 60000) }, // Call initiated in last 60 seconds
+        })
+          .populate('caller', 'username displayName avatar isOnline')
+          .sort({ createdAt: -1 });
+
+        if (ringingCall) {
+          console.log(`[CALL] Emitting pending ringing call ${ringingCall._id} to user ${userId}`);
+          socket.emit('call:incoming', {
+            call: ringingCall,
+            callId: ringingCall._id.toString(),
+            from: ringingCall.caller,
+            type: ringingCall.type,
+            conversationId: ringingCall.conversation?.toString(),
+          });
+        }
+      } catch (e) {
+        console.warn('[CALL] checkAndEmitPendingCall note:', e.message);
+      }
+    };
+
+    checkAndEmitPendingCall();
+    socket.on('call:check-pending', checkAndEmitPendingCall);
+
     // Allow client to request fresh online users list at any time
     socket.on('users:get_online', () => {
       socket.emit('users:online_list', { userIds: connectionManager.getOnlineUserIds() });
     });
+
 
     // ====== TYPING ======
     socket.on('typing:start', ({ conversationId }) => {
@@ -512,6 +542,7 @@ export const setupSocket = (io) => {
             {
               callerName: populatedCall.caller?.displayName || 'User',
               callerAvatar: populatedCall.caller?.avatar?.url || '',
+              callerId: (populatedCall.caller?._id || userId).toString(),
               callType: type,
               callId: call._id.toString(),
               conversationId: convId?.toString(),

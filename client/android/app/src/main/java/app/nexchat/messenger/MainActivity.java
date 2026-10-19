@@ -1,9 +1,21 @@
 package app.nexchat.messenger;
 
 import android.Manifest;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PictureInPictureParams;
+import android.content.Context;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
+import android.media.AudioAttributes;
+import android.media.RingtoneManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.provider.Settings;
+import android.util.Rational;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
 import androidx.annotation.NonNull;
 import androidx.core.app.ActivityCompat;
@@ -14,10 +26,24 @@ import java.util.List;
 
 public class MainActivity extends BridgeActivity {
     private static final int PERMISSION_REQ_CODE = 1001;
+    private volatile boolean isCallActive = false;
+
+    public class NativeBridge {
+        @JavascriptInterface
+        public void setCallActive(boolean active) {
+            isCallActive = active;
+        }
+
+        @JavascriptInterface
+        public void enterPiP() {
+            runOnUiThread(() -> triggerPictureInPicture());
+        }
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        createNativeNotificationChannels();
         requestMediaPermissions();
     }
 
@@ -25,6 +51,28 @@ public class MainActivity extends BridgeActivity {
     public void onResume() {
         super.onResume();
         configureWebViewSettings();
+    }
+
+    @Override
+    public void onUserLeaveHint() {
+        super.onUserLeaveHint();
+        // If user minimizes/exits the app during an active call, enter WhatsApp-style Picture-in-Picture
+        if (isCallActive) {
+            triggerPictureInPicture();
+        }
+    }
+
+    public void triggerPictureInPicture() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                PictureInPictureParams params = new PictureInPictureParams.Builder()
+                    .setAspectRatio(new Rational(9, 16))
+                    .build();
+                enterPictureInPictureMode(params);
+            } catch (Exception e) {
+                // Silently ignore if device/ROM restricts PiP
+            }
+        }
     }
 
     private void configureWebViewSettings() {
@@ -35,6 +83,72 @@ public class MainActivity extends BridgeActivity {
             settings.setJavaScriptCanOpenWindowsAutomatically(true);
             settings.setDomStorageEnabled(true);
             settings.setDatabaseEnabled(true);
+
+            // Register Native JavaScript Bridge for WhatsApp-style PiP & call tracking
+            getBridge().getWebView().addJavascriptInterface(new NativeBridge(), "NexChatNative");
+        }
+    }
+
+    private void createNativeNotificationChannels() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            if (manager == null) return;
+
+            // Remove legacy channels that lacked explicit audio or had broken sound URIs
+            try {
+                manager.deleteNotificationChannel("nexchat_messages");
+                manager.deleteNotificationChannel("nexchat_calls");
+                manager.deleteNotificationChannel("nexchat_messages_v2");
+                manager.deleteNotificationChannel("nexchat_calls_v2");
+            } catch (Exception ignored) {}
+
+            // 1. Messages Channel v3 (Audible Notification Chime)
+            NotificationChannel msgChannel = new NotificationChannel(
+                "nexchat_messages_v3",
+                "Messages",
+                NotificationManager.IMPORTANCE_HIGH
+            );
+            msgChannel.setDescription("Incoming instant messages and chats");
+            msgChannel.enableLights(true);
+            msgChannel.setLightColor(Color.parseColor("#6366F1"));
+            msgChannel.enableVibration(true);
+            msgChannel.setVibrationPattern(new long[]{0, 250, 150, 250});
+            msgChannel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+
+            AudioAttributes msgAudio = new AudioAttributes.Builder()
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION_COMMUNICATION_INSTANT)
+                .build();
+            Uri defaultNotifUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
+            if (defaultNotifUri == null) {
+                defaultNotifUri = Settings.System.DEFAULT_NOTIFICATION_URI;
+            }
+            msgChannel.setSound(defaultNotifUri, msgAudio);
+            manager.createNotificationChannel(msgChannel);
+
+            // 2. Calls Channel v3 (Loud WhatsApp-Style Phone Ringtone)
+            NotificationChannel callChannel = new NotificationChannel(
+                "nexchat_calls_v3",
+                "Voice & Video Calls",
+                NotificationManager.IMPORTANCE_HIGH
+            );
+            callChannel.setDescription("Incoming voice and video call alerts");
+            callChannel.enableLights(true);
+            callChannel.setLightColor(Color.parseColor("#10B981"));
+            callChannel.enableVibration(true);
+            callChannel.setVibrationPattern(new long[]{0, 1000, 1000, 1000, 1000});
+            callChannel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+
+            AudioAttributes callAudio = new AudioAttributes.Builder()
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                .build();
+            Uri defaultRingtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
+            if (defaultRingtoneUri == null) {
+                defaultRingtoneUri = Settings.System.DEFAULT_RINGTONE_URI;
+            }
+            callChannel.setSound(defaultRingtoneUri, callAudio);
+            manager.createNotificationChannel(callChannel);
         }
     }
 

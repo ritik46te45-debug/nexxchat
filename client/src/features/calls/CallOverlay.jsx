@@ -72,7 +72,15 @@ const startRingtoneAudio = (type = 'incoming') => {
   }
 };
 
-export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdUpdate }) {
+export default function CallOverlay({
+  callData,
+  isIncoming,
+  onEndCall,
+  onCallIdUpdate,
+  isFloatingPiP: externalIsPiP,
+  onPiPChange,
+  onDurationUpdate,
+}) {
   const [callStatus, setCallStatus] = useState(isIncoming ? 'incoming' : 'calling');
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(callData.type === 'voice');
@@ -82,7 +90,19 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [connectionState, setConnectionState] = useState('new');
   const [isSpeakerOn, setIsSpeakerOn] = useState(true);
-  const [isFloatingPiP, setIsFloatingPiP] = useState(false);
+  const [isFloatingPiP, setIsFloatingPiP] = useState(Boolean(externalIsPiP));
+
+  useEffect(() => {
+    if (typeof externalIsPiP === 'boolean') {
+      setIsFloatingPiP(externalIsPiP);
+    }
+  }, [externalIsPiP]);
+
+  const updatePiP = (val) => {
+    setIsFloatingPiP(val);
+    onPiPChange?.(val);
+  };
+
   const [stats, setStats] = useState(null);
   const [showStatsModal, setShowStatsModal] = useState(false);
   const [showDeviceMenu, setShowDeviceMenu] = useState(false);
@@ -189,6 +209,7 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
       setCallDuration((prev) => {
         const next = prev + 1;
         callDurationRef.current = next;
+        onDurationUpdate?.(next);
         return next;
       });
     }, 1000);
@@ -211,6 +232,13 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
       stopAudio = startRingtoneAudio('outgoing');
     }
 
+    // Inform native Android container of active call state for Picture-in-Picture
+    if (callStatus === 'ongoing') {
+      if (typeof window !== 'undefined' && window.NexChatNative?.setCallActive) {
+        try { window.NexChatNative.setCallActive(true); } catch (e) {}
+      }
+    }
+
     return () => {
       if (stopAudio) stopAudio();
     };
@@ -224,6 +252,9 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
 
   const cleanupAndExit = useCallback(() => {
     stopTimer();
+    if (typeof window !== 'undefined' && window.NexChatNative?.setCallActive) {
+      try { window.NexChatNative.setCallActive(false); } catch (e) {}
+    }
     if (webrtcManagerRef.current) {
       webrtcManagerRef.current.destroy();
       webrtcManagerRef.current = null;
@@ -232,6 +263,7 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
       onEndCallRef.current();
     }
   }, []);
+
 
   // Initialize WebRTC Manager & Socket Signaling (Runs ONCE per call lifecycle)
   useEffect(() => {
@@ -413,6 +445,9 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
       socket.off('call:ended', onEnded);
       socket.off('call:timeout', onTimeout);
       socket.off('call:error', onError);
+      if (typeof window !== 'undefined' && window.NexChatNative?.setCallActive) {
+        try { window.NexChatNative.setCallActive(false); } catch (e) {}
+      }
       manager.destroy();
     };
   }, []); // Run once on mount and teardown once on unmount
@@ -671,7 +706,9 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
     return (
       <div
         ref={containerRef}
-        className="fixed bottom-20 right-3 sm:bottom-6 sm:right-6 w-52 h-72 sm:w-64 sm:h-88 z-[150] bg-dark-card/95 border-2 border-primary-500/80 rounded-3xl shadow-2xl overflow-hidden flex flex-col p-2.5 animate-scale-in select-none backdrop-blur-xl"
+        onClick={() => updatePiP(false)}
+        className="fixed bottom-20 right-3 sm:bottom-6 sm:right-6 w-52 h-72 sm:w-64 sm:h-88 z-[150] bg-dark-card/95 border-2 border-primary-500/80 rounded-3xl shadow-2xl overflow-hidden flex flex-col p-2.5 animate-scale-in select-none backdrop-blur-xl cursor-pointer hover:border-primary-400 transition-all"
+        title="Tap to Expand Call"
       >
         {/* Remote Audio Track */}
         <audio ref={remoteAudioRef} autoPlay playsInline />
@@ -684,14 +721,20 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
           </div>
           <div className="flex items-center gap-1">
             <button
-              onClick={() => setIsFloatingPiP(false)}
+              onClick={(e) => {
+                e.stopPropagation();
+                updatePiP(false);
+              }}
               className="p-1 rounded-lg bg-dark-hover text-surface-300 hover:text-white hover:bg-primary-500 transition-all cursor-pointer"
               title="Expand to Full View"
             >
               <Maximize2 className="w-3.5 h-3.5" />
             </button>
             <button
-              onClick={handleEndCall}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleEndCall();
+              }}
               className="p-1 rounded-lg bg-accent-red/80 hover:bg-accent-red text-white transition-all cursor-pointer"
               title="End Call"
             >
@@ -784,6 +827,15 @@ export default function CallOverlay({ callData, isIncoming, onEndCall, onCallIdU
       {/* Top Header Bar */}
       <div className="w-full flex items-center justify-between z-10 flex-shrink-0 gap-2">
         <div className="flex items-center gap-2 min-w-0">
+          {/* WhatsApp-Style Minimize Call Button */}
+          <button
+            onClick={() => updatePiP(true)}
+            className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-dark-card/90 hover:bg-dark-hover flex items-center justify-center border border-dark-border text-surface-200 hover:text-white transition-all cursor-pointer shadow-sm mr-1 flex-shrink-0"
+            title="Minimize Call (Return to chats)"
+          >
+            <ChevronDown className="w-5 h-5 text-white" />
+          </button>
+
           <div className={`w-2.5 h-2.5 rounded-full ${callStatus === 'ongoing' ? 'bg-accent-green animate-pulse' : 'bg-primary-400'}`} />
           <span className="text-xs sm:text-sm font-bold tracking-wide text-white truncate">
             {isVideoCall ? 'Video Call' : 'Voice Call'}
