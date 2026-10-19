@@ -200,7 +200,29 @@ export const requestNotificationPermission = async () => {
 };
 
 // Show Native Windows / Android / iOS System Notification
-export const showSystemNotification = ({ title, body, icon, onClick, data }) => {
+export const showSystemNotification = (titleOrObj, maybeBody, maybeOptions = {}) => {
+  let title = 'NexChat';
+  let body = 'New message received';
+  let icon = '/favicon.ico';
+  let onClick = null;
+  let data = null;
+
+  if (typeof titleOrObj === 'object' && titleOrObj !== null) {
+    title = titleOrObj.title || title;
+    body = titleOrObj.body || body;
+    icon = titleOrObj.icon || icon;
+    onClick = titleOrObj.onClick || onClick;
+    data = titleOrObj.data || data;
+  } else {
+    title = titleOrObj || title;
+    body = maybeBody || body;
+    if (typeof maybeOptions === 'object' && maybeOptions !== null) {
+      icon = maybeOptions.icon || icon;
+      onClick = maybeOptions.onClick || onClick;
+      data = maybeOptions.data || data;
+    }
+  }
+
   // 1. Electron Desktop Native Toast Notification (Windows 10/11)
   if (typeof window !== 'undefined' && window.electronAPI?.showNotification) {
     window.electronAPI.showNotification({
@@ -212,13 +234,41 @@ export const showSystemNotification = ({ title, body, icon, onClick, data }) => 
     return null;
   }
 
-  // 2. Mobile phone vibration
+  // 2. Native Capacitor Android App (Shows NexChat App Logo in Status Bar & Notification Bar like WhatsApp)
+  if (typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.()) {
+    const LocalNotifications = window.Capacitor?.Plugins?.LocalNotifications;
+    if (LocalNotifications) {
+      try {
+        const notifId = Math.floor(Math.random() * 2147483647);
+        LocalNotifications.schedule({
+          notifications: [
+            {
+              id: notifId,
+              title: title || 'NexChat',
+              body: body || 'New message received',
+              channelId: 'nexchat_messages',
+              smallIcon: 'ic_stat_notification',
+              iconColor: '#6366f1',
+              sound: 'default',
+              extra: data || {},
+            }
+          ]
+        }).catch((err) => console.warn('[CAPACITOR LOCAL NOTIF] Schedule error:', err));
+        return null;
+      } catch (err) {
+        console.warn('[CAPACITOR LOCAL NOTIF] Error:', err);
+      }
+    }
+  }
+
+  // 3. Mobile phone vibration
   if (typeof navigator !== 'undefined' && navigator.vibrate) {
     try {
       navigator.vibrate([120, 80, 120]);
     } catch (e) {}
   }
 
+  // 4. Web Browser Notification (Desktop & Browser)
   if (!('Notification' in window) || Notification.permission !== 'granted') {
     return null;
   }

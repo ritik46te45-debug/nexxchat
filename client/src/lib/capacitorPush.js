@@ -101,6 +101,19 @@ export async function initPushNotifications({ onNavigateToConversation } = {}) {
       }
     });
 
+    // 7. Setup Native Local Notifications (for background chimes and status-bar icon)
+    const LocalNotifications = window.Capacitor?.Plugins?.LocalNotifications;
+    if (LocalNotifications) {
+      LocalNotifications.requestPermissions().catch(() => {});
+      LocalNotifications.addListener('localNotificationActionPerformed', (action) => {
+        console.log('[CAPACITOR LOCAL NOTIF] Clicked:', action);
+        const conversationId = action.notification?.extra?.conversationId;
+        if (conversationId && typeof onNavigateToConversation === 'function') {
+          onNavigateToConversation(conversationId);
+        }
+      });
+    }
+
     return true;
   } catch (error) {
     console.warn('[CAPACITOR PUSH] Setup note (fallback to web push):', error.message);
