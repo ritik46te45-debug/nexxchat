@@ -9,6 +9,7 @@ export default function Avatar({
   className = '',
   textClassName = '',
 }) {
+  const [hasError, setHasError] = useState(false);
   const rawSrc = typeof src === 'object' && src !== null ? src.url : src;
 
   useEffect(() => {
