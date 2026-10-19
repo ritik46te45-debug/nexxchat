@@ -29,21 +29,41 @@ const getFirebaseMessaging = async () => {
       const { initializeApp, cert, applicationDefault } = await import('firebase-admin/app');
       
       // Check for local file or environment for service account credentials
-      const localKeyPath = path.resolve('firebase-service-account.json');
-      if (fs.existsSync(localKeyPath)) {
+      const possiblePaths = [
+        path.resolve('firebase-service-account.json'),
+        path.resolve('server', 'firebase-service-account.json'),
+        path.resolve(process.cwd(), 'firebase-service-account.json'),
+      ];
+      const localKeyPath = possiblePaths.find((p) => fs.existsSync(p));
+
+      if (localKeyPath) {
         const serviceAccount = JSON.parse(fs.readFileSync(localKeyPath, 'utf8'));
         firebaseApp = initializeApp({
           credential: cert(serviceAccount),
         });
         firebaseInitialized = true;
-        console.log('✅ Firebase Admin SDK initialized from firebase-service-account.json');
+        console.log(`✅ Firebase Admin SDK initialized from ${localKeyPath}`);
       } else if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
-        const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
-        firebaseApp = initializeApp({
-          credential: cert(serviceAccount),
-        });
-        firebaseInitialized = true;
-        console.log('✅ Firebase Admin SDK initialized from FIREBASE_SERVICE_ACCOUNT_KEY');
+        let rawKey = process.env.FIREBASE_SERVICE_ACCOUNT_KEY.trim();
+        let serviceAccount = null;
+        try {
+          serviceAccount = JSON.parse(rawKey);
+        } catch (parseErr) {
+          try {
+            // Support base64 encoded JSON
+            const decoded = Buffer.from(rawKey, 'base64').toString('utf8');
+            serviceAccount = JSON.parse(decoded);
+          } catch (b64Err) {
+            console.error('[PUSH] Failed to parse FIREBASE_SERVICE_ACCOUNT_KEY as JSON or base64:', parseErr.message);
+          }
+        }
+        if (serviceAccount) {
+          firebaseApp = initializeApp({
+            credential: cert(serviceAccount),
+          });
+          firebaseInitialized = true;
+          console.log('✅ Firebase Admin SDK initialized from FIREBASE_SERVICE_ACCOUNT_KEY');
+        }
       } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
         firebaseApp = initializeApp({
           credential: applicationDefault(),
