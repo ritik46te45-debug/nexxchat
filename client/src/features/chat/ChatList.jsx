@@ -6,6 +6,7 @@ import useAuthStore from '../../stores/authStore';
 import useUIStore from '../../stores/uiStore';
 import NewChatModal from './NewChatModal';
 import NewGroupModal from '../groups/NewGroupModal';
+import Avatar from '../../components/common/Avatar';
 
 export default function ChatList({ onOpenProfile }) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -86,17 +87,12 @@ export default function ChatList({ onOpenProfile }) {
               className="relative group cursor-pointer"
               title="Edit Your Profile & DP"
             >
-              {user?.avatar?.url ? (
-                <img
-                  src={user.avatar.url}
-                  alt={user.displayName}
-                  className="w-9 h-9 rounded-full object-cover ring-2 ring-primary-500/60 shadow-md group-hover:scale-105 transition-transform"
-                />
-              ) : (
-                <div className="w-9 h-9 rounded-full gradient-primary flex items-center justify-center font-bold text-white text-sm ring-2 ring-primary-500/60 shadow-md group-hover:scale-105 transition-transform">
-                  {(user?.displayName || 'U').charAt(0).toUpperCase()}
-                </div>
-              )}
+              <Avatar
+                src={user?.avatar?.url}
+                name={user?.displayName || 'U'}
+                size="sm"
+                className="w-9 h-9 ring-2 ring-primary-500/60 shadow-md group-hover:scale-105 transition-transform"
+              />
               <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-accent-green border-2 border-dark-card" />
             </button>
 
@@ -334,13 +330,12 @@ function ConversationItem({ conversation, userId, isActive, onClick, typingUsers
     >
       {/* Avatar */}
       <div className="relative flex-shrink-0">
-        {avatar ? (
-          <img src={avatar} alt={name} className="w-12 h-12 rounded-full object-cover" />
-        ) : (
-          <div className="w-12 h-12 rounded-full gradient-primary flex items-center justify-center font-bold text-white text-base">
-            {(name || '?').charAt(0).toUpperCase()}
-          </div>
-        )}
+        <Avatar
+          src={avatar}
+          name={name}
+          size="lg"
+          className="shadow-sm"
+        />
         {showOnline && <div className="absolute bottom-0 right-0 online-dot" />}
       </div>
 

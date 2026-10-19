@@ -17,6 +17,7 @@ import PdfCoverCard from './PdfCoverCard';
 import { downloadFile } from '../../lib/fileDownload';
 import { resolveMediaUrl } from '../../lib/api';
 import toast from 'react-hot-toast';
+import Avatar from '../../components/common/Avatar';
 
 const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', '🎉', '👏', '💯', '🚀'];
 
@@ -277,13 +278,12 @@ export default function MessageBubble({
         <div className="flex items-center gap-2">
           {showAvatar && !isOwn && (
             <div className="w-7 h-7 rounded-full flex-shrink-0 mb-1">
-              {message.sender?.avatar?.url ? (
-                <img src={message.sender.avatar.url} alt="" className="w-7 h-7 rounded-full object-cover shadow-sm" />
-              ) : (
-                <div className="w-7 h-7 rounded-full gradient-primary text-white text-xs font-bold flex items-center justify-center">
-                  {(message.sender?.displayName || 'U').charAt(0).toUpperCase()}
-                </div>
-              )}
+              <Avatar
+                src={message.sender?.avatar?.url}
+                name={message.sender?.displayName || 'U'}
+                size="sm"
+                className="w-7 h-7 shadow-sm"
+              />
             </div>
           )}
 
@@ -400,12 +400,13 @@ export default function MessageBubble({
       {/* Other user avatar (if group start) */}
       {!isOwn && (
         <div className="w-7 h-7 rounded-full flex-shrink-0 mb-1">
-          {showAvatar && message.sender?.avatar?.url ? (
-            <img src={message.sender.avatar.url} alt="" className="w-7 h-7 rounded-full object-cover shadow-sm" />
-          ) : showAvatar ? (
-            <div className="w-7 h-7 rounded-full gradient-primary text-white text-xs font-bold flex items-center justify-center">
-              {(message.sender?.displayName || 'U').charAt(0).toUpperCase()}
-            </div>
+          {showAvatar ? (
+            <Avatar
+              src={message.sender?.avatar?.url}
+              name={message.sender?.displayName || 'U'}
+              size="sm"
+              className="w-7 h-7 shadow-sm"
+            />
           ) : <div className="w-7" />}
         </div>
       )}

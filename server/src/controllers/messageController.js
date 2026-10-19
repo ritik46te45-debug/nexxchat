@@ -596,17 +596,18 @@ export const markAsRead = async (req, res) => {
       return res.status(404).json({ error: 'Conversation not found' });
     }
 
-    // Reset unread count & set lastReadAt
-    const participantIndex = conversation.participants.findIndex(
-      p => (p.user?._id || p.user)?.toString() === req.userId.toString()
+    // 1. Atomic reset unread count & lastReadAt
+    await Conversation.updateOne(
+      { _id: conversationId, 'participants.user': req.userId },
+      {
+        $set: {
+          'participants.$.unreadCount': 0,
+          'participants.$.lastReadAt': new Date(),
+        }
+      }
     );
-    if (participantIndex !== -1) {
-      conversation.participants[participantIndex].unreadCount = 0;
-      conversation.participants[participantIndex].lastReadAt = new Date();
-      await conversation.save();
-    }
 
-    // Update message read status in bulk
+    // 2. Update message read status in bulk
     await Message.updateMany(
       {
         conversation: conversationId,
@@ -618,9 +619,27 @@ export const markAsRead = async (req, res) => {
       }
     );
 
+    // 3. Mark in-app notifications for this conversation as read
+    await Notification.updateMany(
+      {
+        recipient: req.userId,
+        'data.conversationId': conversationId,
+        isRead: false,
+      },
+      {
+        $set: { isRead: true, readAt: new Date() }
+      }
+    );
+
+    const unreadNotifCount = await Notification.countDocuments({
+      recipient: req.userId,
+      isRead: false,
+    });
+
     // Notify senders that messages were read directly via room emissions
     const io = req.app.get('io');
     if (io) {
+      io.to(`user:${req.userId}`).to(req.userId.toString()).emit('notification:count', { count: unreadNotifCount });
       emitToConversationParticipants(io, conversation, 'message:read', {
         conversationId,
         readBy: req.userId,

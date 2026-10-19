@@ -24,6 +24,7 @@ import MultiSelectToolbar from './MultiSelectToolbar';
 import { getSocket } from '../../lib/socket';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
+import Avatar from '../../components/common/Avatar';
 
 export default function ChatWindow({ onStartCall }) {
   const {
@@ -647,13 +648,7 @@ export default function ChatWindow({ onStartCall }) {
             }}
             title="View Profile & Bio"
           >
-            {avatar ? (
-              <img src={avatar} alt="" className="w-10 h-10 rounded-full object-cover shadow-sm" />
-            ) : (
-              <div className="w-10 h-10 rounded-full gradient-primary flex items-center justify-center text-white font-bold text-sm">
-                {name.charAt(0).toUpperCase()}
-              </div>
-            )}
+            <Avatar src={avatar} name={name} size="md" className="shadow-sm" />
             {isOnline && (
               <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-accent-green border-2 border-dark-card" />
             )}
@@ -1085,13 +1080,13 @@ export default function ChatWindow({ onStartCall }) {
             <div className="p-5 flex flex-col items-center text-center space-y-4 overflow-y-auto hide-scrollbar max-h-[75vh]">
               {/* Avatar */}
               <div className="relative">
-                {avatar ? (
-                  <img src={avatar} alt="" className="w-24 h-24 rounded-full object-cover ring-4 ring-primary-500/40 shadow-xl" />
-                ) : (
-                  <div className="w-24 h-24 rounded-full gradient-primary flex items-center justify-center text-3xl font-bold text-white shadow-xl ring-4 ring-primary-500/40">
-                    {name.charAt(0).toUpperCase()}
-                  </div>
-                )}
+                <Avatar
+                  src={avatar}
+                  name={name}
+                  size="xl"
+                  className="w-24 h-24 ring-4 ring-primary-500/40 shadow-xl"
+                  textClassName="text-3xl"
+                />
                 {isOnline && (
                   <span className="absolute bottom-1 right-1 w-5 h-5 rounded-full bg-accent-green border-3 border-dark-card shadow-sm" />
                 )}

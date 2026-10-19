@@ -582,23 +582,18 @@ const useChatStore = create((set, get) => ({
     try {
       if (!conversationId) return;
       const cid = conversationId.toString();
-      const currentConv = get().conversations.find((c) => c._id?.toString() === cid);
-      const hadUnread = currentConv && (
-        (currentConv.unreadCount && currentConv.unreadCount > 0) ||
-        (currentConv._participant && currentConv._participant.unreadCount > 0)
-      );
 
+      // Notify server via socket and REST unconditionally
       const socket = getSocket();
       if (socket) {
         socket.emit('message:read', { conversationId: cid });
       }
-      if (hadUnread) {
-        api.post(`/messages/${cid}/read`).catch(() => {});
-      }
+      api.post(`/messages/${cid}/read`).catch(() => {});
+
       const myId = (useAuthStore.getState().user?._id || useAuthStore.getState().user)?.toString();
       set((state) => {
         const convs = state.conversations.map((c) => {
-          if (c._id?.toString() === conversationId?.toString()) {
+          if ((c._id || c.id)?.toString() === cid) {
             return {
               ...c,
               unreadCount: 0,
@@ -612,15 +607,32 @@ const useChatStore = create((set, get) => ({
           }
           return c;
         });
+
         const unreadTotal = convs.reduce((sum, c) => {
           const myP = c._participant || c.participants?.find((p) => (p.user?._id || p.user)?.toString() === myId);
           const count = typeof c.unreadCount === 'number' ? c.unreadCount : (myP?.unreadCount || 0);
           return sum + Math.max(0, count);
         }, 0);
+
+        try {
+          localStorage.setItem('nexchat_cached_conversations', JSON.stringify(convs.slice(0, 50)));
+        } catch (e) {}
+
         if (typeof window !== 'undefined' && window.electronAPI?.setBadgeCount) {
           window.electronAPI.setBadgeCount(unreadTotal);
         }
-        return { conversations: convs, unreadTotal };
+
+        return {
+          conversations: convs,
+          unreadTotal,
+          activeConversation: (state.activeConversation?._id || state.activeConversation?.id)?.toString() === cid
+            ? {
+                ...state.activeConversation,
+                unreadCount: 0,
+                _participant: { ...(state.activeConversation._participant || {}), unreadCount: 0 },
+              }
+            : state.activeConversation,
+        };
       });
     } catch (error) {
       console.error('Mark as read error:', error);

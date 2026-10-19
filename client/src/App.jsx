@@ -14,6 +14,7 @@ import LoginPage from './features/auth/LoginPage';
 import RegisterPage from './features/auth/RegisterPage';
 import ResetPasswordPage from './features/auth/ResetPasswordPage';
 import MainLayout from './components/layout/MainLayout';
+import InAppNotificationBanner from './components/common/InAppNotificationBanner';
 
 const isDesktopOrNative = typeof window !== 'undefined' && (
   Boolean(window.electronAPI?.isElectron) ||
@@ -281,45 +282,23 @@ function App() {
             ? (message.content || (message.type === 'video_note' ? 'Sent a video note 🎥' : message.type === 'voice' ? 'Sent a voice message 🎤' : message.type ? `Sent a ${message.type}` : 'Sent an attachment'))
             : 'New message';
 
-          // 1. In-App Interactive Notification Toast Popup
-          toast.custom((t) => (
-            <div
-              onClick={() => {
-                toast.dismiss(t.id);
-                const convs = useChatStore.getState().conversations;
-                const targetConv = convs.find((c) => c._id?.toString() === conversationId?.toString());
-                if (targetConv) {
-                  useChatStore.getState().setActiveConversation(targetConv);
-                  useUIStore.getState().setSidebarView('chats');
-                  useUIStore.getState().setShowChatOnMobile(true);
-                }
-              }}
-              className={`${
-                t.visible ? 'animate-slide-in-top' : 'animate-fade-out opacity-0'
-              } max-w-sm w-full bg-dark-card/95 backdrop-blur-xl border border-primary-500/50 shadow-2xl rounded-2xl p-3 flex items-center gap-3 cursor-pointer hover:bg-dark-hover transition-all pointer-events-auto select-none`}
-            >
-              {message.sender?.avatar?.url ? (
-                <img src={message.sender.avatar.url} alt="" className="w-10 h-10 rounded-full object-cover ring-2 ring-primary-500 flex-shrink-0 shadow-md" />
-              ) : (
-                <div className="w-10 h-10 rounded-full gradient-primary flex items-center justify-center font-bold text-white text-sm flex-shrink-0 shadow-md">
-                  {senderName.charAt(0).toUpperCase()}
-                </div>
-              )}
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-bold text-white truncate">{senderName}</p>
-                <p className="text-[11px] text-surface-300 truncate">{previewText}</p>
-              </div>
-            </div>
-          ), { duration: 4000, position: 'top-right' });
+          // Single-Theme WhatsApp-Style In-App Banner (Grouped with Expand Button)
+          useUIStore.getState().showInAppBanner({
+            conversationId,
+            senderName,
+            senderAvatar: message.sender?.avatar?.url,
+            preview: previewText,
+            type: 'message',
+          });
 
-          // 2. Cross-platform System Notification (Windows Desktop Toast & Mobile Background Notification)
+          // System Notification (Windows Desktop Toast & Mobile Background Notification)
           if (notifSettings.desktopNotifications !== false) {
             showSystemNotification(senderName, previewText, {
               tag: `msg-${conversationId}`,
               data: { conversationId },
               onClick: () => {
                 const convs = useChatStore.getState().conversations;
-                const targetConv = convs.find((c) => c._id?.toString() === conversationId?.toString());
+                const targetConv = convs.find((c) => (c._id || c.id)?.toString() === conversationId?.toString());
                 if (targetConv) {
                   useChatStore.getState().setActiveConversation(targetConv);
                   useUIStore.getState().setSidebarView('chats');
@@ -432,38 +411,20 @@ function App() {
       const recipientId = (notif.recipient?._id || notif.recipient)?.toString();
       if (recipientId && currentUserId && recipientId === currentUserId) {
         useUIStore.getState().incrementUnreadNotifCount();
-        toast.custom((t) => (
-          <div
-            onClick={() => {
-              toast.dismiss(t.id);
-              if (notif.data?.conversationId) {
-                const convs = useChatStore.getState().conversations;
-                const targetConv = convs.find((c) => c._id?.toString() === notif.data.conversationId?.toString());
-                if (targetConv) {
-                  useChatStore.getState().setActiveConversation(targetConv);
-                  useUIStore.getState().setSidebarView('chats');
-                  useUIStore.getState().setShowChatOnMobile(true);
-                }
-              } else {
-                useUIStore.getState().setSidebarView('notifications');
-              }
-            }}
-            className={`${
-              t.visible ? 'animate-slide-in-top' : 'animate-fade-out opacity-0'
-            } max-w-sm w-full bg-dark-card/95 backdrop-blur-xl border border-primary-500/50 shadow-2xl rounded-2xl p-3 flex items-center gap-3 cursor-pointer hover:bg-dark-hover transition-all pointer-events-auto select-none`}
-          >
-            <div className="w-10 h-10 rounded-full gradient-primary flex items-center justify-center font-bold text-white text-base flex-shrink-0 shadow-md">
-              🔔
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-bold text-white truncate">{notif.title || 'Notification'}</p>
-                <span className="text-[10px] text-primary-400 font-medium">Just now</span>
-              </div>
-              <p className="text-xs text-surface-300 truncate mt-0.5">{notif.body || notif.message}</p>
-            </div>
-          </div>
-        ), { id: `notif-${notif._id || Date.now()}`, duration: 4000 });
+
+        // Chat messages are already handled by handleNewMessage — avoid duplicate banner!
+        if (notif.type === 'message' || notif.type === 'group_message') {
+          return;
+        }
+
+        // Single-Theme WhatsApp-Style In-App Banner for system alerts, friend requests, missed calls
+        useUIStore.getState().showInAppBanner({
+          conversationId: notif.data?.conversationId,
+          senderName: notif.title || 'Notification',
+          senderAvatar: notif.sender?.avatar?.url,
+          preview: notif.body || notif.message || 'New notification',
+          type: notif.type || 'alert',
+        });
       }
     };
 
@@ -604,6 +565,7 @@ function App() {
           error: { iconTheme: { primary: '#ef4444', secondary: '#1e293b' } },
         }}
       />
+      <InAppNotificationBanner />
       <Routes>
         <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
         <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />

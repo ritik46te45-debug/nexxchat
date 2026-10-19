@@ -430,23 +430,19 @@ export const setupSocket = (io) => {
     socket.on('message:read', async ({ conversationId }) => {
       try {
         if (!conversationId) return;
-        const conversation = await Conversation.findOne({
-          _id: conversationId,
-          'participants.user': userId,
-        });
-        if (!conversation) return;
 
-        // Reset unread count for reader
-        const pIdx = conversation.participants.findIndex(
-          p => p.user.toString() === userId
+        // Atomic reset unread count & lastReadAt in MongoDB
+        await Conversation.updateOne(
+          { _id: conversationId, 'participants.user': userId },
+          {
+            $set: {
+              'participants.$.unreadCount': 0,
+              'participants.$.lastReadAt': new Date(),
+            }
+          }
         );
-        if (pIdx !== -1) {
-          conversation.participants[pIdx].unreadCount = 0;
-          conversation.participants[pIdx].lastReadAt = new Date();
-          await conversation.save();
-        }
 
-        // Mark unread messages
+        // Mark unread messages read
         await Message.updateMany(
           {
             conversation: conversationId,
@@ -458,6 +454,27 @@ export const setupSocket = (io) => {
             $set: { status: 'read' },
           }
         );
+
+        // Mark in-app notifications for this conversation as read
+        await Notification.updateMany(
+          {
+            recipient: userId,
+            'data.conversationId': conversationId,
+            isRead: false,
+          },
+          {
+            $set: { isRead: true, readAt: new Date() }
+          }
+        );
+
+        const unreadNotifCount = await Notification.countDocuments({
+          recipient: userId,
+          isRead: false,
+        });
+        io.to(`user:${userId}`).to(userId.toString()).emit('notification:count', { count: unreadNotifCount });
+
+        const conversation = await Conversation.findById(conversationId).select('participants.user');
+        if (!conversation) return;
 
         // Notify other participants via direct socket dispatch & rooms
         const payload = {

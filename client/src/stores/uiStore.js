@@ -26,6 +26,7 @@ const useUIStore = create((set) => ({
   // Notification
   notification: null,
   unreadNotifCount: 0,
+  inAppBanner: null, // WhatsApp-style grouped in-app notification
 
   // Network
   isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
@@ -53,6 +54,36 @@ const useUIStore = create((set) => ({
   setShowChatOnMobile: (show) => set({ showChatOnMobile: show }),
   setUnreadNotifCount: (count) => set({ unreadNotifCount: Math.max(0, count) }),
   incrementUnreadNotifCount: () => set((s) => ({ unreadNotifCount: s.unreadNotifCount + 1 })),
+
+  showInAppBanner: (bannerData) => set((s) => {
+    const existing = s.inAppBanner;
+    if (existing && existing.conversationId && bannerData.conversationId && existing.conversationId.toString() === bannerData.conversationId.toString()) {
+      const existingList = Array.isArray(existing.messages) ? existing.messages : [existing.preview];
+      const updatedMessages = [...existingList, bannerData.preview].slice(-8);
+      return {
+        inAppBanner: {
+          ...existing,
+          senderName: bannerData.senderName || existing.senderName,
+          senderAvatar: bannerData.senderAvatar || existing.senderAvatar,
+          preview: bannerData.preview,
+          messages: updatedMessages,
+          createdAt: Date.now(),
+        }
+      };
+    }
+    return {
+      inAppBanner: {
+        ...bannerData,
+        messages: [bannerData.preview],
+        isExpanded: false,
+        createdAt: Date.now(),
+      }
+    };
+  }),
+  toggleExpandInAppBanner: () => set((s) => ({
+    inAppBanner: s.inAppBanner ? { ...s.inAppBanner, isExpanded: !s.inAppBanner.isExpanded } : null
+  })),
+  dismissInAppBanner: () => set({ inAppBanner: null }),
 
   setShowGlobalSearch: (show) => set({ showGlobalSearch: show }),
   setShowCommandPalette: (show) => set({ showCommandPalette: show }),

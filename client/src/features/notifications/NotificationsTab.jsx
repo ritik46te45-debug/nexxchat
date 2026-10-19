@@ -8,6 +8,7 @@ import api from '../../lib/api';
 import useChatStore from '../../stores/chatStore';
 import useUIStore from '../../stores/uiStore';
 import toast from 'react-hot-toast';
+import Avatar from '../../components/common/Avatar';
 
 export default function NotificationsTab() {
   const [notifications, setNotifications] = useState([]);
@@ -164,13 +165,12 @@ export default function NotificationsTab() {
             >
               {/* Sender Avatar / Type Icon */}
               <div className="relative flex-shrink-0">
-                {notif.sender?.avatar?.url ? (
-                  <img src={notif.sender.avatar.url} alt="" className="w-10 h-10 rounded-full object-cover shadow-sm" />
-                ) : (
-                  <div className="w-10 h-10 rounded-full gradient-primary text-white font-bold flex items-center justify-center text-xs">
-                    {(notif.sender?.displayName || notif.title || 'N').charAt(0).toUpperCase()}
-                  </div>
-                )}
+                <Avatar
+                  src={notif.sender?.avatar?.url}
+                  name={notif.sender?.displayName || notif.title || 'N'}
+                  size="md"
+                  className="shadow-sm"
+                />
                 <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-dark-card border border-dark-border flex items-center justify-center shadow-sm">
                   {getNotificationIcon(notif.type)}
                 </div>
