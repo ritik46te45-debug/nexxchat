@@ -23,20 +23,17 @@ export default function LoginPage() {
 
   const { login, googleLogin, verify2FALogin, error, clearError } = useAuthStore();
 
-  // If opened in browser with ?android=true and already authenticated, immediately deep link back
+  // When in Android Auth mode, do NOT automatically reuse stale tokens from previous browser sessions
+  // so the user can always pick and authenticate the exact account they intend to use.
   useEffect(() => {
     if (isAndroidAuthMode && typeof window !== 'undefined') {
-      const storedToken = localStorage.getItem('accessToken');
-      const storedRefresh = localStorage.getItem('refreshToken');
-      if (storedToken) {
-        setAndroidAuthSuccess({ token: storedToken, refreshToken: storedRefresh });
-        const intentLink = `intent://auth?token=${encodeURIComponent(storedToken)}&refreshToken=${encodeURIComponent(storedRefresh || '')}#Intent;scheme=app.nexchat.messenger;package=app.nexchat.messenger;end`;
-        const deepLink = `app.nexchat.messenger://auth?token=${encodeURIComponent(storedToken)}&refreshToken=${encodeURIComponent(storedRefresh || '')}`;
-        try {
-          window.location.href = intentLink;
-        } catch (e) {
-          window.location.href = deepLink;
-        }
+      const autoGoogle = searchParams.get('google') === '1';
+      if (autoGoogle) {
+        // Automatically prompt Google Account selector after Google scripts initialize
+        const timer = setTimeout(() => {
+          handleGoogleLogin();
+        }, 400);
+        return () => clearTimeout(timer);
       }
     }
   }, [isAndroidAuthMode]);

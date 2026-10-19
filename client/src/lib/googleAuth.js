@@ -74,7 +74,7 @@ export const triggerGoogleAuth = () => {
 
   // 2. Native Mobile APK (Capacitor)
   if (isNativeMobile()) {
-    const webAuthBridgeUrl = 'https://nexxchat-zeta.vercel.app/login?android=true';
+    const webAuthBridgeUrl = 'https://nexxchat-zeta.vercel.app/login?android=true&google=1';
     window.open(webAuthBridgeUrl, '_system');
     return Promise.resolve({ isExternalAuth: true });
   }
