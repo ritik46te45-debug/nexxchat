@@ -98,25 +98,35 @@ export const downloadFile = async (rawUrl, originalFileName, mimeType) => {
      (window.location.hostname === 'localhost' && Boolean(window.Capacitor)))
   );
 
-  // ─── 0. NATIVE ANDROID: Use Android's DownloadManager via NativeBridge ───
+  // ─── 0. NATIVE ANDROID: Direct MediaStore Download to Gallery / Downloads ───
   if (typeof window !== 'undefined' && window.NexChatNative?.downloadFile) {
     try {
-      window.NexChatNative.downloadFile(proxyUrl, fileName, mimeType || '');
-      toast.success(`Downloading ${fileName} to Downloads / Gallery`, { id: 'file-download', duration: 3500 });
+      window.NexChatNative.downloadFile(fullUrl, fileName, mimeType || '');
       return;
     } catch (nativeErr) {
-      console.warn('Native download failed, falling back to system browser:', nativeErr);
+      console.warn('Native download failed, falling back:', nativeErr);
     }
   }
 
-  // ─── 1. CAPACITOR NATIVE FALLBACK: System Browser Download ───
-  if (isCapacitorNative) {
+  // ─── 1. MOBILE BROWSERS (Chrome, Safari, etc.): Synchronous Direct Attachment Trigger ───
+  // Note: Programmatic blob URL a.click() after async await is blocked as untrusted on mobile.
+  // Direct navigation to our proxy with Content-Disposition: attachment triggers the mobile OS native download manager seamlessly.
+  if (isMobileOrCapacitor()) {
+    toast.success(`Downloading ${fileName}...`, { id: 'file-download', duration: 3000 });
     try {
-      window.open(proxyUrl, '_system');
-      toast.success(`Downloading ${fileName}...`, { id: 'file-download', duration: 3500 });
+      const link = document.createElement('a');
+      link.href = proxyUrl;
+      link.setAttribute('download', fileName);
+      link.setAttribute('target', '_blank');
+      link.rel = 'noopener noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      setTimeout(() => {
+        try { document.body.removeChild(link); } catch (e) {}
+      }, 2000);
       return;
-    } catch (capErr) {
-      console.warn('System browser open failed:', capErr);
+    } catch (mobileErr) {
+      console.warn('Mobile direct link failed, attempting fallback:', mobileErr);
     }
   }
 
