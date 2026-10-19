@@ -73,19 +73,9 @@ export const triggerGoogleAuth = () => {
   }
 
   // 2. Native Mobile APK (Capacitor)
-  // Opens an in-app Chrome Custom Tab (stays inside the app!) instead of launching Chrome externally
   if (isNativeMobile()) {
     const webAuthBridgeUrl = 'https://nexxchat-zeta.vercel.app/login?android=true';
-    // Try Capacitor Browser plugin for in-app browser (Chrome Custom Tab)
-    import('@capacitor/browser').then(({ Browser }) => {
-      Browser.open({ url: webAuthBridgeUrl, presentationStyle: 'popover' }).catch(() => {
-        // Fallback: open in system browser if Browser plugin fails
-        window.open(webAuthBridgeUrl, '_blank');
-      });
-    }).catch(() => {
-      // Fallback if @capacitor/browser not installed
-      window.open(webAuthBridgeUrl, '_blank');
-    });
+    window.open(webAuthBridgeUrl, '_system');
     return Promise.resolve({ isExternalAuth: true });
   }
 

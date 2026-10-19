@@ -30,8 +30,13 @@ export default function LoginPage() {
       const storedRefresh = localStorage.getItem('refreshToken');
       if (storedToken) {
         setAndroidAuthSuccess({ token: storedToken, refreshToken: storedRefresh });
+        const intentLink = `intent://auth?token=${encodeURIComponent(storedToken)}&refreshToken=${encodeURIComponent(storedRefresh || '')}#Intent;scheme=app.nexchat.messenger;package=app.nexchat.messenger;end`;
         const deepLink = `app.nexchat.messenger://auth?token=${encodeURIComponent(storedToken)}&refreshToken=${encodeURIComponent(storedRefresh || '')}`;
-        window.location.href = deepLink;
+        try {
+          window.location.href = intentLink;
+        } catch (e) {
+          window.location.href = deepLink;
+        }
       }
     }
   }, [isAndroidAuthMode]);
@@ -150,17 +155,22 @@ export default function LoginPage() {
               </p>
               <div className="pt-2 space-y-2.5">
                 <a
-                  href={`app.nexchat.messenger://auth?token=${encodeURIComponent(androidAuthSuccess.token)}&refreshToken=${encodeURIComponent(androidAuthSuccess.refreshToken || '')}`}
+                  href={`intent://auth?token=${encodeURIComponent(androidAuthSuccess.token)}&refreshToken=${encodeURIComponent(androidAuthSuccess.refreshToken || '')}#Intent;scheme=app.nexchat.messenger;package=app.nexchat.messenger;end`}
+                  onClick={() => {
+                    setTimeout(() => {
+                      window.location.href = `app.nexchat.messenger://auth?token=${encodeURIComponent(androidAuthSuccess.token)}&refreshToken=${encodeURIComponent(androidAuthSuccess.refreshToken || '')}`;
+                    }, 300);
+                  }}
                   className="w-full py-3.5 rounded-xl font-semibold text-sm text-white gradient-primary flex items-center justify-center gap-2 shadow-lg shadow-primary-500/25 active:scale-98"
                 >
-                  Open NexChat App
+                  Open NexChat App 🚀
                   <ArrowRight className="w-4 h-4" />
                 </a>
                 <a
-                  href={`nexchat://auth?token=${encodeURIComponent(androidAuthSuccess.token)}&refreshToken=${encodeURIComponent(androidAuthSuccess.refreshToken || '')}`}
+                  href={`app.nexchat.messenger://auth?token=${encodeURIComponent(androidAuthSuccess.token)}&refreshToken=${encodeURIComponent(androidAuthSuccess.refreshToken || '')}`}
                   className="block text-xs text-primary-400 hover:underline"
                 >
-                  Alternative Link (nexchat://)
+                  Direct Scheme Link (app.nexchat.messenger://)
                 </a>
               </div>
             </div>
