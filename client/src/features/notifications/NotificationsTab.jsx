@@ -30,7 +30,18 @@ export default function NotificationsTab() {
 
   useEffect(() => {
     fetchNotifications();
+
+    // Auto-mark notifications as read when user visits Notifications page
+    const timer = setTimeout(() => {
+      api.put('/notifications/read-all').then(() => {
+        setUnreadNotifCount(0);
+        setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+      }).catch(() => {});
+    }, 1000);
+
+    return () => clearTimeout(timer);
   }, []);
+
 
   const handleMarkAllRead = async () => {
     try {

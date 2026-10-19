@@ -4,6 +4,7 @@ import User from '../models/User.js';
 import Message from '../models/Message.js';
 import Conversation from '../models/Conversation.js';
 import Call from '../models/Call.js';
+import Notification from '../models/Notification.js';
 import connectionManager from './connectionManager.js';
 import { dispatchPush } from '../services/pushService.js';
 
@@ -316,7 +317,40 @@ export const setupSocket = (io) => {
         // Emit to conversation room
         io.to(`conv:${conversationId}`).emit('message:new', payload);
 
-        // [RT-009] Dispatch push notifications to background/closed devices of recipients
+        // [RT-009] Save in-app notifications and emit real-time count
+        recipientIds.forEach(async (rId) => {
+          try {
+            const notifType = conversation.type === 'group' ? 'group_message' : 'message';
+            const notifTitle = conversation.type === 'group'
+              ? `${canonicalMessage.sender?.displayName || 'User'} (${conversation.groupDetails?.name || 'Group'})`
+              : (canonicalMessage.sender?.displayName || 'User');
+            const notifBody = canonicalMessage.content || (
+              canonicalMessage.type === 'video_note' ? 'Sent a video note 🎥' :
+              canonicalMessage.type === 'voice' ? 'Sent a voice message 🎤' :
+              `Sent a ${canonicalMessage.type || 'message'}`
+            );
+
+            const notif = await Notification.create({
+              recipient: rId,
+              sender: userId,
+              type: notifType,
+              title: notifTitle,
+              body: notifBody,
+              data: {
+                conversationId: conversationId.toString(),
+                messageId: canonicalMessage._id.toString(),
+              },
+            });
+
+            const unreadCount = await Notification.countDocuments({ recipient: rId, isRead: false });
+            io.to(`user:${rId}`).to(rId).emit('notification:count', { count: unreadCount });
+            io.to(`user:${rId}`).to(rId).emit('notification:new', notif);
+          } catch (notifErr) {
+            console.warn('[NOTIF] Socket message in-app notification error:', notifErr.message);
+          }
+        });
+
+        // [RT-010] Dispatch push notifications to background/closed devices of recipients
         recipientIds.forEach(rId => {
           dispatchPush(
             rId,
@@ -535,6 +569,26 @@ export const setupSocket = (io) => {
             conversationId: convId,
           });
 
+          // Create in-app notification for incoming call
+          try {
+            const notif = await Notification.create({
+              recipient: targetReceiver,
+              sender: userId,
+              type: 'call_incoming',
+              title: populatedCall.caller?.displayName || 'Incoming Call',
+              body: `Incoming ${type} call`,
+              data: {
+                conversationId: convId,
+                callId: call._id,
+              },
+            });
+            const unreadCount = await Notification.countDocuments({ recipient: targetReceiver, isRead: false });
+            emitToUser(targetReceiver, 'notification:count', { count: unreadCount });
+            emitToUser(targetReceiver, 'notification:new', notif);
+          } catch (notifErr) {
+            console.warn('[CALL] Failed to record incoming call notification:', notifErr.message);
+          }
+
           // Dispatch incoming call push to target receiver devices
           dispatchPush(
             targetReceiver,
@@ -617,8 +671,72 @@ export const setupSocket = (io) => {
         if (callId) activeCalls.delete(callId);
 
         const callerId = (call.caller?._id || call.caller)?.toString();
+        const receiverId = (call.receiver?._id || call.receiver)?.toString();
+        const convId = call.conversation;
+
         if (callerId) {
           emitToUser(callerId, 'call:rejected', { callId: call._id.toString(), reason, userId });
+        }
+
+        // WhatsApp-style call record message in conversation
+        if (convId) {
+          try {
+            const isMissed = reason === 'missed' || reason === 'timeout';
+            const callMsg = await Message.create({
+              conversation: convId,
+              sender: call.caller,
+              type: 'call',
+              content: isMissed ? `Missed ${call.type || 'voice'} call` : `Declined ${call.type || 'voice'} call`,
+              callData: {
+                callType: call.type || 'voice',
+                duration: 0,
+                status: isMissed ? 'missed' : 'rejected',
+              },
+            });
+
+            const populatedMsg = await Message.findById(callMsg._id)
+              .populate('sender', 'username displayName avatar');
+
+            await Conversation.findByIdAndUpdate(convId, {
+              lastMessage: callMsg._id,
+              lastMessageAt: new Date(),
+            });
+
+            const msgPayload = {
+              message: populatedMsg,
+              conversationId: convId.toString(),
+            };
+
+            io.to(`conv:${convId}`).emit('message:new', msgPayload);
+            if (callerId) emitToUser(callerId, 'message:new', msgPayload);
+            if (receiverId) emitToUser(receiverId, 'message:new', msgPayload);
+          } catch (msgErr) {
+            console.warn('[CALL] Failed to create call record message on reject:', msgErr.message);
+          }
+        }
+
+        // Create missed call notification for receiver
+        if (receiverId) {
+          try {
+            const isMissed = reason === 'missed' || reason === 'timeout';
+            const callerUser = await User.findById(call.caller).select('displayName username avatar');
+            const missedNotif = await Notification.create({
+              recipient: receiverId,
+              sender: call.caller,
+              type: 'call_missed',
+              title: isMissed ? 'Missed Call' : 'Call Declined',
+              body: `${isMissed ? 'Missed' : 'Declined'} ${call.type || 'voice'} call from ${callerUser?.displayName || 'User'}`,
+              data: {
+                conversationId: convId,
+                callId: call._id,
+              },
+            });
+            const unreadCount = await Notification.countDocuments({ recipient: receiverId, isRead: false });
+            emitToUser(receiverId, 'notification:count', { count: unreadCount });
+            emitToUser(receiverId, 'notification:new', missedNotif);
+          } catch (ne) {
+            console.warn('[CALL] Failed to record missed call notif:', ne.message);
+          }
         }
       } catch (error) {
         console.error('Call reject error:', error);
@@ -664,9 +782,76 @@ export const setupSocket = (io) => {
         const callerId = (call.caller?._id || call.caller)?.toString();
         const receiverId = (call.receiver?._id || call.receiver)?.toString();
         const otherUserId = callerId === userId ? receiverId : callerId;
+        const convId = call.conversation;
 
         if (otherUserId) {
           emitToUser(otherUserId, 'call:ended', { callId: call._id.toString(), duration: finalDuration });
+        }
+
+        // WhatsApp-style call record message in conversation
+        if (convId) {
+          try {
+            const m = Math.floor(finalDuration / 60);
+            const s = finalDuration % 60;
+            const durText = m > 0 ? (s > 0 ? `${m}m ${s}s` : `${m}m`) : `${s}s`;
+            const isAnswered = finalDuration > 0;
+
+            const callMsg = await Message.create({
+              conversation: convId,
+              sender: call.caller,
+              type: 'call',
+              content: isAnswered
+                ? `${call.type === 'video' ? 'Video' : 'Voice'} call, ${durText}`
+                : `Missed ${call.type || 'voice'} call`,
+              callData: {
+                callType: call.type || 'voice',
+                duration: finalDuration,
+                status: isAnswered ? 'answered' : 'missed',
+              },
+            });
+
+            const populatedMsg = await Message.findById(callMsg._id)
+              .populate('sender', 'username displayName avatar');
+
+            await Conversation.findByIdAndUpdate(convId, {
+              lastMessage: callMsg._id,
+              lastMessageAt: new Date(),
+            });
+
+            const msgPayload = {
+              message: populatedMsg,
+              conversationId: convId.toString(),
+            };
+
+            io.to(`conv:${convId}`).emit('message:new', msgPayload);
+            if (callerId) emitToUser(callerId, 'message:new', msgPayload);
+            if (receiverId) emitToUser(receiverId, 'message:new', msgPayload);
+
+            // If duration is 0, also create missed call notification for receiver
+            if (!isAnswered && receiverId) {
+              try {
+                const callerUser = await User.findById(call.caller).select('displayName username avatar');
+                const missedNotif = await Notification.create({
+                  recipient: receiverId,
+                  sender: call.caller,
+                  type: 'call_missed',
+                  title: 'Missed Call',
+                  body: `Missed ${call.type || 'voice'} call from ${callerUser?.displayName || 'User'}`,
+                  data: {
+                    conversationId: convId,
+                    callId: call._id,
+                  },
+                });
+                const unreadCount = await Notification.countDocuments({ recipient: receiverId, isRead: false });
+                emitToUser(receiverId, 'notification:count', { count: unreadCount });
+                emitToUser(receiverId, 'notification:new', missedNotif);
+              } catch (ne) {
+                console.warn('[CALL] Failed to record missed call notif on end:', ne.message);
+              }
+            }
+          } catch (msgErr) {
+            console.warn('[CALL] Failed to create call record message on end:', msgErr.message);
+          }
         }
       } catch (error) {
         console.error('Call end error:', error);

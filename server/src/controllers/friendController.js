@@ -60,7 +60,7 @@ export const sendFriendRequest = async (req, res) => {
     await friendRequest.populate('to', 'username displayName avatar isOnline');
 
     // Create notification
-    await Notification.create({
+    const notif = await Notification.create({
       recipient: userId,
       sender: req.userId,
       type: 'friend_request',
@@ -72,6 +72,9 @@ export const sendFriendRequest = async (req, res) => {
     // Emit socket event directly to recipient room
     const io = req.app.get('io');
     if (io) {
+      const unreadCount = await Notification.countDocuments({ recipient: userId, isRead: false });
+      io.to(userId.toString()).to(`user:${userId.toString()}`).emit('notification:count', { count: unreadCount });
+      io.to(userId.toString()).to(`user:${userId.toString()}`).emit('notification:new', notif);
       io.to(userId.toString()).to(`user:${userId.toString()}`).emit('friend:request', {
         request: friendRequest,
         from: {
@@ -113,7 +116,7 @@ export const acceptFriendRequest = async (req, res) => {
     await User.findByIdAndUpdate(friendRequest.from, { $addToSet: { friends: req.userId } });
 
     // Create notification
-    await Notification.create({
+    const notif = await Notification.create({
       recipient: friendRequest.from,
       sender: req.userId,
       type: 'friend_accepted',
@@ -125,6 +128,9 @@ export const acceptFriendRequest = async (req, res) => {
     const io = req.app.get('io');
     if (io) {
       const fromIdStr = friendRequest.from.toString();
+      const unreadCount = await Notification.countDocuments({ recipient: friendRequest.from, isRead: false });
+      io.to(fromIdStr).to(`user:${fromIdStr}`).emit('notification:count', { count: unreadCount });
+      io.to(fromIdStr).to(`user:${fromIdStr}`).emit('notification:new', notif);
       io.to(fromIdStr).to(`user:${fromIdStr}`).emit('friend:accepted', {
         request: friendRequest,
         user: {

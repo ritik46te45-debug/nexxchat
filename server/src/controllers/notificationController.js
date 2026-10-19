@@ -111,16 +111,15 @@ export const getNotifications = async (req, res) => {
   try {
     const query = {
       recipient: req.userId,
-      type: { $nin: ['message', 'group_message'] },
     };
 
     const notifications = await Notification.find(query)
       .populate('sender', 'displayName username avatar userCode')
       .sort({ createdAt: -1 })
-      .limit(50);
+      .limit(60);
 
     const unreadCount = await Notification.countDocuments({
-      ...query,
+      recipient: req.userId,
       isRead: false,
     });
 
@@ -131,6 +130,7 @@ export const getNotifications = async (req, res) => {
   }
 };
 
+
 // MARK ALL NOTIFICATIONS AS READ
 export const markAllNotificationsAsRead = async (req, res) => {
   try {
@@ -138,7 +138,11 @@ export const markAllNotificationsAsRead = async (req, res) => {
       { recipient: req.userId, isRead: false },
       { isRead: true, readAt: new Date() }
     );
-    res.json({ message: 'All notifications marked as read' });
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user:${req.userId}`).to(req.userId.toString()).emit('notification:count', { count: 0 });
+    }
+    res.json({ message: 'All notifications marked as read', unreadCount: 0 });
   } catch (error) {
     console.error('Mark read error:', error);
     res.status(500).json({ error: 'Failed to mark notifications as read' });
@@ -149,7 +153,11 @@ export const markAllNotificationsAsRead = async (req, res) => {
 export const clearNotifications = async (req, res) => {
   try {
     await Notification.deleteMany({ recipient: req.userId });
-    res.json({ message: 'Notifications cleared' });
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user:${req.userId}`).to(req.userId.toString()).emit('notification:count', { count: 0 });
+    }
+    res.json({ message: 'Notifications cleared', unreadCount: 0 });
   } catch (error) {
     console.error('Clear notifications error:', error);
     res.status(500).json({ error: 'Failed to clear notifications' });
@@ -164,7 +172,15 @@ export const markNotificationAsRead = async (req, res) => {
       { _id: id, recipient: req.userId },
       { isRead: true, readAt: new Date() }
     );
-    res.json({ message: 'Notification marked as read' });
+    const unreadCount = await Notification.countDocuments({
+      recipient: req.userId,
+      isRead: false,
+    });
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user:${req.userId}`).to(req.userId.toString()).emit('notification:count', { count: unreadCount });
+    }
+    res.json({ message: 'Notification marked as read', unreadCount });
   } catch (error) {
     console.error('Mark single notification read error:', error);
     res.status(500).json({ error: 'Failed to mark notification as read' });

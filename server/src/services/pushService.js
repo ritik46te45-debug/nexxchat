@@ -117,9 +117,9 @@ const sendFcmPush = async (fcmToken, payload) => {
           color: '#6366f1',
           icon: 'ic_stat_notification',
           tag: payload.tag || 'nexchat-msg',
-          clickAction: 'FCM_PLUGIN_ACTIVITY',
         },
       },
+
       data: {
         conversationId: String(payload.data?.conversationId || ''),
         messageId: String(payload.data?.messageId || ''),

@@ -92,18 +92,99 @@ export async function initPushNotifications({ onNavigateToConversation } = {}) {
     // 4. Register with Apple / Google APNs / FCM
     await PushNotifications.register();
 
-    // 5. Handle foreground push delivery
+    // 5. Handle foreground push delivery & urgent call banner with Answer/Decline buttons
+    const LocalNotifications = window.Capacitor?.Plugins?.LocalNotifications;
+    if (LocalNotifications) {
+      LocalNotifications.requestPermissions().catch(() => {});
+      LocalNotifications.registerActionTypes({
+        types: [
+          {
+            id: 'INCOMING_CALL_ACTIONS',
+            actions: [
+              {
+                id: 'ACCEPT_CALL',
+                title: '✅ Answer',
+                foreground: true,
+              },
+              {
+                id: 'REJECT_CALL',
+                title: '❌ Decline',
+                destructive: true,
+                foreground: false,
+              },
+            ],
+          },
+        ],
+      }).catch(() => {});
+
+      LocalNotifications.addListener('localNotificationActionPerformed', (action) => {
+        console.log('[CAPACITOR LOCAL NOTIF] Action performed:', action);
+        const actionId = action.actionId;
+        const data = action.notification?.extra || {};
+        const conversationId = data.conversationId;
+        const type = data.type;
+        const callId = data.callId;
+
+        if (type === 'call' && callId) {
+          if (actionId === 'REJECT_CALL') {
+            // Decline directly from notification bar
+            const socket = window.__NEXCHAT_SOCKET;
+            if (socket) {
+              socket.emit('call:reject', { callId });
+            }
+            if (typeof window !== 'undefined' && window.NexChatNative?.dismissCallNotification) {
+              window.NexChatNative.dismissCallNotification();
+            }
+            LocalNotifications.cancel({ notifications: [{ id: 9999 }] }).catch(() => {});
+            return;
+          }
+
+          const callPayload = {
+            ...data,
+            autoAnswer: actionId === 'ACCEPT_CALL',
+          };
+          if (typeof window !== 'undefined') {
+            window.__PENDING_INCOMING_CALL = callPayload;
+            window.dispatchEvent(new CustomEvent('nexchat:incoming_call', { detail: callPayload }));
+          }
+          if (typeof onIncomingCall === 'function') {
+            onIncomingCall(callPayload);
+          }
+        } else if (conversationId && typeof onNavigateToConversation === 'function') {
+          onNavigateToConversation(conversationId);
+        }
+      });
+    }
+
     PushNotifications.addListener('pushNotificationReceived', (notification) => {
-      console.log('[CAPACITOR PUSH] Foreground notification received:', notification);
+      console.log('[CAPACITOR PUSH] Notification received:', notification);
+      const data = notification.data || {};
+      if (data.type === 'call' && data.callId && LocalNotifications) {
+        LocalNotifications.schedule({
+          notifications: [
+            {
+              id: 9999,
+              title: data.callerName || notification.title || 'Incoming Call',
+              body: data.callType === 'video' ? '📹 Incoming video call' : '📞 Incoming voice call',
+              channelId: 'nexchat_calls_v3',
+              actionTypeId: 'INCOMING_CALL_ACTIONS',
+              extra: data,
+              ongoing: true,
+              autoCancel: false,
+            },
+          ],
+        }).catch(() => {});
+      }
     });
 
     // 6. Handle push action / click (Deep Linking & Incoming Call Tap)
     PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
       console.log('[CAPACITOR PUSH] Notification clicked:', notification);
-      const data = notification.notification?.data || {};
-      const conversationId = data.conversationId || data.data?.conversationId;
-      const type = data.type || data.data?.type;
-      const callId = data.callId || data.data?.callId;
+      const rawData = notification.notification?.data || {};
+      const data = rawData.data || rawData;
+      const conversationId = data.conversationId || rawData.conversationId;
+      const type = data.type || rawData.type;
+      const callId = data.callId || rawData.callId;
 
       if (type === 'call' && callId) {
         if (typeof window !== 'undefined') {
@@ -118,32 +199,8 @@ export async function initPushNotifications({ onNavigateToConversation } = {}) {
       }
     });
 
-    // 7. Setup Native Local Notifications (for background chimes and status-bar icon)
-    const LocalNotifications = window.Capacitor?.Plugins?.LocalNotifications;
-    if (LocalNotifications) {
-      LocalNotifications.requestPermissions().catch(() => {});
-      LocalNotifications.addListener('localNotificationActionPerformed', (action) => {
-        console.log('[CAPACITOR LOCAL NOTIF] Clicked:', action);
-        const data = action.notification?.extra || {};
-        const conversationId = data.conversationId;
-        const type = data.type;
-        const callId = data.callId;
-
-        if (type === 'call' && callId) {
-          if (typeof window !== 'undefined') {
-            window.__PENDING_INCOMING_CALL = data;
-            window.dispatchEvent(new CustomEvent('nexchat:incoming_call', { detail: data }));
-          }
-          if (typeof onIncomingCall === 'function') {
-            onIncomingCall(data);
-          }
-        } else if (conversationId && typeof onNavigateToConversation === 'function') {
-          onNavigateToConversation(conversationId);
-        }
-      });
-    }
-
     return true;
+
   } catch (error) {
     console.warn('[CAPACITOR PUSH] Setup note (fallback to web push):', error.message);
     return await registerWebPush();

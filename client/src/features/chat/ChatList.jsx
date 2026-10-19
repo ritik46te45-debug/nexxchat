@@ -9,11 +9,16 @@ import NewGroupModal from '../groups/NewGroupModal';
 
 export default function ChatList({ onOpenProfile }) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [chatFilter, setChatFilter] = useState('all'); // 'all' | 'unread' | 'groups' | 'direct'
   const [showNewChat, setShowNewChat] = useState(false);
   const [showNewGroup, setShowNewGroup] = useState(false);
   const { conversations, activeConversation, setActiveConversation, typingUsers, onlineUsers, drafts } = useChatStore();
   const { user } = useAuthStore();
   const { isMobile, setShowChatOnMobile, unreadNotifCount, setSidebarView } = useUIStore();
+
+  const totalUnreadChats = useMemo(() => {
+    return conversations.filter(c => (c.unreadCount || c._participant?.unreadCount || 0) > 0).length;
+  }, [conversations]);
 
   // Filter and sort conversations
   const filteredConversations = useMemo(() => {
@@ -30,6 +35,15 @@ export default function ChatList({ onOpenProfile }) {
       }
       return true;
     });
+
+    // Apply Unread / Groups / Direct Filter
+    if (chatFilter === 'unread') {
+      convs = convs.filter(c => (c.unreadCount || c._participant?.unreadCount || 0) > 0);
+    } else if (chatFilter === 'groups') {
+      convs = convs.filter(c => c.type === 'group');
+    } else if (chatFilter === 'direct') {
+      convs = convs.filter(c => c.type === 'private');
+    }
 
     if (searchQuery) {
       convs = convs.filter(conv => {
@@ -52,12 +66,13 @@ export default function ChatList({ onOpenProfile }) {
     });
 
     return convs;
-  }, [conversations, searchQuery, user?._id]);
+  }, [conversations, chatFilter, searchQuery, user?._id]);
 
   const handleSelectConversation = (conv) => {
     setActiveConversation(conv);
     if (isMobile) setShowChatOnMobile(true);
   };
+
 
   return (
     <>
@@ -114,7 +129,7 @@ export default function ChatList({ onOpenProfile }) {
         </div>
 
         {/* Search */}
-        <div className="px-4 py-3">
+        <div className="px-4 py-2.5">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-500" />
             <input
@@ -122,10 +137,63 @@ export default function ChatList({ onOpenProfile }) {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search conversations..."
-              className="w-full pl-10 pr-4 py-2.5 bg-dark-input border border-dark-border rounded-xl text-sm text-white placeholder-surface-500 input-focus transition-all"
+              className="w-full pl-10 pr-4 py-2 bg-dark-input border border-dark-border rounded-xl text-sm text-white placeholder-surface-500 input-focus transition-all"
             />
           </div>
         </div>
+
+        {/* WhatsApp-Style Chat Filter Pills */}
+        <div className="flex items-center gap-1.5 px-4 pb-2.5 overflow-x-auto hide-scrollbar select-none">
+
+          <button
+            onClick={() => setChatFilter('all')}
+            className={`px-3 py-1 rounded-full text-xs font-semibold transition-all whitespace-nowrap cursor-pointer ${
+              chatFilter === 'all'
+                ? 'bg-primary-500 text-white shadow-sm'
+                : 'bg-dark-card hover:bg-dark-hover text-surface-400 hover:text-white border border-dark-border'
+            }`}
+          >
+            All
+          </button>
+          <button
+            onClick={() => setChatFilter('unread')}
+            className={`px-3 py-1 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+              chatFilter === 'unread'
+                ? 'bg-primary-500 text-white shadow-sm'
+                : 'bg-dark-card hover:bg-dark-hover text-surface-400 hover:text-white border border-dark-border'
+            }`}
+          >
+            <span>Unread</span>
+            {totalUnreadChats > 0 && (
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                chatFilter === 'unread' ? 'bg-white text-primary-600' : 'bg-primary-500 text-white'
+              }`}>
+                {totalUnreadChats}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setChatFilter('groups')}
+            className={`px-3 py-1 rounded-full text-xs font-semibold transition-all whitespace-nowrap cursor-pointer ${
+              chatFilter === 'groups'
+                ? 'bg-primary-500 text-white shadow-sm'
+                : 'bg-dark-card hover:bg-dark-hover text-surface-400 hover:text-white border border-dark-border'
+            }`}
+          >
+            Groups
+          </button>
+          <button
+            onClick={() => setChatFilter('direct')}
+            className={`px-3 py-1 rounded-full text-xs font-semibold transition-all whitespace-nowrap cursor-pointer ${
+              chatFilter === 'direct'
+                ? 'bg-primary-500 text-white shadow-sm'
+                : 'bg-dark-card hover:bg-dark-hover text-surface-400 hover:text-white border border-dark-border'
+            }`}
+          >
+            Direct
+          </button>
+        </div>
+
 
         {/* Conversation list */}
         <div className="flex-1 overflow-y-auto hide-scrollbar px-2 py-1 space-y-1">

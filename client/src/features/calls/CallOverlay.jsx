@@ -3,12 +3,15 @@ import {
   Mic, MicOff, Video as VideoIcon, VideoOff, PhoneOff,
   ScreenShare, StopCircle, Maximize2, Minimize2, Volume2,
   VolumeX, Radio, Wifi, WifiOff, Activity, RefreshCw,
-  Camera, Settings, Sparkles, Check, ChevronDown, PictureInPicture
+  Camera, Settings, Sparkles, Check, ChevronDown, PictureInPicture,
+  Move, Scaling
 } from 'lucide-react';
 import { getSocket } from '../../lib/socket';
 import { WebRTCManager } from '../../lib/webrtc/WebRTCManager';
 import ConnectionInfoModal from './ConnectionInfoModal';
+import { isNativePlatform } from '../../lib/capacitorPush';
 import toast from 'react-hot-toast';
+
 
 // Web Audio API Ringtone generator
 const startRingtoneAudio = (type = 'incoming') => {
@@ -92,6 +95,13 @@ export default function CallOverlay({
   const [isSpeakerOn, setIsSpeakerOn] = useState(true);
   const [isFloatingPiP, setIsFloatingPiP] = useState(Boolean(externalIsPiP));
 
+  // Moveable & Resizable PiP State
+  const [pipPosition, setPipPosition] = useState({ x: null, y: null });
+  const [pipSize, setPipSize] = useState({ width: 220, height: 320 });
+  const dragStartRef = useRef(null);
+  const resizeStartRef = useRef(null);
+  const didDragRef = useRef(false);
+
   useEffect(() => {
     if (typeof externalIsPiP === 'boolean') {
       setIsFloatingPiP(externalIsPiP);
@@ -102,6 +112,16 @@ export default function CallOverlay({
     setIsFloatingPiP(val);
     onPiPChange?.(val);
   };
+
+  const cyclePipSize = (e) => {
+    e.stopPropagation();
+    setPipSize((curr) => {
+      if (curr.width <= 200) return { width: 250, height: 350 };
+      if (curr.width <= 260) return { width: 310, height: 430 };
+      return { width: 190, height: 270 };
+    });
+  };
+
 
   const [stats, setStats] = useState(null);
   const [showStatsModal, setShowStatsModal] = useState(false);
@@ -222,12 +242,17 @@ export default function CallOverlay({
     }
   };
 
-  // Ringtone handling
+  // Ringtone handling (suppress Web Audio double-ring on native Android)
   useEffect(() => {
     let stopAudio = null;
+    const isNative = isNativePlatform();
 
     if (callStatus === 'incoming') {
-      stopAudio = startRingtoneAudio('incoming');
+      // On native mobile devices, the system notification channel already rings loudly!
+      // Only play Web Audio synth if we are NOT on native app (e.g. desktop web browser)
+      if (!isNative) {
+        stopAudio = startRingtoneAudio('incoming');
+      }
     } else if (callStatus === 'calling' || callStatus === 'ringing') {
       stopAudio = startRingtoneAudio('outgoing');
     }
@@ -237,12 +262,26 @@ export default function CallOverlay({
       if (typeof window !== 'undefined' && window.NexChatNative?.setCallActive) {
         try { window.NexChatNative.setCallActive(true); } catch (e) {}
       }
+      // Call is picked up / ongoing: dismiss system ringing notification immediately!
+      if (typeof window !== 'undefined' && window.NexChatNative?.dismissCallNotification) {
+        try { window.NexChatNative.dismissCallNotification(); } catch (e) {}
+      }
+      const LocalNotifications = window.Capacitor?.Plugins?.LocalNotifications;
+      LocalNotifications?.cancel?.({ notifications: [{ id: 9999 }] }).catch?.(() => {});
     }
 
     return () => {
       if (stopAudio) stopAudio();
     };
   }, [callStatus]);
+
+  // Auto-answer if launched with Answer action from notification bar
+  useEffect(() => {
+    if (isIncoming && callData.autoAnswer && callStatus === 'incoming') {
+      handleAccept();
+    }
+  }, [isIncoming, callData.autoAnswer]);
+
 
   const onEndCallRef = useRef(onEndCall);
   onEndCallRef.current = onEndCall;
@@ -252,9 +291,15 @@ export default function CallOverlay({
 
   const cleanupAndExit = useCallback(() => {
     stopTimer();
+    if (typeof window !== 'undefined' && window.NexChatNative?.dismissCallNotification) {
+      try { window.NexChatNative.dismissCallNotification(); } catch (e) {}
+    }
     if (typeof window !== 'undefined' && window.NexChatNative?.setCallActive) {
       try { window.NexChatNative.setCallActive(false); } catch (e) {}
     }
+    const LocalNotifications = window.Capacitor?.Plugins?.LocalNotifications;
+    LocalNotifications?.cancel?.({ notifications: [{ id: 9999 }] }).catch?.(() => {});
+
     if (webrtcManagerRef.current) {
       webrtcManagerRef.current.destroy();
       webrtcManagerRef.current = null;
@@ -263,6 +308,7 @@ export default function CallOverlay({
       onEndCallRef.current();
     }
   }, []);
+
 
 
   // Initialize WebRTC Manager & Socket Signaling (Runs ONCE per call lifecycle)
@@ -466,6 +512,13 @@ export default function CallOverlay({
 
   // Answer call (Receiver) - Sets up local media & peer connection first, then sends accept to caller
   const handleAccept = async () => {
+    // Dismiss system ringing notification & stop ringtone instantly
+    if (typeof window !== 'undefined' && window.NexChatNative?.dismissCallNotification) {
+      try { window.NexChatNative.dismissCallNotification(); } catch (e) {}
+    }
+    const LocalNotifications = window.Capacitor?.Plugins?.LocalNotifications;
+    LocalNotifications?.cancel?.({ notifications: [{ id: 9999 }] }).catch?.(() => {});
+
     const socket = getSocket();
     if (!socket || !webrtcManagerRef.current) return;
 
@@ -489,17 +542,30 @@ export default function CallOverlay({
   };
 
   const handleReject = () => {
+    if (typeof window !== 'undefined' && window.NexChatNative?.dismissCallNotification) {
+      try { window.NexChatNative.dismissCallNotification(); } catch (e) {}
+    }
+    const LocalNotifications = window.Capacitor?.Plugins?.LocalNotifications;
+    LocalNotifications?.cancel?.({ notifications: [{ id: 9999 }] }).catch?.(() => {});
+
     const socket = getSocket();
     if (socket) socket.emit('call:reject', { callId: callIdRef.current });
     cleanupAndExit();
   };
 
   const handleEndCall = () => {
+    if (typeof window !== 'undefined' && window.NexChatNative?.dismissCallNotification) {
+      try { window.NexChatNative.dismissCallNotification(); } catch (e) {}
+    }
+    const LocalNotifications = window.Capacitor?.Plugins?.LocalNotifications;
+    LocalNotifications?.cancel?.({ notifications: [{ id: 9999 }] }).catch?.(() => {});
+
     const socket = getSocket();
     const finalDuration = callDurationRef.current || callDuration || 0;
     if (socket) socket.emit('call:end', { callId: callIdRef.current, duration: finalDuration });
     cleanupAndExit();
   };
+
 
   // Track toggles
   const toggleMute = () => {
@@ -703,23 +769,96 @@ export default function CallOverlay({
   const statusBadge = getStatusBadge();
 
   if (isFloatingPiP) {
+    const containerStyle = pipPosition.x !== null
+      ? { left: `${pipPosition.x}px`, top: `${pipPosition.y}px`, width: `${pipSize.width}px`, height: `${pipSize.height}px` }
+      : { width: `${pipSize.width}px`, height: `${pipSize.height}px` };
+
     return (
       <div
         ref={containerRef}
-        onClick={() => updatePiP(false)}
-        className="fixed bottom-20 right-3 sm:bottom-6 sm:right-6 w-52 h-72 sm:w-64 sm:h-88 z-[150] bg-dark-card/95 border-2 border-primary-500/80 rounded-3xl shadow-2xl overflow-hidden flex flex-col p-2.5 animate-scale-in select-none backdrop-blur-xl cursor-pointer hover:border-primary-400 transition-all"
-        title="Tap to Expand Call"
+        style={containerStyle}
+        onClick={() => {
+          if (!didDragRef.current) {
+            updatePiP(false);
+          }
+        }}
+        className={`fixed ${pipPosition.x !== null ? '' : 'bottom-20 right-3 sm:bottom-6 sm:right-6'} z-[150] bg-dark-card/95 border-2 border-primary-500/80 rounded-3xl shadow-2xl overflow-hidden flex flex-col p-2.5 select-none backdrop-blur-xl hover:border-primary-400 transition-colors`}
+        title="Moveable & Resizable Call (Tap to Expand)"
       >
         {/* Remote Audio Track */}
         <audio ref={remoteAudioRef} autoPlay playsInline />
 
-        {/* Mini PiP Header */}
-        <div className="flex items-center justify-between pb-1.5 border-b border-dark-border/60">
+        {/* Moveable Draggable Mini PiP Header */}
+        <div
+          onMouseDown={(e) => {
+            const startX = pipPosition.x !== null ? pipPosition.x : (window.innerWidth - pipSize.width - 16);
+            const startY = pipPosition.y !== null ? pipPosition.y : (window.innerHeight - pipSize.height - 80);
+            dragStartRef.current = { mouseX: e.clientX, mouseY: e.clientY, posX: startX, posY: startY };
+            didDragRef.current = false;
+
+            const onMouseMove = (moveEvent) => {
+              if (!dragStartRef.current) return;
+              const dx = moveEvent.clientX - dragStartRef.current.mouseX;
+              const dy = moveEvent.clientY - dragStartRef.current.mouseY;
+              if (Math.abs(dx) > 4 || Math.abs(dy) > 4) didDragRef.current = true;
+              const nextX = Math.max(10, Math.min(window.innerWidth - pipSize.width - 10, dragStartRef.current.posX + dx));
+              const nextY = Math.max(10, Math.min(window.innerHeight - pipSize.height - 10, dragStartRef.current.posY + dy));
+              setPipPosition({ x: nextX, y: nextY });
+            };
+
+            const onMouseUp = () => {
+              window.removeEventListener('mousemove', onMouseMove);
+              window.removeEventListener('mouseup', onMouseUp);
+              dragStartRef.current = null;
+            };
+
+            window.addEventListener('mousemove', onMouseMove);
+            window.addEventListener('mouseup', onMouseUp);
+          }}
+          onTouchStart={(e) => {
+            if (!e.touches[0]) return;
+            const t = e.touches[0];
+            const startX = pipPosition.x !== null ? pipPosition.x : (window.innerWidth - pipSize.width - 16);
+            const startY = pipPosition.y !== null ? pipPosition.y : (window.innerHeight - pipSize.height - 80);
+            dragStartRef.current = { mouseX: t.clientX, mouseY: t.clientY, posX: startX, posY: startY };
+            didDragRef.current = false;
+
+            const onTouchMove = (moveEvent) => {
+              if (!dragStartRef.current || !moveEvent.touches[0]) return;
+              const touch = moveEvent.touches[0];
+              const dx = touch.clientX - dragStartRef.current.mouseX;
+              const dy = touch.clientY - dragStartRef.current.mouseY;
+              if (Math.abs(dx) > 4 || Math.abs(dy) > 4) didDragRef.current = true;
+              const nextX = Math.max(10, Math.min(window.innerWidth - pipSize.width - 10, dragStartRef.current.posX + dx));
+              const nextY = Math.max(10, Math.min(window.innerHeight - pipSize.height - 10, dragStartRef.current.posY + dy));
+              setPipPosition({ x: nextX, y: nextY });
+            };
+
+            const onTouchEnd = () => {
+              window.removeEventListener('touchmove', onTouchMove);
+              window.removeEventListener('touchend', onTouchEnd);
+              dragStartRef.current = null;
+            };
+
+            window.addEventListener('touchmove', onTouchMove);
+            window.addEventListener('touchend', onTouchEnd);
+          }}
+          className="flex items-center justify-between pb-1.5 border-b border-dark-border/60 cursor-grab active:cursor-grabbing"
+        >
           <div className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-accent-green animate-pulse" />
             <span className="text-[11px] font-bold text-white font-mono">{formatTimer(callDuration)}</span>
           </div>
+
           <div className="flex items-center gap-1">
+            {/* Quick Preset Resize Toggle */}
+            <button
+              onClick={cyclePipSize}
+              className="p-1 rounded-lg bg-dark-hover text-surface-300 hover:text-white transition-all cursor-pointer"
+              title="Toggle Size (Small / Medium / Large)"
+            >
+              <Scaling className="w-3.5 h-3.5" />
+            </button>
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -773,8 +912,8 @@ export default function CallOverlay({
           )}
         </div>
 
-        {/* Mini PiP Action Controls */}
-        <div className="flex items-center justify-around pt-1 border-t border-dark-border/60">
+        {/* Mini PiP Action Controls & Freehand Corner Resize Handle */}
+        <div className="relative flex items-center justify-around pt-1 border-t border-dark-border/60">
           <button
             onClick={toggleMute}
             className={`p-2 rounded-xl text-xs flex items-center justify-center transition-all ${
@@ -811,10 +950,60 @@ export default function CallOverlay({
           >
             <PhoneOff className="w-4 h-4" />
           </button>
+
+          {/* Interactive Freehand Drag Corner Resize Handle */}
+          <div
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              resizeStartRef.current = { mouseX: e.clientX, mouseY: e.clientY, w: pipSize.width, h: pipSize.height };
+              const onResizeMove = (moveEvent) => {
+                if (!resizeStartRef.current) return;
+                const dx = moveEvent.clientX - resizeStartRef.current.mouseX;
+                const dy = moveEvent.clientY - resizeStartRef.current.mouseY;
+                const nextW = Math.max(160, Math.min(window.innerWidth - 20, resizeStartRef.current.w + dx));
+                const nextH = Math.max(220, Math.min(window.innerHeight - 20, resizeStartRef.current.h + dy));
+                setPipSize({ width: nextW, height: nextH });
+              };
+              const onResizeUp = () => {
+                window.removeEventListener('mousemove', onResizeMove);
+                window.removeEventListener('mouseup', onResizeUp);
+                resizeStartRef.current = null;
+              };
+              window.addEventListener('mousemove', onResizeMove);
+              window.addEventListener('mouseup', onResizeUp);
+            }}
+            onTouchStart={(e) => {
+              e.stopPropagation();
+              if (!e.touches[0]) return;
+              const t = e.touches[0];
+              resizeStartRef.current = { mouseX: t.clientX, mouseY: t.clientY, w: pipSize.width, h: pipSize.height };
+              const onTouchResizeMove = (moveEvent) => {
+                if (!resizeStartRef.current || !moveEvent.touches[0]) return;
+                const touch = moveEvent.touches[0];
+                const dx = touch.clientX - resizeStartRef.current.mouseX;
+                const dy = touch.clientY - resizeStartRef.current.mouseY;
+                const nextW = Math.max(160, Math.min(window.innerWidth - 20, resizeStartRef.current.w + dx));
+                const nextH = Math.max(220, Math.min(window.innerHeight - 20, resizeStartRef.current.h + dy));
+                setPipSize({ width: nextW, height: nextH });
+              };
+              const onTouchResizeEnd = () => {
+                window.removeEventListener('touchmove', onTouchResizeMove);
+                window.removeEventListener('touchend', onTouchResizeEnd);
+                resizeStartRef.current = null;
+              };
+              window.addEventListener('touchmove', onTouchResizeMove);
+              window.addEventListener('touchend', onTouchResizeEnd);
+            }}
+            className="absolute -bottom-1 -right-1 w-5 h-5 flex items-center justify-center cursor-se-resize text-surface-400 hover:text-white"
+            title="Drag corner to resize"
+          >
+            <div className="w-2.5 h-2.5 border-r-2 border-b-2 border-surface-400 rounded-br-sm" />
+          </div>
         </div>
       </div>
     );
   }
+
 
   return (
     <div

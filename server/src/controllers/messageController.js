@@ -184,6 +184,33 @@ export const sendMessage = async (req, res) => {
       otherParticipants.forEach(async (p) => {
         const pUserId = (p.user?._id || p.user)?.toString();
         if (pUserId) {
+          try {
+            const notifType = conversation.type === 'group' ? 'group_message' : 'message';
+            const notifTitle = conversation.type === 'group'
+              ? `${populatedMessage.sender?.displayName || 'User'} (${conversation.groupDetails?.name || 'Group'})`
+              : (populatedMessage.sender?.displayName || 'User');
+
+            const notif = await Notification.create({
+              recipient: pUserId,
+              sender: req.userId,
+              type: notifType,
+              title: notifTitle,
+              body: notifBody,
+              data: {
+                conversationId: conversationId.toString(),
+                messageId: populatedMessage._id.toString(),
+              },
+            });
+
+            const unreadCount = await Notification.countDocuments({ recipient: pUserId, isRead: false });
+            if (io) {
+              io.to(`user:${pUserId}`).to(pUserId).emit('notification:count', { count: unreadCount });
+              io.to(`user:${pUserId}`).to(pUserId).emit('notification:new', notif);
+            }
+          } catch (notifErr) {
+            console.warn('[NOTIF] REST sendMessage in-app notification error:', notifErr.message);
+          }
+
           dispatchPush(
             pUserId,
             conversation.type === 'group' ? 'group_message' : 'message',

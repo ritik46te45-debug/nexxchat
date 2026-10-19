@@ -6,6 +6,7 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PictureInPictureParams;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.media.AudioAttributes;
@@ -38,6 +39,16 @@ public class MainActivity extends BridgeActivity {
         public void enterPiP() {
             runOnUiThread(() -> triggerPictureInPicture());
         }
+
+        @JavascriptInterface
+        public void dismissCallNotification() {
+            runOnUiThread(() -> {
+                NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+                if (manager != null) {
+                    manager.cancelAll();
+                }
+            });
+        }
     }
 
     @Override
@@ -45,12 +56,50 @@ public class MainActivity extends BridgeActivity {
         super.onCreate(savedInstanceState);
         createNativeNotificationChannels();
         requestMediaPermissions();
+        handleNotificationIntent(getIntent());
     }
 
     @Override
     public void onResume() {
         super.onResume();
         configureWebViewSettings();
+        handleNotificationIntent(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleNotificationIntent(intent);
+    }
+
+    private void handleNotificationIntent(Intent intent) {
+        if (intent == null || intent.getExtras() == null) return;
+        Bundle extras = intent.getExtras();
+        String type = extras.getString("type");
+        String callId = extras.getString("callId");
+        if ("call".equals(type) && callId != null && !callId.isEmpty()) {
+            String callerId = extras.getString("callerId", "");
+            String callerName = extras.getString("callerName", "Incoming Caller");
+            String callType = extras.getString("callType", "voice");
+            String conversationId = extras.getString("conversationId", "");
+
+            final String js = String.format(
+                "if (typeof window !== 'undefined') {" +
+                "  window.__PENDING_INCOMING_CALL = { callId: '%s', callerId: '%s', callerName: '%s', callType: '%s', type: 'call', conversationId: '%s' };" +
+                "  window.dispatchEvent(new CustomEvent('nexchat:incoming_call', { detail: window.__PENDING_INCOMING_CALL }));" +
+                "}",
+                callId, callerId, callerName, callType, conversationId
+            );
+
+            if (getBridge() != null && getBridge().getWebView() != null) {
+                getBridge().getWebView().postDelayed(() -> {
+                    if (getBridge() != null && getBridge().getWebView() != null) {
+                        getBridge().getWebView().evaluateJavascript(js, null);
+                    }
+                }, 300);
+            }
+        }
     }
 
     @Override

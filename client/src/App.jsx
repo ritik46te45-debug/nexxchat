@@ -420,6 +420,12 @@ function App() {
     const handleUserOnline = ({ userId }) => setUserOnline(userId);
     const handleUserOffline = ({ userId }) => setUserOffline(userId);
 
+    const handleNotificationCount = ({ count }) => {
+      if (typeof count === 'number') {
+        useUIStore.getState().setUnreadNotifCount(count);
+      }
+    };
+
     const handleNotificationNew = (notif) => {
       if (!notif) return;
       const currentUserId = (useAuthStore.getState().user?._id || useAuthStore.getState().user)?.toString();
@@ -540,6 +546,7 @@ function App() {
     socket.on('user:offline', handleUserOffline);
     socket.on('users:online_list', handleOnlineList);
     socket.on('notification:new', handleNotificationNew);
+    socket.on('notification:count', handleNotificationCount);
     socket.on('friend:request', handleFriendRequest);
     socket.on('friend:accepted', handleFriendAccepted);
     socket.on('conversation:new', handleConversationNew);
@@ -566,6 +573,7 @@ function App() {
       socket.off('user:offline', handleUserOffline);
       socket.off('users:online_list', handleOnlineList);
       socket.off('notification:new', handleNotificationNew);
+      socket.off('notification:count', handleNotificationCount);
       socket.off('friend:request', handleFriendRequest);
       socket.off('friend:accepted', handleFriendAccepted);
       socket.off('conversation:new', handleConversationNew);

@@ -4,7 +4,7 @@ import {
   Trash2, Copy, Edit3, MoreHorizontal, Download, Play, Pause,
   FileText, MapPin, Users2, BarChart2, Smile, Timer, Pin,
   MessageSquare, ExternalLink, Globe, Bell, CheckSquare, Eye,
-  UploadCloud, Zap, X
+  UploadCloud, Zap, X, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Video
 } from 'lucide-react';
 import { format } from 'date-fns';
 import useChatStore from '../../stores/chatStore';
@@ -131,26 +131,64 @@ export default function MessageBubble({
     );
   }
 
-  // Call record message
+  // Call record message (WhatsApp-Style)
   if (message.type === 'call') {
-    const callData = message.callData;
+    const callData = message.callData || {};
+    const isVideo = callData.callType === 'video';
+    const isAnswered = callData.status === 'answered' && (callData.duration || 0) > 0;
+    const isMissed = callData.status === 'missed';
+    const isDeclined = callData.status === 'rejected' || callData.status === 'declined';
+
+    const formatCallDuration = (secs) => {
+      if (!secs || secs <= 0) return '0s';
+      const m = Math.floor(secs / 60);
+      const s = secs % 60;
+      if (m > 0 && s > 0) return `${m}m ${s}s`;
+      if (m > 0) return `${m}m`;
+      return `${s}s`;
+    };
+
+    let title = isVideo ? 'Video call' : 'Voice call';
+    let subtitle = '';
+    let Icon = Phone;
+    let iconColor = 'text-accent-green bg-accent-green/20';
+
+    if (isAnswered) {
+      Icon = isOwn ? PhoneOutgoing : PhoneIncoming;
+      iconColor = 'text-accent-green bg-accent-green/20';
+      subtitle = `${formatCallDuration(callData.duration)} • ${safeFormatTime(message.createdAt)}`;
+    } else if (isMissed) {
+      Icon = PhoneMissed;
+      iconColor = 'text-accent-red bg-accent-red/20';
+      title = isOwn ? `Cancelled ${isVideo ? 'video' : 'voice'} call` : `Missed ${isVideo ? 'video' : 'voice'} call`;
+      subtitle = safeFormatTime(message.createdAt);
+    } else if (isDeclined) {
+      Icon = PhoneMissed;
+      iconColor = 'text-accent-red bg-accent-red/20';
+      title = `Declined ${isVideo ? 'video' : 'voice'} call`;
+      subtitle = safeFormatTime(message.createdAt);
+    } else {
+      Icon = isOwn ? PhoneOutgoing : PhoneIncoming;
+      iconColor = 'text-surface-400 bg-surface-500/20';
+      subtitle = safeFormatTime(message.createdAt);
+    }
+
     return (
-      <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-1.5 px-2`}>
-        <div className="max-w-[75%] px-4 py-3 rounded-2xl bg-dark-card border border-dark-border flex items-center gap-3 shadow-md">
-          <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm ${
-            callData?.status === 'answered' ? 'bg-accent-green/20 text-accent-green' : 'bg-accent-red/20 text-accent-red'
-          }`}>
-            📞
+      <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'} my-2 px-2`}>
+        <div className="max-w-[85%] sm:max-w-[70%] px-4 py-3 rounded-2xl bg-dark-card/90 border border-dark-border/80 flex items-center gap-3.5 shadow-lg backdrop-blur-md">
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${iconColor}`}>
+            <Icon className="w-5 h-5" />
           </div>
-          <div>
-            <p className="text-xs font-bold text-white">
-              {callData?.callType === 'video' ? 'Video' : 'Voice'} Call
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-bold text-white truncate">
+              {title}
             </p>
-            <p className="text-[11px] text-surface-400">
-              {callData?.status === 'answered'
-                ? `Duration: ${Math.floor((callData?.duration || 0) / 60)}:${String((callData?.duration || 0) % 60).padStart(2, '0')}`
-                : callData?.status === 'missed' ? 'Missed Call' : 'Declined'}
+            <p className="text-[11px] text-surface-400 truncate mt-0.5">
+              {subtitle}
             </p>
+          </div>
+          <div className="flex-shrink-0 text-surface-500">
+            {isVideo ? <Video className="w-4 h-4" /> : <Phone className="w-4 h-4" />}
           </div>
         </div>
       </div>
