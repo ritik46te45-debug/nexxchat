@@ -7,6 +7,9 @@ import Call from '../models/Call.js';
 import connectionManager from './connectionManager.js';
 import { dispatchPush } from '../services/pushService.js';
 
+// In-memory registry of active ongoing calls (callId -> metadata)
+const activeCalls = new Map();
+
 export const setupSocket = (io) => {
   // Auth middleware
   io.use(authenticateSocket);
@@ -432,23 +435,35 @@ export const setupSocket = (io) => {
           return socket.emit('call:error', { error: 'Receiver ID is required' });
         }
 
-        // Auto-resolve conversation if not provided
+        // Auto-resolve or validate conversation
         let convId = conversationId;
-        if (!convId && targetReceiver) {
+        if (convId && !mongoose.Types.ObjectId.isValid(convId)) {
+          convId = null;
+        }
+
+        if (!convId && targetReceiver && mongoose.Types.ObjectId.isValid(targetReceiver)) {
+          const userObjId = new mongoose.Types.ObjectId(userId);
+          const targetObjId = new mongoose.Types.ObjectId(targetReceiver);
+
           let conv = await Conversation.findOne({
             type: 'private',
-            'participants.user': { $all: [userId, targetReceiver] },
+            'participants.user': { $all: [userObjId, targetObjId] },
           });
           if (!conv) {
             conv = await Conversation.create({
               type: 'private',
               participants: [
-                { user: userId, role: 'member' },
-                { user: targetReceiver, role: 'member' },
+                { user: userObjId, role: 'member' },
+                { user: targetObjId, role: 'member' },
               ],
             });
           }
           convId = conv._id;
+        }
+
+        if (!convId) {
+          console.warn(`[CALL] Missing conversation for caller ${userId} and receiver ${targetReceiver}`);
+          return socket.emit('call:error', { error: 'Could not resolve conversation for this call' });
         }
 
         const call = await Call.create({
@@ -470,6 +485,8 @@ export const setupSocket = (io) => {
           conversationId: convId,
           isGroup,
         });
+
+        console.log(`[CALL] Call created: ${call._id} | caller: ${userId} | receiver: ${targetReceiver} | conv: ${convId}`);
 
         if (isGroup) {
           broadcastToConversation(io, convId, userId, 'call:incoming', {
@@ -515,8 +532,8 @@ export const setupSocket = (io) => {
           call: populatedCall,
         });
       } catch (error) {
-        console.error('Call initiate error:', error);
-        socket.emit('call:error', { error: 'Failed to initiate call' });
+        console.error('[CALL] Call initiate error:', error);
+        socket.emit('call:error', { error: error.message || 'Failed to initiate call' });
       }
     });
 
