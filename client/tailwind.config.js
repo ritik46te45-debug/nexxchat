@@ -9,16 +9,16 @@ export default {
     extend: {
       colors: {
         primary: {
-          50: '#f0e7ff',
-          100: '#d4bfff',
-          200: '#b794ff',
-          300: '#9a68ff',
-          400: '#8b5cf6',
-          500: '#7c3aed',
-          600: '#6d28d9',
-          700: '#5b21b6',
-          800: '#4c1d95',
-          900: '#3b0764',
+          50: '#eef2ff',
+          100: '#e0e7ff',
+          200: '#c7d2fe',
+          300: '#a5b4fc',
+          400: '#818cf8',
+          500: '#6366f1',
+          600: '#4f46e5',
+          700: '#4338ca',
+          800: '#3730a3',
+          900: '#312e81',
         },
         surface: {
           50: '#f8fafc',
@@ -34,11 +34,11 @@ export default {
           950: '#020617',
         },
         dark: {
-          bg: '#0a0a1a',
-          card: '#111128',
-          hover: '#1a1a3e',
-          border: '#1e1e4a',
-          input: '#151530',
+          bg: '#0b0f17',
+          card: '#121824',
+          hover: '#192233',
+          border: '#1f2a3c',
+          input: '#151d2c',
         },
         accent: {
           green: '#22c55e',
