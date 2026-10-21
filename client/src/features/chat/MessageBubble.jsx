@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo, useEffect } from 'react';
+import { useState, useRef, useMemo, useEffect, memo } from 'react';
 import {
   Check, CheckCheck, Clock, AlertCircle, Reply, Forward, Star,
   Trash2, Copy, Edit3, MoreHorizontal, Download, Play, Pause,
@@ -33,7 +33,7 @@ const safeFormatTime = (dateStr) => {
   }
 };
 
-export default function MessageBubble({
+function MessageBubbleComponent({
   message,
   isOwn,
   showAvatar,
@@ -1014,3 +1014,54 @@ export default function MessageBubble({
     </div>
   );
 }
+
+function arePropsEqual(prev, next) {
+  if (
+    prev.message === next.message &&
+    prev.isOwn === next.isOwn &&
+    prev.showAvatar === next.showAvatar &&
+    prev.showName === next.showName &&
+    prev.isGroupStart === next.isGroupStart &&
+    prev.isPinned === next.isPinned &&
+    prev.isSelected === next.isSelected &&
+    prev.isSelectionMode === next.isSelectionMode
+  ) {
+    return true;
+  }
+
+  const pMsg = prev.message;
+  const nMsg = next.message;
+  if (!pMsg || !nMsg) return false;
+
+  if ((pMsg._id || pMsg.clientId) !== (nMsg._id || nMsg.clientId)) return false;
+  if (pMsg.status !== nMsg.status) return false;
+  if (pMsg.content !== nMsg.content) return false;
+  if (pMsg.isEdited !== nMsg.isEdited) return false;
+  if (pMsg.isDeletedForEveryone !== nMsg.isDeletedForEveryone) return false;
+  if (pMsg.isStarred !== nMsg.isStarred) return false;
+  if (pMsg.updatedAt !== nMsg.updatedAt) return false;
+  if (pMsg.viewOnceOpenedBy?.length !== nMsg.viewOnceOpenedBy?.length) return false;
+
+  if (pMsg.reactions?.length !== nMsg.reactions?.length) return false;
+  if (pMsg.reactions && nMsg.reactions) {
+    for (let i = 0; i < pMsg.reactions.length; i++) {
+      if (pMsg.reactions[i]?.emoji !== nMsg.reactions[i]?.emoji) return false;
+      if (pMsg.reactions[i]?.users?.length !== nMsg.reactions[i]?.users?.length) return false;
+    }
+  }
+
+  if (pMsg.uploadProgress?.percent !== nMsg.uploadProgress?.percent) return false;
+
+  if (prev.isPinned !== next.isPinned) return false;
+  if (prev.isSelected !== next.isSelected) return false;
+  if (prev.isSelectionMode !== next.isSelectionMode) return false;
+  if (prev.showAvatar !== next.showAvatar) return false;
+  if (prev.showName !== next.showName) return false;
+  if (prev.isGroupStart !== next.isGroupStart) return false;
+  if (prev.isOwn !== next.isOwn) return false;
+
+  return true;
+}
+
+const MessageBubble = memo(MessageBubbleComponent, arePropsEqual);
+export default MessageBubble;

@@ -27,14 +27,23 @@ import toast from 'react-hot-toast';
 import Avatar from '../../components/common/Avatar';
 
 export default function ChatWindow({ onStartCall }) {
-  const {
-    activeConversation, messages, isLoadingMessages, hasMoreMessages,
-    fetchMessages, typingUsers, recordingUsers, onlineUsers,
-    selectedMessageIds, toggleSelectMessage, clearSelectedMessages,
-    batchDeleteMessages, batchStarMessages, batchForwardMessages
-  } = useChatStore();
-  const { user } = useAuthStore();
-  const { isMobile, setShowChatOnMobile } = useUIStore();
+  const activeConversation = useChatStore((s) => s.activeConversation);
+  const messages = useChatStore((s) => s.messages);
+  const isLoadingMessages = useChatStore((s) => s.isLoadingMessages);
+  const hasMoreMessages = useChatStore((s) => s.hasMoreMessages);
+  const fetchMessages = useChatStore((s) => s.fetchMessages);
+  const typingUsers = useChatStore((s) => s.typingUsers);
+  const recordingUsers = useChatStore((s) => s.recordingUsers);
+  const selectedMessageIds = useChatStore((s) => s.selectedMessageIds);
+  const toggleSelectMessage = useChatStore((s) => s.toggleSelectMessage);
+  const clearSelectedMessages = useChatStore((s) => s.clearSelectedMessages);
+  const batchDeleteMessages = useChatStore((s) => s.batchDeleteMessages);
+  const batchStarMessages = useChatStore((s) => s.batchStarMessages);
+  const batchForwardMessages = useChatStore((s) => s.batchForwardMessages);
+
+  const user = useAuthStore((s) => s.user);
+  const isMobile = useUIStore((s) => s.isMobile);
+  const setShowChatOnMobile = useUIStore((s) => s.setShowChatOnMobile);
 
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
@@ -474,7 +483,7 @@ export default function ChatWindow({ onStartCall }) {
   };
 
   // Jump to specific message element
-  const handleJumpToMessage = (messageId) => {
+  const handleJumpToMessage = useCallback((messageId) => {
     const el = document.getElementById(`msg-${messageId}`);
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -485,12 +494,12 @@ export default function ChatWindow({ onStartCall }) {
     } else {
       toast('Message is further up in history', { icon: '📜' });
     }
-  };
+  }, []);
 
   // Pin / Unpin handlers
-  const handlePinMessage = async (messageId) => {
+  const handlePinMessage = useCallback(async (messageId) => {
     try {
-      await api.post(`/messages/${activeConversation._id}/pin/${messageId}`);
+      await api.post(`/messages/${activeConversation?._id}/pin/${messageId}`);
       toast.success('Message pinned');
       const targetMsg = messages.find((m) => m._id === messageId);
       if (targetMsg) {
@@ -499,7 +508,19 @@ export default function ChatWindow({ onStartCall }) {
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to pin message');
     }
-  };
+  }, [activeConversation?._id, messages, myId]);
+
+  const handleOpenImageViewer = useCallback((imgs, idx) => {
+    setImageViewerData({ images: imgs, initialIndex: idx });
+  }, []);
+
+  const handleForwardMessage = useCallback((m) => {
+    setForwardingMessage(m);
+  }, []);
+
+  const handleRemindMessage = useCallback((m) => {
+    setReminderMessage(m);
+  }, []);
 
   const handleUnpinMessage = async (messageId) => {
     try {
@@ -903,9 +924,9 @@ export default function ChatWindow({ onStartCall }) {
                     isPinned={isPinned}
                     onPinMessage={handlePinMessage}
                     onJumpToMessage={handleJumpToMessage}
-                    onOpenImageViewer={(imgs, idx) => setImageViewerData({ images: imgs, initialIndex: idx })}
-                    onForward={(m) => setForwardingMessage(m)}
-                    onRemind={(m) => setReminderMessage(m)}
+                    onOpenImageViewer={handleOpenImageViewer}
+                    onForward={handleForwardMessage}
+                    onRemind={handleRemindMessage}
                     isSelectionMode={selectedMessageIds.length > 0}
                     isSelected={isSelected}
                     onToggleSelect={toggleSelectMessage}

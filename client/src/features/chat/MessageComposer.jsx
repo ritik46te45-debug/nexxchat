@@ -52,12 +52,17 @@ const calculateETA = (loaded, total, bytesPerSec) => {
 };
 
 export default function MessageComposer() {
-  const {
-    activeConversation, sendMessage, saveDraft, getDraft,
-    editingMessage, setEditingMessage,
-    replyingMessage, setReplyingMessage, editMessage
-  } = useChatStore();
-  const { user } = useAuthStore();
+  const activeConversation = useChatStore((s) => s.activeConversation);
+  const sendMessage = useChatStore((s) => s.sendMessage);
+  const saveDraft = useChatStore((s) => s.saveDraft);
+  const getDraft = useChatStore((s) => s.getDraft);
+  const editingMessage = useChatStore((s) => s.editingMessage);
+  const setEditingMessage = useChatStore((s) => s.setEditingMessage);
+  const replyingMessage = useChatStore((s) => s.replyingMessage);
+  const setReplyingMessage = useChatStore((s) => s.setReplyingMessage);
+  const editMessage = useChatStore((s) => s.editMessage);
+
+  const user = useAuthStore((s) => s.user);
 
   const [text, setText] = useState('');
   const [files, setFiles] = useState([]);

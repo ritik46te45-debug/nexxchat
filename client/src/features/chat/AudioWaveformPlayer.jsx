@@ -44,8 +44,25 @@ export default function AudioWaveformPlayer({ src, duration: initialDuration, is
       audio.removeEventListener('loadedmetadata', onLoadedMetadata);
       audio.removeEventListener('timeupdate', onTimeUpdate);
       audio.removeEventListener('ended', onEnded);
+      audio.pause();
     };
   }, []);
+
+  // Single-instance audio pool: pause this player if another voice note starts playing
+  useEffect(() => {
+    const handleOtherAudioPlay = (e) => {
+      if (e.detail?.src !== src && isPlaying) {
+        if (audioRef.current) {
+          audioRef.current.pause();
+        }
+        setIsPlaying(false);
+      }
+    };
+    window.addEventListener('nexchat:audio-play', handleOtherAudioPlay);
+    return () => {
+      window.removeEventListener('nexchat:audio-play', handleOtherAudioPlay);
+    };
+  }, [src, isPlaying]);
 
   const togglePlay = useCallback(() => {
     const audio = audioRef.current;
@@ -55,11 +72,13 @@ export default function AudioWaveformPlayer({ src, duration: initialDuration, is
       audio.pause();
       setIsPlaying(false);
     } else {
+      // Announce audio play to pause any other currently active voice notes
+      window.dispatchEvent(new CustomEvent('nexchat:audio-play', { detail: { src } }));
       audio.playbackRate = playbackRate;
       audio.play().catch((err) => console.warn('Audio play note:', err));
       setIsPlaying(true);
     }
-  }, [isPlaying, playbackRate]);
+  }, [isPlaying, playbackRate, src]);
 
   const toggleSpeed = (e) => {
     e.stopPropagation();

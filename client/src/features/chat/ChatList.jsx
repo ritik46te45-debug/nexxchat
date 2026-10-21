@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback, memo } from 'react';
 import { Search, Plus, Edit3, Users, Archive, Pin, Volume2, VolumeX, Bell, Settings } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import useChatStore, { getConvTime } from '../../stores/chatStore';
@@ -13,9 +13,19 @@ export default function ChatList({ onOpenProfile }) {
   const [chatFilter, setChatFilter] = useState('all'); // 'all' | 'unread' | 'groups' | 'direct'
   const [showNewChat, setShowNewChat] = useState(false);
   const [showNewGroup, setShowNewGroup] = useState(false);
-  const { conversations, activeConversation, setActiveConversation, typingUsers, onlineUsers, drafts } = useChatStore();
-  const { user } = useAuthStore();
-  const { isMobile, setShowChatOnMobile, unreadNotifCount, setSidebarView } = useUIStore();
+
+  const conversations = useChatStore((s) => s.conversations);
+  const activeConversation = useChatStore((s) => s.activeConversation);
+  const setActiveConversation = useChatStore((s) => s.setActiveConversation);
+  const typingUsers = useChatStore((s) => s.typingUsers);
+  const onlineUsers = useChatStore((s) => s.onlineUsers);
+  const drafts = useChatStore((s) => s.drafts);
+
+  const user = useAuthStore((s) => s.user);
+  const isMobile = useUIStore((s) => s.isMobile);
+  const setShowChatOnMobile = useUIStore((s) => s.setShowChatOnMobile);
+  const unreadNotifCount = useUIStore((s) => s.unreadNotifCount);
+  const setSidebarView = useUIStore((s) => s.setSidebarView);
 
   const totalUnreadChats = useMemo(() => {
     return conversations.filter(c => (c.unreadCount || c._participant?.unreadCount || 0) > 0).length;
@@ -69,10 +79,10 @@ export default function ChatList({ onOpenProfile }) {
     return convs;
   }, [conversations, chatFilter, searchQuery, user?._id]);
 
-  const handleSelectConversation = (conv) => {
+  const handleSelectConversation = useCallback((conv) => {
     setActiveConversation(conv);
     if (isMobile) setShowChatOnMobile(true);
-  };
+  }, [isMobile, setActiveConversation, setShowChatOnMobile]);
 
 
   return (
@@ -239,7 +249,7 @@ export default function ChatList({ onOpenProfile }) {
   );
 }
 
-function ConversationItem({ conversation, userId, isActive, onClick, typingUsers, isOnline, draft }) {
+const ConversationItem = memo(function ConversationItem({ conversation, userId, isActive, onClick, typingUsers, isOnline, draft }) {
   const currentAuthUser = useAuthStore.getState().user;
   const myId = (userId || currentAuthUser?._id || currentAuthUser?.id || currentAuthUser)?.toString();
   const otherUser = getOtherUser(conversation, myId);
@@ -371,7 +381,7 @@ function ConversationItem({ conversation, userId, isActive, onClick, typingUsers
       </div>
     </button>
   );
-}
+});
 
 // Helpers
 function getOtherUser(conversation, userId) {
