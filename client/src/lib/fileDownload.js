@@ -1,5 +1,5 @@
 import toast from 'react-hot-toast';
-import api from './api';
+import api, { getServerOrigin } from './api';
 
 // Extension map by MIME type
 const MIME_TO_EXT = {
@@ -30,16 +30,7 @@ const MIME_TO_EXT = {
   'audio/ogg': 'ogg',
 };
 
-const getBackendBase = () => {
-  const envUrl = import.meta.env.VITE_API_URL;
-  if (envUrl) return envUrl.replace(/\/api\/?$/, '').replace(/\/+$/, '');
-  if (typeof window !== 'undefined') {
-    const host = window.location.hostname;
-    if (host === 'localhost' || host === '127.0.0.1') return 'http://localhost:5000';
-    if (/^(\d{1,3}\.){3}\d{1,3}$/.test(host)) return `http://${host}:5000`;
-  }
-  return 'https://nexxchat-5d29.onrender.com';
-};
+const getBackendBase = () => getServerOrigin();
 
 const isMobileOrCapacitor = () => {
   if (typeof window === 'undefined') return false;

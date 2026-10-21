@@ -291,6 +291,14 @@ export const unfriend = async (req, res) => {
     await User.findByIdAndUpdate(req.userId, { $pull: { friends: userId } });
     await User.findByIdAndUpdate(userId, { $pull: { friends: req.userId } });
 
+    const io = req.app.get('io');
+    if (io) {
+      const targetIdStr = userId.toString();
+      const myIdStr = req.userId.toString();
+      io.to(targetIdStr).to(`user:${targetIdStr}`).emit('friend:removed', { userId: myIdStr });
+      io.to(myIdStr).to(`user:${myIdStr}`).emit('friend:removed', { userId: targetIdStr });
+    }
+
     res.json({ message: 'Unfriended successfully' });
   } catch (error) {
     console.error('Unfriend error:', error);

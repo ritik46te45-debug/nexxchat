@@ -399,6 +399,10 @@ export default function MessageComposer() {
               ),
             }));
             useChatStore.getState().updateConversationInList(conversationId, serverMsgData.message);
+
+            if (previewUrl) {
+              try { URL.revokeObjectURL(previewUrl); } catch (e) {}
+            }
           }
 
           if (!isSilent) playSentMessageSound();

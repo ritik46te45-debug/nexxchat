@@ -322,7 +322,7 @@ export const setupSocket = (io) => {
           try {
             const notifType = conversation.type === 'group' ? 'group_message' : 'message';
             const notifTitle = conversation.type === 'group'
-              ? `${canonicalMessage.sender?.displayName || 'User'} (${conversation.groupDetails?.name || 'Group'})`
+              ? `${canonicalMessage.sender?.displayName || 'User'} (${conversation.groupName || conversation.groupDetails?.name || 'Group'})`
               : (canonicalMessage.sender?.displayName || 'User');
             const notifBody = canonicalMessage.content || (
               canonicalMessage.type === 'video_note' ? 'Sent a video note 🎥' :

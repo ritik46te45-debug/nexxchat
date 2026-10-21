@@ -86,11 +86,13 @@ function MessageBubbleComponent({
     };
   }, []);
 
-  const {
-    reactToMessage, deleteMessage, toggleStarMessage,
-    setEditingMessage, setReplyingMessage, votePoll
-  } = useChatStore();
-  const { user } = useAuthStore();
+  const reactToMessage = useChatStore((s) => s.reactToMessage);
+  const deleteMessage = useChatStore((s) => s.deleteMessage);
+  const toggleStarMessage = useChatStore((s) => s.toggleStarMessage);
+  const setEditingMessage = useChatStore((s) => s.setEditingMessage);
+  const setReplyingMessage = useChatStore((s) => s.setReplyingMessage);
+  const votePoll = useChatStore((s) => s.votePoll);
+  const user = useAuthStore((s) => s.user);
 
   const myId = (user?._id || user)?.toString();
   const isViewOnceViewed = message?.isViewOnce && Array.isArray(message.viewedBy) && message.viewedBy.some(v => (v.user?._id || v.user)?.toString() === myId);

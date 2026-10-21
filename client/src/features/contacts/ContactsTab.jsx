@@ -85,10 +85,12 @@ export default function ContactsTab({ onStartCall }) {
 
     socket.on('friend:request', handleReq);
     socket.on('friend:accepted', handleReq);
+    socket.on('friend:removed', handleReq);
 
     return () => {
       socket.off('friend:request', handleReq);
       socket.off('friend:accepted', handleReq);
+      socket.off('friend:removed', handleReq);
     };
   }, []);
 

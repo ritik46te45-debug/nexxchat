@@ -41,17 +41,38 @@ export default function CustomVideoPlayer({ src, poster, isOwn, fileName }) {
     return showFullscreenPlayer ? fullscreenVideoRef.current : videoRef.current;
   }, [showFullscreenPlayer]);
 
+  // Coordinate playback: pause video if another voice note or media plays
+  useEffect(() => {
+    const handleOtherMediaPlay = (e) => {
+      if (e.detail?.src !== src && isPlaying) {
+        const video = getActiveVideo();
+        if (video) video.pause();
+        setIsPlaying(false);
+      }
+    };
+    window.addEventListener('nexchat:audio-play', handleOtherMediaPlay);
+    return () => {
+      window.removeEventListener('nexchat:audio-play', handleOtherMediaPlay);
+      const v = videoRef.current;
+      if (v) v.pause();
+      const fv = fullscreenVideoRef.current;
+      if (fv) fv.pause();
+    };
+  }, [src, isPlaying, getActiveVideo]);
+
   const togglePlay = useCallback(() => {
     const video = getActiveVideo();
     if (!video) return;
     if (video.paused) {
+      // Pause any voice note or video currently playing
+      window.dispatchEvent(new CustomEvent('nexchat:audio-play', { detail: { src } }));
       video.play().catch(() => {});
       setIsPlaying(true);
     } else {
       video.pause();
       setIsPlaying(false);
     }
-  }, [getActiveVideo]);
+  }, [getActiveVideo, src]);
 
   const handleTimeUpdate = useCallback(() => {
     const video = getActiveVideo();

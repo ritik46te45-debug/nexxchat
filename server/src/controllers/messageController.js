@@ -72,13 +72,17 @@ export const sendMessage = async (req, res) => {
     // Check if blocked (for private chats)
     if (conversation.type === 'private') {
       const otherParticipant = conversation.participants.find(
-        p => p.user.toString() !== req.userId.toString()
+        p => (p.user?._id || p.user)?.toString() !== req.userId.toString()
       );
-      const otherUser = await User.findById(otherParticipant.user);
+      if (!otherParticipant || !otherParticipant.user) {
+        return res.status(404).json({ error: 'Recipient not found in conversation' });
+      }
+      const otherUserId = (otherParticipant.user?._id || otherParticipant.user)?.toString();
+      const otherUser = await User.findById(otherUserId);
       const isBlocked = otherUser?.blockedUsers?.some(
         id => (id?._id || id)?.toString() === req.userId.toString()
       ) || req.user?.blockedUsers?.some(
-        id => (id?._id || id)?.toString() === otherParticipant.user.toString()
+        id => (id?._id || id)?.toString() === otherUserId
       );
       if (isBlocked) {
         return res.status(403).json({ error: 'Cannot send message' });
@@ -187,7 +191,7 @@ export const sendMessage = async (req, res) => {
           try {
             const notifType = conversation.type === 'group' ? 'group_message' : 'message';
             const notifTitle = conversation.type === 'group'
-              ? `${populatedMessage.sender?.displayName || 'User'} (${conversation.groupDetails?.name || 'Group'})`
+              ? `${populatedMessage.sender?.displayName || 'User'} (${conversation.groupName || conversation.groupDetails?.name || 'Group'})`
               : (populatedMessage.sender?.displayName || 'User');
 
             const notif = await Notification.create({

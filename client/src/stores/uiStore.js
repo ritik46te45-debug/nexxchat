@@ -38,15 +38,23 @@ const useUIStore = create((set) => ({
   bubbleStyle: typeof localStorage !== 'undefined' ? (localStorage.getItem('nexchat_bubble_style') || 'rounded') : 'rounded',
 
   // Home Dashboard Section Configuration
-  homeSections: typeof localStorage !== 'undefined'
-    ? JSON.parse(localStorage.getItem('nexchat_home_sections') || '{"quickActions":true,"onlineFriends":true,"recentChats":true,"pinnedChats":true,"statusStories":true,"recentCalls":true,"recentFiles":true}')
-    : { quickActions: true, onlineFriends: true, recentChats: true, pinnedChats: true, statusStories: true, recentCalls: true, recentFiles: true },
+  homeSections: (() => {
+    try {
+      return typeof localStorage !== 'undefined'
+        ? JSON.parse(localStorage.getItem('nexchat_home_sections') || '{"quickActions":true,"onlineFriends":true,"recentChats":true,"pinnedChats":true,"statusStories":true,"recentCalls":true,"recentFiles":true}')
+        : { quickActions: true, onlineFriends: true, recentChats: true, pinnedChats: true, statusStories: true, recentCalls: true, recentFiles: true };
+    } catch (e) {
+      return { quickActions: true, onlineFriends: true, recentChats: true, pinnedChats: true, statusStories: true, recentCalls: true, recentFiles: true };
+    }
+  })(),
 
   // Actions
   toggleSidebar: () => set((s) => ({ isSidebarOpen: !s.isSidebarOpen })),
   toggleSidebarExpanded: () => set((s) => {
     const next = !s.isSidebarExpanded;
-    localStorage.setItem('nexchat_sidebar_expanded', String(next));
+    try {
+      localStorage.setItem('nexchat_sidebar_expanded', String(next));
+    } catch (e) {}
     return { isSidebarExpanded: next };
   }),
   setSidebarView: (view) => set({ sidebarView: view }),
@@ -104,18 +112,24 @@ const useUIStore = create((set) => ({
   setReconnecting: (isReconnecting) => set({ isReconnecting }),
 
   setChatFontSize: (fontSize) => {
-    localStorage.setItem('nexchat_font_size', fontSize);
+    try {
+      localStorage.setItem('nexchat_font_size', fontSize);
+    } catch (e) {}
     set({ chatFontSize: fontSize });
   },
 
   setBubbleStyle: (style) => {
-    localStorage.setItem('nexchat_bubble_style', style);
+    try {
+      localStorage.setItem('nexchat_bubble_style', style);
+    } catch (e) {}
     set({ bubbleStyle: style });
   },
 
   toggleHomeSection: (sectionKey) => set((s) => {
     const next = { ...s.homeSections, [sectionKey]: !s.homeSections[sectionKey] };
-    localStorage.setItem('nexchat_home_sections', JSON.stringify(next));
+    try {
+      localStorage.setItem('nexchat_home_sections', JSON.stringify(next));
+    } catch (e) {}
     return { homeSections: next };
   }),
 }));

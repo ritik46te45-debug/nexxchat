@@ -18,6 +18,8 @@ import toast from 'react-hot-toast';
  * On desktop, use iframe with blob URL (works on all modern browsers).
  */
 
+import { getServerOrigin } from '../../lib/api';
+
 const isMobileOrCapacitor = () => {
   if (typeof window === 'undefined') return false;
   // Capacitor native app
@@ -27,20 +29,8 @@ const isMobileOrCapacitor = () => {
 };
 
 const getProxyUrl = (pdfUrl, fileName) => {
-  const getBaseURL = () => {
-    const envUrl = import.meta.env.VITE_API_URL;
-    if (envUrl) {
-      const clean = envUrl.replace(/\/+$/, '');
-      return clean.endsWith('/api') ? clean : `${clean}/api`;
-    }
-    if (typeof window !== 'undefined') {
-      const host = window.location.hostname;
-      if (host === 'localhost' || host === '127.0.0.1') return 'http://localhost:5000/api';
-      if (/^(\d{1,3}\.){3}\d{1,3}$/.test(host)) return `http://${host}:5000/api`;
-    }
-    return 'https://nexxchat-5d29.onrender.com/api';
-  };
-  return `${getBaseURL()}/upload/download?url=${encodeURIComponent(pdfUrl)}&filename=${encodeURIComponent(fileName)}`;
+  const origin = getServerOrigin();
+  return `${origin}/api/upload/download?url=${encodeURIComponent(pdfUrl)}&filename=${encodeURIComponent(fileName)}`;
 };
 
 export default function PdfViewerModal({ isOpen, onClose, pdfUrl, fileName, fileSize }) {

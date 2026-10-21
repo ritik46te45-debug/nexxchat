@@ -435,6 +435,9 @@ function App() {
       toast.success('Friend request accepted! 🎉');
       fetchConversations();
     };
+    const handleFriendRemoved = () => {
+      fetchConversations();
+    };
 
     const handleConversationNew = ({ conversation }) => {
       if (conversation) {
@@ -515,6 +518,7 @@ function App() {
     socket.on('notification:count', handleNotificationCount);
     socket.on('friend:request', handleFriendRequest);
     socket.on('friend:accepted', handleFriendAccepted);
+    socket.on('friend:removed', handleFriendRemoved);
     socket.on('conversation:new', handleConversationNew);
     socket.on('group:updated', handleGroupUpdated);
     socket.on('group:members_added', handleGroupMemberChange);
@@ -543,6 +547,7 @@ function App() {
       socket.off('notification:count', handleNotificationCount);
       socket.off('friend:request', handleFriendRequest);
       socket.off('friend:accepted', handleFriendAccepted);
+      socket.off('friend:removed', handleFriendRemoved);
       socket.off('conversation:new', handleConversationNew);
       socket.off('group:updated', handleGroupUpdated);
       socket.off('group:members_added', handleGroupMemberChange);

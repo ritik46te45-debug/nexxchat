@@ -59,7 +59,13 @@ const useChatStore = create((set, get) => ({
   typingUsers: {}, // { conversationId: { userId: displayName } }
   recordingUsers: {}, // { conversationId: { userId: displayName } }
   onlineUsers: new Set(),
-  drafts: JSON.parse(localStorage.getItem('nexchat_drafts') || '{}'),
+  drafts: (() => {
+    try {
+      return typeof localStorage !== 'undefined' ? JSON.parse(localStorage.getItem('nexchat_drafts') || '{}') : {};
+    } catch (e) {
+      return {};
+    }
+  })(),
   unreadTotal: initialCachedConvs.reduce((sum, c) => sum + (c.unreadCount || 0), 0),
   lastSyncTime: null,
 
@@ -935,7 +941,9 @@ const useChatStore = create((set, get) => ({
     } else {
       delete drafts[conversationId];
     }
-    localStorage.setItem('nexchat_drafts', JSON.stringify(drafts));
+    try {
+      localStorage.setItem('nexchat_drafts', JSON.stringify(drafts));
+    } catch (e) {}
     set({ drafts });
   },
 

@@ -86,6 +86,7 @@ export const getFeedStatuses = async (req, res) => {
     // Group statuses by user
     const grouped = {};
     statuses.forEach(st => {
+      if (!st.user || !st.user._id) return;
       const uId = st.user._id.toString();
       if (!grouped[uId]) {
         grouped[uId] = {

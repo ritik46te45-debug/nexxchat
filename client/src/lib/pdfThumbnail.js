@@ -1,5 +1,6 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.js?url';
+import { getServerOrigin } from './api';
 
 // Configure PDF.js worker
 if (typeof window !== 'undefined') {
@@ -13,16 +14,7 @@ if (typeof window !== 'undefined') {
 // In-memory cache for rendered thumbnails to avoid re-rendering
 const thumbnailCache = new Map();
 
-const getBackendBase = () => {
-  const envUrl = import.meta.env.VITE_API_URL;
-  if (envUrl) return envUrl.replace(/\/api\/?$/, '').replace(/\/+$/, '');
-  if (typeof window !== 'undefined') {
-    const host = window.location.hostname;
-    if (host === 'localhost' || host === '127.0.0.1') return 'http://localhost:5000';
-    if (/^(\d{1,3}\.){3}\d{1,3}$/.test(host)) return `http://${host}:5000`;
-  }
-  return 'https://nexxchat-5d29.onrender.com';
-};
+const getBackendBase = () => getServerOrigin();
 
 /**
  * Renders the first page of a PDF file or URL to a JPEG data URL.
