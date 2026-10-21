@@ -38,8 +38,9 @@ export default function Avatar({
         referrerPolicy="no-referrer"
         crossOrigin="anonymous"
         loading="lazy"
+        decoding="async"
         onError={() => setHasError(true)}
-        className={`${sizeClasses[size] || sizeClasses.md} rounded-full object-cover flex-shrink-0 ${className}`}
+        className={`${sizeClasses[size] || sizeClasses.md} rounded-full object-cover flex-shrink-0 bg-dark-card/60 transition-opacity duration-200 ${className}`}
       />
     );
   }

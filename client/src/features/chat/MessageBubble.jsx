@@ -466,12 +466,14 @@ export default function MessageBubble({
 
           {/* PHOTOS / IMAGES */}
           {!message.isViewOnce && (message.type === 'image' || message.type === 'gif' || message.type === 'sticker') && message.attachments?.[0]?.url && (
-            <div className="my-1 rounded-xl overflow-hidden max-w-sm relative">
+            <div className="my-1 rounded-xl overflow-hidden max-w-sm relative bg-dark-card/50 min-w-[200px] min-h-[150px] aspect-[4/3] flex items-center justify-center border border-white/[0.04]">
               <img
                 src={resolveMediaUrl(message.attachments[0].url)}
                 alt=""
+                loading="lazy"
+                decoding="async"
                 onClick={() => onOpenImageViewer && onOpenImageViewer(message.attachments, 0)}
-                className="w-full h-auto max-h-80 object-cover rounded-xl cursor-pointer hover:opacity-95 transition-opacity"
+                className="w-full h-full max-h-80 object-cover rounded-xl cursor-pointer hover:opacity-95 transition-opacity duration-200"
               />
               {/* In-Bubble Upload Progress Overlay for Photos */}
               {message.uploadProgress && message.status === 'uploading' && (
@@ -516,7 +518,7 @@ export default function MessageBubble({
 
           {/* VIDEOS */}
           {!message.isViewOnce && message.type === 'video' && message.attachments?.[0]?.url && (
-            <div className="my-1 max-w-sm sm:max-w-md relative">
+            <div className="my-1 max-w-sm sm:max-w-md relative rounded-2xl overflow-hidden bg-dark-card/50 min-h-[180px]">
               <CustomVideoPlayer src={resolveMediaUrl(message.attachments[0].url)} isOwn={isOwn} />
               {/* In-Bubble Upload Progress Overlay for Videos */}
               {message.uploadProgress && message.status === 'uploading' && (

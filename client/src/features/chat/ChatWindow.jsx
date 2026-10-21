@@ -884,10 +884,10 @@ export default function ChatWindow({ onStartCall }) {
 
               return (
                 <div key={msg._id || msg.clientId || index}>
-                  {/* Date Badge Separator */}
+                  {/* Sticky Date Badge Separator */}
                   {showDateHeader && (
-                    <div className="flex justify-center my-3">
-                      <span className="px-3.5 py-1 rounded-full bg-dark-card/70 border border-dark-border/60 text-[10px] font-bold tracking-wider text-surface-400 shadow-sm backdrop-blur-md">
+                    <div className="sticky top-2 z-10 flex justify-center my-2 pointer-events-none">
+                      <span className="pointer-events-auto px-3.5 py-1 rounded-full bg-dark-card/90 border border-dark-border/80 text-[10px] font-bold tracking-wider text-surface-300 shadow-md backdrop-blur-md">
                         {formatDateSeparator(msg.createdAt)}
                       </span>
                     </div>
