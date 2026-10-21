@@ -34,6 +34,7 @@ export default function ChatWindow({ onStartCall }) {
   const fetchMessages = useChatStore((s) => s.fetchMessages);
   const typingUsers = useChatStore((s) => s.typingUsers);
   const recordingUsers = useChatStore((s) => s.recordingUsers);
+  const onlineUsers = useChatStore((s) => s.onlineUsers);
   const selectedMessageIds = useChatStore((s) => s.selectedMessageIds);
   const toggleSelectMessage = useChatStore((s) => s.toggleSelectMessage);
   const clearSelectedMessages = useChatStore((s) => s.clearSelectedMessages);
