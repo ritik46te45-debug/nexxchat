@@ -881,7 +881,7 @@ export default function MessageComposer() {
           <div className="relative" ref={attachMenuRef}>
             <button
               onClick={() => setShowAttachMenu(!showAttachMenu)}
-              className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all ${
+              className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all duration-150 active:scale-95 ${
                 showAttachMenu
                   ? 'gradient-primary text-white rotate-45 shadow-lg shadow-primary-500/30'
                   : 'bg-dark-input hover:bg-dark-hover text-surface-400 hover:text-white border border-dark-border'
@@ -891,12 +891,15 @@ export default function MessageComposer() {
               <Plus className="w-5 h-5 transition-transform" />
             </button>
 
-            {/* Floating Popover Action Menu */}
+            {/* Floating Popover / Mobile Bottom Sheet Action Menu */}
             {showAttachMenu && (
-              <div className="absolute left-0 bottom-12 w-64 bg-dark-card border border-dark-border rounded-3xl p-2 shadow-2xl z-50 animate-scale-in space-y-1">
+              <div className="absolute left-0 bottom-12 w-64 bg-dark-card border border-dark-border rounded-3xl p-2.5 shadow-2xl z-50 animate-scale-in space-y-1 max-sm:fixed max-sm:inset-x-0 max-sm:bottom-0 max-sm:w-full max-sm:rounded-b-none max-sm:rounded-t-3xl max-sm:p-4 max-sm:animate-sheet-up max-sm:border-t max-sm:border-x-0 max-sm:border-b-0 max-sm:shadow-2xl">
+                {/* Mobile Bottom Sheet Grab Handle */}
+                <div className="w-10 h-1 bg-surface-600/60 rounded-full mx-auto mb-2.5 sm:hidden" />
+
                 <button
                   onClick={() => mediaInputRef.current?.click()}
-                  className="w-full px-3.5 py-2.5 rounded-2xl hover:bg-dark-hover text-surface-200 hover:text-white flex items-center gap-3 text-xs font-semibold transition-all cursor-pointer"
+                  className="w-full px-3.5 py-2.5 rounded-2xl hover:bg-dark-hover text-surface-200 hover:text-white flex items-center gap-3 text-xs font-semibold transition-all active:scale-[0.98] cursor-pointer"
                 >
                   <div className="w-8 h-8 rounded-xl bg-accent-purple/20 text-accent-purple flex items-center justify-center">
                     <ImageIcon className="w-4 h-4" />

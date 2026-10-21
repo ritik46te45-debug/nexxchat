@@ -324,10 +324,10 @@ function ConversationItem({ conversation, userId, isActive, onClick, typingUsers
     <button
       onClick={onClick}
       className={`
-        w-full flex items-center gap-3 px-3.5 py-3 transition-all duration-150 text-left rounded-2xl
+        w-full flex items-center gap-3 px-3.5 py-3 transition-all duration-150 text-left rounded-2xl active:scale-[0.98]
         ${isActive
           ? 'bg-primary-500/15 text-white shadow-sm ring-1 ring-primary-500/30'
-          : 'hover:bg-dark-hover/60 text-surface-300'
+          : 'hover:bg-dark-hover/60 active:bg-dark-hover text-surface-300'
         }
       `}
     >

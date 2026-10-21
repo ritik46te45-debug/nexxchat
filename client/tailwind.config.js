@@ -53,15 +53,21 @@ export default {
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
       },
+      transitionTimingFunction: {
+        spring: 'cubic-bezier(0.32, 0.72, 0, 1)',
+        'spring-snappy': 'cubic-bezier(0.16, 1, 0.3, 1)',
+        'spring-bouncy': 'cubic-bezier(0.34, 1.56, 0.64, 1)',
+      },
       animation: {
-        'fade-in': 'fadeIn 0.2s ease-out',
-        'slide-up': 'slideUp 0.3s ease-out',
-        'slide-down': 'slideDown 0.3s ease-out',
-        'slide-left': 'slideLeft 0.3s ease-out',
-        'slide-right': 'slideRight 0.3s ease-out',
-        'scale-in': 'scaleIn 0.2s ease-out',
+        'fade-in': 'fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+        'slide-up': 'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+        'slide-down': 'slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+        'slide-left': 'slideLeft 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+        'slide-right': 'slideRight 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+        'scale-in': 'scaleIn 0.22s cubic-bezier(0.16, 1, 0.3, 1)',
+        'sheet-up': 'sheetUp 0.32s cubic-bezier(0.32, 0.72, 0, 1)',
         'pulse-soft': 'pulseSoft 2s ease-in-out infinite',
-        'bounce-soft': 'bounceSoft 0.6s ease-out',
+        'bounce-soft': 'bounceSoft 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)',
         'shimmer': 'shimmer 1.5s ease-in-out infinite',
         'typing': 'typing 1.4s ease-in-out infinite',
         'wave': 'wave 1.2s ease-in-out infinite',
@@ -88,8 +94,12 @@ export default {
           '100%': { opacity: '1', transform: 'translateX(0)' },
         },
         scaleIn: {
-          '0%': { opacity: '0', transform: 'scale(0.9)' },
+          '0%': { opacity: '0', transform: 'scale(0.92)' },
           '100%': { opacity: '1', transform: 'scale(1)' },
+        },
+        sheetUp: {
+          '0%': { opacity: '0', transform: 'translateY(100%)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
         },
         pulseSoft: {
           '0%, 100%': { opacity: '1' },
