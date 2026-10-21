@@ -16,6 +16,7 @@ import PdfViewerModal from './PdfViewerModal';
 import PdfCoverCard from './PdfCoverCard';
 import { downloadFile } from '../../lib/fileDownload';
 import { resolveMediaUrl } from '../../lib/api';
+import { triggerHaptic } from '../../lib/haptics';
 import toast from 'react-hot-toast';
 import Avatar from '../../components/common/Avatar';
 
@@ -198,6 +199,7 @@ export default function MessageBubble({
 
   // Handle reactions
   const handleReaction = async (emoji) => {
+    triggerHaptic('light');
     await reactToMessage(message._id, emoji);
     setShowQuickReactions(false);
     setShowContextMenu(false);
@@ -246,7 +248,7 @@ export default function MessageBubble({
   const handleTouchStart = () => {
     longPressTimer.current = setTimeout(() => {
       setShowContextMenu(true);
-      if (navigator.vibrate) navigator.vibrate(30);
+      triggerHaptic('medium');
     }, 500);
   };
 

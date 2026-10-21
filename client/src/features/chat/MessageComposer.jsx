@@ -15,6 +15,7 @@ import CreatePollModal from './CreatePollModal';
 import UnifiedPickerModal from './UnifiedPickerModal';
 import VoiceRecorder from './VoiceRecorder';
 import PdfCoverCard from './PdfCoverCard';
+import { triggerHaptic } from '../../lib/haptics';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
 
@@ -423,6 +424,7 @@ export default function MessageComposer() {
       setReplyingMessage(null);
       if (conversationId) saveDraft(conversationId, '');
       if (!silent) playSentMessageSound();
+      triggerHaptic('light');
       textareaRef.current?.focus();
 
       // Trigger optimistic render & background HTTP post

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import useUIStore from '../../stores/uiStore';
 import useChatStore from '../../stores/chatStore';
 import useAuthStore from '../../stores/authStore';
@@ -44,6 +44,25 @@ export default function MainLayout() {
   const [activeCall, setActiveCall] = useState(null);
   const [isCallPiP, setIsCallPiP] = useState(false);
   const [pipDuration, setPipDuration] = useState(0);
+
+  const stateRef = useRef({
+    showProfileModal,
+    showNewChat,
+    showNewGroup,
+    showBatteryModal,
+    activeCall,
+    isCallPiP,
+  });
+  useEffect(() => {
+    stateRef.current = {
+      showProfileModal,
+      showNewChat,
+      showNewGroup,
+      showBatteryModal,
+      activeCall,
+      isCallPiP,
+    };
+  });
 
   const formatTimer = (seconds = 0) => {
     const mins = Math.floor(seconds / 60);
@@ -197,13 +216,40 @@ export default function MainLayout() {
       }).then((s) => { capAppSub = s; }).catch(() => {});
 
       CapApp.addListener('backButton', () => {
-        // If a call is active in full screen, WhatsApp minimizes the call to PiP instead of closing the app
-        setActiveCall((curr) => {
-          if (curr) {
-            setIsCallPiP(true);
-          }
-          return curr;
-        });
+        const s = stateRef.current;
+
+        // Layer 1: If an audio/video call is in full-screen, minimize to floating PiP
+        if (s.activeCall && !s.isCallPiP) {
+          setIsCallPiP(true);
+          return;
+        }
+
+        // Layer 2: Close open dialogs/modals
+        if (s.showProfileModal) { setShowProfileModal(false); return; }
+        if (s.showNewChat) { setShowNewChat(false); return; }
+        if (s.showNewGroup) { setShowNewGroup(false); return; }
+        if (s.showBatteryModal) { setShowBatteryModal(false); return; }
+
+        const uiState = useUIStore.getState();
+        if (uiState.showGlobalSearch) { uiState.setShowGlobalSearch(false); return; }
+        if (uiState.showCommandPalette) { uiState.setShowCommandPalette(false); return; }
+
+        // Layer 3: If inside an active chat on mobile, return back to the conversation list
+        const chatState = useChatStore.getState();
+        if (uiState.showChatOnMobile || chatState.activeConversation) {
+          chatState.setActiveConversation(null);
+          uiState.setShowChatOnMobile(false);
+          return;
+        }
+
+        // Layer 4: If on secondary sidebar view (like Settings or Calls), return to 'chats' tab
+        if (uiState.sidebarView !== 'chats') {
+          uiState.setSidebarView('chats');
+          return;
+        }
+
+        // Layer 5: If on main chat list with nothing open, gracefully minimize app to home screen
+        CapApp.minimizeApp().catch(() => {});
       }).then((s) => { capBackSub = s; }).catch(() => {});
     } catch (e) {}
 
