@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   X, Download, Share2, ZoomIn, ZoomOut, RotateCw,
-  ChevronLeft, ChevronRight, Maximize2
+  ChevronLeft, ChevronRight, Maximize2, Copy
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { downloadFile } from '../../lib/fileDownload';
+import { copyImageToClipboard } from '../../lib/clipboard';
 
 export default function ImageViewerModal({
   images = [],
@@ -89,6 +90,13 @@ export default function ImageViewerModal({
             title="Rotate"
           >
             <RotateCw className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => copyImageToClipboard(currentImage.url)}
+            className="p-1.5 rounded-xl hover:bg-dark-hover text-surface-300 hover:text-white transition-colors"
+            title="Copy Image"
+          >
+            <Copy className="w-4 h-4" />
           </button>
           <button
             onClick={handleDownload}

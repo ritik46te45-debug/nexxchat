@@ -16,6 +16,7 @@ import PdfViewerModal from './PdfViewerModal';
 import PdfCoverCard from './PdfCoverCard';
 import { downloadFile } from '../../lib/fileDownload';
 import { resolveMediaUrl } from '../../lib/api';
+import { copyTextToClipboard, copyImageToClipboard } from '../../lib/clipboard';
 import { triggerHaptic } from '../../lib/haptics';
 import toast from 'react-hot-toast';
 import Avatar from '../../components/common/Avatar';
@@ -209,9 +210,13 @@ function MessageBubbleComponent({
 
   // Copy text
   const handleCopy = () => {
-    const textToCopy = message.content || message.attachments?.[0]?.url || '';
-    navigator.clipboard.writeText(textToCopy);
-    toast.success('Copied to clipboard');
+    copyTextToClipboard(message.content || message.attachments?.[0]?.url || '');
+    setShowContextMenu(false);
+  };
+
+  // Copy image
+  const handleCopyImage = (imageUrl) => {
+    copyImageToClipboard(imageUrl);
     setShowContextMenu(false);
   };
 
@@ -470,14 +475,14 @@ function MessageBubbleComponent({
 
           {/* PHOTOS / IMAGES */}
           {!message.isViewOnce && (message.type === 'image' || message.type === 'gif' || message.type === 'sticker') && message.attachments?.[0]?.url && (
-            <div className="my-1 rounded-xl overflow-hidden max-w-sm relative bg-dark-card/50 min-w-[200px] min-h-[150px] aspect-[4/3] flex items-center justify-center border border-white/[0.04]">
+            <div className="my-1 rounded-2xl overflow-hidden max-w-xs sm:max-w-sm md:max-w-md w-auto h-auto relative bg-dark-card/40 flex items-center justify-center border border-white/[0.06] shadow-sm">
               <img
                 src={resolveMediaUrl(message.attachments[0].url)}
                 alt=""
                 loading="lazy"
                 decoding="async"
                 onClick={() => onOpenImageViewer && onOpenImageViewer(message.attachments, 0)}
-                className="w-full h-full max-h-80 object-cover rounded-xl cursor-pointer hover:opacity-95 transition-opacity duration-200"
+                className="w-auto h-auto max-w-full max-h-[480px] object-contain rounded-2xl cursor-pointer hover:opacity-95 transition-opacity duration-200 block"
               />
               {/* In-Bubble Upload Progress Overlay for Photos */}
               {message.uploadProgress && message.status === 'uploading' && (
@@ -785,7 +790,7 @@ function MessageBubbleComponent({
 
           {/* TEXT CONTENT */}
           {message.content && message.type !== 'poll' && (
-            <p className={`whitespace-pre-wrap break-words leading-relaxed ${isOnlyEmoji ? 'text-3xl my-1' : 'text-xs sm:text-sm'}`}>
+            <p className={`whitespace-pre-wrap break-words leading-relaxed select-text cursor-text ${isOnlyEmoji ? 'text-3xl my-1' : 'text-xs sm:text-sm'}`}>
               {message.content}
             </p>
           )}
@@ -828,6 +833,24 @@ function MessageBubbleComponent({
           >
             ❤️
           </button>
+          {message.content && (
+            <button
+              onClick={handleCopy}
+              className="p-1 rounded-lg hover:bg-dark-hover text-surface-400 hover:text-white transition-colors"
+              title="Copy Text"
+            >
+              <Copy className="w-3.5 h-3.5" />
+            </button>
+          )}
+          {message.attachments?.[0]?.url && (message.type === 'image' || message.attachments[0].type === 'image') && (
+            <button
+              onClick={() => handleCopyImage(message.attachments[0].url)}
+              className="p-1 rounded-lg hover:bg-dark-hover text-surface-400 hover:text-white transition-colors"
+              title="Copy Image"
+            >
+              <Copy className="w-3.5 h-3.5" />
+            </button>
+          )}
           <button
             onClick={() => setReplyingMessage(message)}
             className="p-1 rounded-lg hover:bg-dark-hover text-surface-400 hover:text-white transition-colors"
@@ -909,12 +932,23 @@ function MessageBubbleComponent({
                 <Reply className="w-3.5 h-3.5 text-primary-400" /> Reply
               </button>
 
-              <button
-                onClick={handleCopy}
-                className="w-full px-3 py-1.5 rounded-xl hover:bg-dark-hover text-surface-200 hover:text-white flex items-center gap-2.5 transition-colors"
-              >
-                <Copy className="w-3.5 h-3.5 text-surface-400" /> Copy Text
-              </button>
+              {message.content && (
+                <button
+                  onClick={handleCopy}
+                  className="w-full px-3 py-1.5 rounded-xl hover:bg-dark-hover text-surface-200 hover:text-white flex items-center gap-2.5 transition-colors"
+                >
+                  <Copy className="w-3.5 h-3.5 text-surface-400" /> Copy Text
+                </button>
+              )}
+
+              {message.attachments?.[0]?.url && (message.type === 'image' || message.attachments[0].type === 'image') && (
+                <button
+                  onClick={() => handleCopyImage(message.attachments[0].url)}
+                  className="w-full px-3 py-1.5 rounded-xl hover:bg-dark-hover text-surface-200 hover:text-white flex items-center gap-2.5 transition-colors"
+                >
+                  <Copy className="w-3.5 h-3.5 text-accent-blue" /> Copy Image
+                </button>
+              )}
 
               <button
                 onClick={() => {

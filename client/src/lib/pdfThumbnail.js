@@ -51,20 +51,29 @@ export async function getPdfCoverThumbnail(source, options = {}) {
       fetchUrl = `${getBackendBase()}${source}`;
     }
 
-    try {
-      // First try direct fetch
-      const res = await fetch(fetchUrl);
-      if (res.ok) {
-        arrayBuffer = await res.arrayBuffer();
-      } else {
-        throw new Error(`Direct fetch failed (${res.status})`);
-      }
-    } catch {
-      // Fallback via backend download proxy
-      const proxyUrl = `${getBackendBase()}/api/upload/download?url=${encodeURIComponent(fetchUrl)}&filename=preview.pdf`;
+    const isCloudinary = fetchUrl.includes('cloudinary.com');
+    const proxyUrl = `${getBackendBase()}/api/upload/download?url=${encodeURIComponent(fetchUrl)}&filename=preview.pdf&inline=true`;
+
+    if (isCloudinary) {
+      // Cloudinary raw uploads require signed proxy; skip direct fetch to prevent 401 console error
       const proxyRes = await fetch(proxyUrl);
       if (!proxyRes.ok) throw new Error('Could not load PDF for preview');
       arrayBuffer = await proxyRes.arrayBuffer();
+    } else {
+      try {
+        // Direct fetch for local or standard static assets
+        const res = await fetch(fetchUrl);
+        if (res.ok) {
+          arrayBuffer = await res.arrayBuffer();
+        } else {
+          throw new Error(`Direct fetch failed (${res.status})`);
+        }
+      } catch {
+        // Fallback via backend download proxy
+        const proxyRes = await fetch(proxyUrl);
+        if (!proxyRes.ok) throw new Error('Could not load PDF for preview');
+        arrayBuffer = await proxyRes.arrayBuffer();
+      }
     }
   } else {
     throw new Error('Invalid PDF source');

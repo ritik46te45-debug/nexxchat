@@ -634,7 +634,7 @@ export default function ChatWindow({ onStartCall }) {
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className={`flex-1 flex flex-col w-full h-full min-h-0 min-w-0 ${wallpaperClass} relative overflow-hidden select-none`}
+      className={`flex-1 flex flex-col w-full h-full min-h-0 min-w-0 ${wallpaperClass} relative overflow-hidden`}
     >
       {/* Drag & Drop Fullscreen Dropzone Overlay */}
       {isDraggingOver && (

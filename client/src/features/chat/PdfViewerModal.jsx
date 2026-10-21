@@ -30,7 +30,7 @@ const isMobileOrCapacitor = () => {
 
 const getProxyUrl = (pdfUrl, fileName) => {
   const origin = getServerOrigin();
-  return `${origin}/api/upload/download?url=${encodeURIComponent(pdfUrl)}&filename=${encodeURIComponent(fileName)}`;
+  return `${origin}/api/upload/download?url=${encodeURIComponent(pdfUrl)}&filename=${encodeURIComponent(fileName)}&inline=true`;
 };
 
 export default function PdfViewerModal({ isOpen, onClose, pdfUrl, fileName, fileSize }) {
