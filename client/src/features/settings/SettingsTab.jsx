@@ -366,7 +366,7 @@ export default function SettingsTab({ onOpenProfile }) {
                 </button>
               )}
 
-              {(!searchQuery || 'update version upgrade new latest'.includes(searchQuery.toLowerCase())) && (
+              {(isNativePlatform() || window.electronAPI?.isElectron) && (!searchQuery || 'update version upgrade new latest'.includes(searchQuery.toLowerCase())) && (
                 <button
                   onClick={async () => {
                     try {

@@ -21,9 +21,13 @@ function isNewerVersion(latest, current) {
 }
 
 export default function UpdateNoticeModal() {
+  const isNative = typeof window !== 'undefined' && (Boolean(Capacitor.isNativePlatform()) || Boolean(window.electronAPI?.isElectron));
+
+  // Never show update popup on web browser — web apps update automatically
+  if (!isNative) return null;
+
   const [updateInfo, setUpdateInfo] = useState(null);
   const [isOpen, setIsOpen] = useState(false);
-  const isNative = typeof window !== 'undefined' && (Boolean(Capacitor.isNativePlatform()) || Boolean(window.electronAPI?.isElectron));
 
   useEffect(() => {
     let isMounted = true;
