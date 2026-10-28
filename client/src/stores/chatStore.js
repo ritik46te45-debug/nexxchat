@@ -802,23 +802,45 @@ const useChatStore = create((set, get) => ({
     const idx = convs.findIndex((c) => c._id?.toString() === targetId);
 
     if (idx !== -1) {
-      const myP = convs[idx]._participant || convs[idx].participants?.find((p) => (p.user?._id || p.user)?.toString() === myId);
-      const currentUnread = typeof convs[idx].unreadCount === 'number'
-        ? convs[idx].unreadCount
+      const existingConv = convs[idx];
+      const existingLastMsgId = (existingConv.lastMessage?._id || existingConv.lastMessage?.id)?.toString();
+      const newMsgId = (lastMessage?._id || lastMessage?.id)?.toString();
+
+      // Check if message is already read by me or from me
+      const isAlreadyReadByMe = Boolean(
+        isFromMe ||
+        isCurrentlyActive ||
+        lastMessage?.status === 'read' ||
+        (Array.isArray(lastMessage?.readBy) && lastMessage.readBy.some(r => (r.user?._id || r.user)?.toString() === myId))
+      );
+
+      const myP = existingConv._participant || existingConv.participants?.find((p) => (p.user?._id || p.user)?.toString() === myId);
+      const currentUnread = typeof existingConv.unreadCount === 'number'
+        ? existingConv.unreadCount
         : (typeof myP?.unreadCount === 'number' ? myP.unreadCount : 0);
 
-      const newUnread = (isFromMe || isCurrentlyActive) ? 0 : Math.max(0, currentUnread + 1);
+      // IDEMPOTENCY GUARD:
+      // If message is already read by me or from me, unread is 0.
+      // If this exact message ID was already the lastMessage, DO NOT increment again!
+      let newUnread = currentUnread;
+      if (isAlreadyReadByMe) {
+        newUnread = 0;
+      } else if (existingLastMsgId && newMsgId && existingLastMsgId === newMsgId) {
+        newUnread = currentUnread;
+      } else {
+        newUnread = Math.max(0, currentUnread + 1);
+      }
 
       const updatedConv = {
-        ...convs[idx],
+        ...existingConv,
         lastMessage,
         lastMessageAt: lastMessage?.createdAt || new Date().toISOString(),
         unreadCount: newUnread,
         _participant: {
-          ...(convs[idx]._participant || {}),
+          ...(existingConv._participant || {}),
           unreadCount: newUnread,
         },
-        participants: (convs[idx].participants || []).map((p) =>
+        participants: (existingConv.participants || []).map((p) =>
           (p.user?._id || p.user)?.toString() === myId
             ? { ...p, unreadCount: newUnread }
             : p
@@ -833,6 +855,10 @@ const useChatStore = create((set, get) => ({
         const count = typeof c.unreadCount === 'number' ? c.unreadCount : (pObj?.unreadCount || 0);
         return sum + Math.max(0, count);
       }, 0);
+
+      try {
+        localStorage.setItem('nexchat_cached_conversations', JSON.stringify(sortedConvs.slice(0, 50)));
+      } catch (e) {}
 
       if (typeof window !== 'undefined' && window.electronAPI?.setBadgeCount) {
         window.electronAPI.setBadgeCount(unreadTotal);

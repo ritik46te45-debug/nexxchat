@@ -432,8 +432,8 @@ export default function ChatWindow({ onStartCall }) {
       if (userScrolledUpRef.current) return;
 
       const currentDistance = el.scrollHeight - el.scrollTop - el.clientHeight;
-      // Only keep pinned if already right at the bottom (< 40px)
-      if (currentDistance < 40) {
+      // Only keep pinned if already right at the bottom (< 60px) or still in initial load
+      if (currentDistance < 60 || isInitialLoadRef.current) {
         el.scrollTop = el.scrollHeight;
       }
     });
@@ -870,7 +870,9 @@ export default function ChatWindow({ onStartCall }) {
             ref={messagesContainerRef}
             onScroll={handleScroll}
             className={`flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 sm:p-4 space-y-1 hide-scrollbar bg-dark-bg relative transition-opacity duration-150 ${
-              isLoadingMessages && messages.length === 0 ? 'opacity-0 pointer-events-none' : 'opacity-100'
+              (!isChatReady || (isLoadingMessages && messages.length === 0))
+                ? 'invisible opacity-0 pointer-events-none'
+                : 'visible opacity-100'
             }`}
           >
             {/* Top Loading Spinner for Infinite History Scroll (pagination) */}

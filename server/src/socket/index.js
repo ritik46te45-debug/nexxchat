@@ -292,30 +292,14 @@ export const setupSocket = (io) => {
           conversationId: conversationId.toString(),
         };
 
-        // [RT-007] recipient SOCKETS RESOLVED & [RT-008] message:new EMITTING
+        // [RT-007] recipient SOCKETS RESOLVED & [RT-008] message:new EMITTING (deduplicated)
+        let broadcaster = io.to(`conv:${conversationId}`);
         recipientIds.forEach(rId => {
-          const sIds = connectionManager.getUserSockets(rId);
-          console.log(`[RT-007] recipient SOCKETS RESOLVED -> recipient=${rId} socketIds=[${sIds.join(', ')}] count=${sIds.length}`);
-
-          sIds.forEach(sid => {
-            console.log(`[RT-008] message:new EMITTING -> targetSocketId=${sid} messageId=${canonicalMessage._id}`);
-            io.to(sid).emit('message:new', payload);
-          });
-
-          // Also emit to persistent user room as backup
-          io.to(`user:${rId}`).emit('message:new', payload);
+          broadcaster = broadcaster.to(`user:${rId}`).to(rId.toString());
         });
-
-        // Also emit to other sockets of sender for multi-device sync
-        const senderSockets = connectionManager.getUserSockets(userId);
-        senderSockets.forEach(sid => {
-          if (sid !== socket.id) {
-            io.to(sid).emit('message:new', payload);
-          }
-        });
-
-        // Emit to conversation room
-        io.to(`conv:${conversationId}`).emit('message:new', payload);
+        // Multi-device sync for other devices of sender
+        broadcaster = broadcaster.to(`user:${userId}`).to(userId.toString());
+        broadcaster.emit('message:new', payload);
 
         // [RT-009] Save in-app notifications and emit real-time count
         recipientIds.forEach(async (rId) => {
@@ -431,9 +415,12 @@ export const setupSocket = (io) => {
       try {
         if (!conversationId) return;
 
+        const convObjectId = new mongoose.Types.ObjectId(conversationId);
+        const userObjectId = new mongoose.Types.ObjectId(userId);
+
         // Atomic reset unread count & lastReadAt in MongoDB
         await Conversation.updateOne(
-          { _id: conversationId, 'participants.user': userId },
+          { _id: convObjectId, 'participants.user': userObjectId },
           {
             $set: {
               'participants.$.unreadCount': 0,
@@ -445,12 +432,12 @@ export const setupSocket = (io) => {
         // Mark unread messages read
         await Message.updateMany(
           {
-            conversation: conversationId,
-            sender: { $ne: userId },
-            'readBy.user': { $ne: userId },
+            conversation: convObjectId,
+            sender: { $ne: userObjectId },
+            'readBy.user': { $ne: userObjectId },
           },
           {
-            $push: { readBy: { user: userId, readAt: new Date() } },
+            $push: { readBy: { user: userObjectId, readAt: new Date() } },
             $set: { status: 'read' },
           }
         );
@@ -458,7 +445,7 @@ export const setupSocket = (io) => {
         // Mark in-app notifications for this conversation as read
         await Notification.updateMany(
           {
-            recipient: userId,
+            recipient: userObjectId,
             'data.conversationId': conversationId,
             isRead: false,
           },
@@ -468,32 +455,29 @@ export const setupSocket = (io) => {
         );
 
         const unreadNotifCount = await Notification.countDocuments({
-          recipient: userId,
+          recipient: userObjectId,
           isRead: false,
         });
         io.to(`user:${userId}`).to(userId.toString()).emit('notification:count', { count: unreadNotifCount });
 
-        const conversation = await Conversation.findById(conversationId).select('participants.user');
+        const conversation = await Conversation.findById(convObjectId).select('participants.user');
         if (!conversation) return;
 
-        // Notify other participants via direct socket dispatch & rooms
+        // Notify other participants via chained de-duplicated broadcaster
         const payload = {
           conversationId,
           readBy: userId,
           readAt: new Date(),
         };
 
+        let readBroadcaster = io.to(`conv:${conversationId}`);
         conversation.participants.forEach(p => {
           const pUserId = (p.user?._id || p.user || p)?.toString();
           if (pUserId) {
-            const sockets = connectionManager.getUserSockets(pUserId);
-            sockets.forEach(sid => {
-              io.to(sid).emit('message:read', payload);
-            });
-            io.to(`user:${pUserId}`).emit('message:read', payload);
+            readBroadcaster = readBroadcaster.to(`user:${pUserId}`).to(pUserId.toString());
           }
         });
-        io.to(`conv:${conversationId}`).emit('message:read', payload);
+        readBroadcaster.emit('message:read', payload);
       } catch (error) {
         console.error('Message read error:', error);
       }

@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import Message from '../models/Message.js';
 import Conversation from '../models/Conversation.js';
 import User from '../models/User.js';
@@ -7,7 +8,7 @@ import { sendPushNotification } from '../config/webPush.js';
 import connectionManager from '../socket/connectionManager.js';
 import { dispatchPush } from '../services/pushService.js';
 
-// Helper: Broadcast event to a conversation and all its participants reliably
+// Helper: Broadcast event to a conversation and all its participants reliably without duplicate emissions
 export const emitToConversationParticipants = (io, conversation, event, data) => {
   if (!io || !conversation) {
     console.warn(`[RT-EMIT-WARN] Cannot emit ${event} — io (${Boolean(io)}) or conversation (${Boolean(conversation)}) missing`);
@@ -17,26 +18,17 @@ export const emitToConversationParticipants = (io, conversation, event, data) =>
   const convRoom = `conv:${convId}`;
   const participants = conversation.participants || [];
 
-  console.log(`[RT-EMIT-001] emitToConversationParticipants ENTERED -> event: ${event} | convId: ${convId} | participants: ${participants.length}`);
-
-  // 1. Emit to each participant via direct socket IDs AND persistent user room
+  // Chain rooms into a single broadcaster so Socket.IO automatically de-duplicates sockets
+  let broadcaster = io.to(convRoom);
   participants.forEach(p => {
     const pUserId = (p.user?._id || p.user || p)?.toString();
     if (pUserId) {
-      const socketIds = connectionManager.getUserSockets(pUserId);
-      console.log(`[RT-EMIT-002] Target user: ${pUserId} | SocketIds: [${socketIds.join(', ')}] | Count: ${socketIds.length}`);
-
-      socketIds.forEach(sid => {
-        io.to(sid).emit(event, data);
-      });
-
-      io.to(`user:${pUserId}`).emit(event, data);
+      broadcaster = broadcaster.to(`user:${pUserId}`).to(pUserId);
     }
   });
 
-  // 2. Emit to conversation room
-  io.to(convRoom).emit(event, data);
-  console.log(`[RT-EMIT-003] Emitted ${event} successfully to all targets for conv: ${convId}`);
+  broadcaster.emit(event, data);
+  console.log(`[RT-EMIT] Broadcasted ${event} cleanly to conv:${convId}`);
 };
 
 // SEND MESSAGE
@@ -591,10 +583,12 @@ export const searchMessages = async (req, res) => {
 export const markAsRead = async (req, res) => {
   try {
     const { conversationId } = req.params;
+    const userObjectId = new mongoose.Types.ObjectId(req.userId);
+    const convObjectId = new mongoose.Types.ObjectId(conversationId);
 
     const conversation = await Conversation.findOne({
-      _id: conversationId,
-      'participants.user': req.userId,
+      _id: convObjectId,
+      'participants.user': userObjectId,
     });
 
     if (!conversation) {
@@ -603,7 +597,7 @@ export const markAsRead = async (req, res) => {
 
     // 1. Atomic reset unread count & lastReadAt
     await Conversation.updateOne(
-      { _id: conversationId, 'participants.user': req.userId },
+      { _id: convObjectId, 'participants.user': userObjectId },
       {
         $set: {
           'participants.$.unreadCount': 0,
@@ -615,12 +609,12 @@ export const markAsRead = async (req, res) => {
     // 2. Update message read status in bulk (only for messages not yet read by this user)
     await Message.updateMany(
       {
-        conversation: conversationId,
-        sender: { $ne: req.userId },
-        'readBy.user': { $ne: req.userId },
+        conversation: convObjectId,
+        sender: { $ne: userObjectId },
+        'readBy.user': { $ne: userObjectId },
       },
       {
-        $push: { readBy: { user: req.userId, readAt: new Date() } },
+        $push: { readBy: { user: userObjectId, readAt: new Date() } },
         $set: { status: 'read' },
       }
     );

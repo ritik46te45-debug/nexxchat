@@ -122,12 +122,37 @@ export const getConversations = async (req, res) => {
     // Track orphaned conversations where user was deleted from DB to clean up
     const orphanedConvIds = [];
 
+    // Accurately compute real unread message count per conversation based on Message read status
+    const convIds = conversations.map(c => c._id);
+    const userObjectId = new mongoose.Types.ObjectId(req.userId);
+    const unreadAgg = await Message.aggregate([
+      {
+        $match: {
+          conversation: { $in: convIds },
+          sender: { $ne: userObjectId },
+          'readBy.user': { $ne: userObjectId },
+          deletedFor: { $ne: userObjectId },
+          isDeletedForEveryone: { $ne: true },
+        }
+      },
+      {
+        $group: {
+          _id: '$conversation',
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+    const unreadMap = new Map();
+    unreadAgg.forEach(item => {
+      unreadMap.set(item._id.toString(), item.count);
+    });
+
     // Filter out conversations where participant deleted, where other user is deleted, & attach exact unreadCount
     const filtered = conversations.map((convObj) => {
       const myParticipant = convObj.participants?.find(
         (p) => (p.user?._id || p.user)?.toString() === req.userId.toString()
       );
-      const actualUnread = typeof myParticipant?.unreadCount === 'number' ? myParticipant.unreadCount : 0;
+      const actualUnread = unreadMap.get(convObj._id.toString()) || 0;
       if (convObj.lastMessage && convObj.lastMessage.deletedFor?.some(id => id.toString() === req.userId.toString())) {
         convObj.lastMessage = null;
       }
