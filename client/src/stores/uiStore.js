@@ -18,6 +18,9 @@ const useUIStore = create((set) => ({
   showGlobalSearch: false,
   showCommandPalette: false,
   showDownloadModal: false,
+  showAdPreview: typeof window !== 'undefined'
+    ? (new URLSearchParams(window.location.search).get('ad_preview') === '1' || localStorage.getItem('nexchat_ad_preview') === 'true')
+    : false,
   activeModal: null,
   modalData: null,
 
@@ -97,6 +100,15 @@ const useUIStore = create((set) => ({
   setShowGlobalSearch: (show) => set({ showGlobalSearch: show }),
   setShowCommandPalette: (show) => set({ showCommandPalette: show }),
   setShowDownloadModal: (show) => set({ showDownloadModal: show }),
+  setShowAdPreview: (show) => {
+    try { localStorage.setItem('nexchat_ad_preview', String(show)); } catch (e) {}
+    set({ showAdPreview: show });
+  },
+  toggleAdPreview: () => set((s) => {
+    const next = !s.showAdPreview;
+    try { localStorage.setItem('nexchat_ad_preview', String(next)); } catch (e) {}
+    return { showAdPreview: next };
+  }),
 
   toggleRightPanel: (view) => set((s) => ({
     isRightPanelOpen: view ? true : !s.isRightPanelOpen,

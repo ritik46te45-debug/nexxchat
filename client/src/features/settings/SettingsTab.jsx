@@ -17,7 +17,7 @@ import toast from 'react-hot-toast';
 
 export default function SettingsTab({ onOpenProfile }) {
   const { user, updateUser, logout } = useAuthStore();
-  const { theme, setTheme, setShowWallpaperModal, isMobile, setSidebarView, setShowDownloadModal } = useUIStore();
+  const { theme, setTheme, setShowWallpaperModal, isMobile, setSidebarView, setShowDownloadModal, showAdPreview, toggleAdPreview } = useUIStore();
   const [searchQuery, setSearchQuery] = useState('');
 
   const [privacy, setPrivacy] = useState(user?.privacy || {});
@@ -364,6 +364,32 @@ export default function SettingsTab({ onOpenProfile }) {
                   </div>
                   <ChevronRight className="w-4 h-4 text-surface-500 group-hover:text-white transition-colors" />
                 </button>
+              )}
+
+              {(!searchQuery || 'admob ad banner preview ads test'.includes(searchQuery.toLowerCase())) && (
+                <div className="flex items-center justify-between p-3.5 rounded-xl bg-dark-card border border-dark-border">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center">
+                      <Sparkles className="w-4 h-4" />
+                    </div>
+                    <div className="text-left">
+                      <p className="text-sm font-semibold text-white">Preview AdMob Banner</p>
+                      <p className="text-xs text-surface-400">Simulate bottom AdMob banner on laptop</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={toggleAdPreview}
+                    className={`w-12 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors duration-300 ${
+                      showAdPreview ? 'bg-amber-500' : 'bg-dark-hover border border-dark-border'
+                    }`}
+                  >
+                    <div
+                      className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-300 ${
+                        showAdPreview ? 'translate-x-6' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
               )}
 
               {(!searchQuery || 'privacy lock passcode pin biometrics'.includes(searchQuery.toLowerCase())) && (
