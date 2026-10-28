@@ -34,13 +34,20 @@
           "arch": [
             "x64"
           ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "electron/app-icon.png"
     },
     "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
+      "oneClick": true,
+      "perMachine": false,
+      "allowElevation": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "NexChat"
