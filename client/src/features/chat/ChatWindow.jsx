@@ -91,13 +91,16 @@ export default function ChatWindow({ onStartCall }) {
     useChatStore.getState().markAsRead(convId);
   }, [activeConversation?._id]);
 
-  // Mark as read whenever new messages arrive while viewing this conversation
+  // Mark as read whenever new incoming messages arrive while viewing this conversation
   useEffect(() => {
     const convId = activeConversation?._id?.toString();
-    if (convId && typeof document !== 'undefined' && !document.hidden) {
+    if (!convId || !messages || messages.length === 0) return;
+    const lastMsg = messages[messages.length - 1];
+    const isOwn = (lastMsg?.sender?._id || lastMsg?.sender)?.toString() === myId;
+    if (!isOwn && typeof document !== 'undefined' && !document.hidden) {
       useChatStore.getState().markAsRead(convId);
     }
-  }, [messages.length, activeConversation?._id]);
+  }, [messages.length, activeConversation?._id, myId]);
 
   // Mark as read on window/tab focus
   useEffect(() => {

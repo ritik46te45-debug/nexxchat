@@ -654,10 +654,21 @@ const useChatStore = create((set, get) => ({
     set({ selectedMessageIds: [] });
   },
 
+  _lastMarkReadTimes: {},
+
   markAsRead: async (conversationId) => {
     try {
       if (!conversationId) return;
       const cid = conversationId.toString();
+
+      // Throttling guard: don't hammer server if already marked read within last 3 seconds
+      const now = Date.now();
+      const lastTime = get()._lastMarkReadTimes?.[cid] || 0;
+      if (now - lastTime < 3000) return;
+
+      set((s) => ({
+        _lastMarkReadTimes: { ...(s._lastMarkReadTimes || {}), [cid]: now },
+      }));
 
       // Notify server via socket and REST unconditionally
       const socket = getSocket();
