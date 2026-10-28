@@ -187,13 +187,12 @@ const useChatStore = create((set, get) => ({
       // Silently revalidate in background (SWR pattern)
       get().fetchMessages(convId, null, true);
     } else {
-      // Optimistically display lastMessage if available so chat window is never blank
-      const initialMessages = conversation.lastMessage ? [conversation.lastMessage] : [];
+      // Clean fresh load: avoid flashing days-old lastMessage which triggered inverted scroll pagination
       set({
         activeConversation: conversation,
-        messages: initialMessages,
+        messages: [],
         hasMoreMessages: true,
-        isLoadingMessages: initialMessages.length === 0,
+        isLoadingMessages: true,
         _fetchGeneration: gen,
       });
       get().fetchMessages(convId);

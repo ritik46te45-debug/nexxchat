@@ -276,6 +276,7 @@ export const getMessages = async (req, res) => {
     // Lean query returning plain JSON objects without heavy Mongoose Document overhead
     const messages = await Message.find(query)
       .select('-__v')
+      .slice('readBy', -5)
       .populate('sender', 'username displayName avatar')
       .populate({
         path: 'replyTo',
@@ -611,14 +612,15 @@ export const markAsRead = async (req, res) => {
       }
     );
 
-    // 2. Update message read status in bulk
+    // 2. Update message read status in bulk (only for messages not yet read by this user)
     await Message.updateMany(
       {
         conversation: conversationId,
         sender: { $ne: req.userId },
+        'readBy.user': { $ne: req.userId },
       },
       {
-        $addToSet: { readBy: { user: req.userId, readAt: new Date() } },
+        $push: { readBy: { user: req.userId, readAt: new Date() } },
         $set: { status: 'read' },
       }
     );
@@ -871,6 +873,7 @@ export const syncMessages = async (req, res) => {
       deletedFor: { $ne: req.userId },
     })
       .select('-__v')
+      .slice('readBy', -5)
       .populate('sender', 'username displayName avatar')
       .populate({
         path: 'replyTo',

@@ -463,13 +463,16 @@ export default function ChatWindow({ onStartCall }) {
       isInitialLoadRef.current = false;
     }
 
-    // Infinite scroll: fetch older messages when user scrolls near the top
+    // Infinite scroll: fetch older messages ONLY when user actively scrolled up near the top and content is scrollable
+    const isScrollable = el.scrollHeight > el.clientHeight + 100;
     if (
       !isInitialLoadRef.current &&
+      userScrolledUpRef.current &&
+      isScrollable &&
       el.scrollTop < 80 &&
       hasMoreMessages &&
       !isLoadingMessages &&
-      messages.length > 0 &&
+      messages.length >= 20 &&
       !isFetchingOlderRef.current
     ) {
       const oldest = messages[0];
