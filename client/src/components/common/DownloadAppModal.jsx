@@ -43,7 +43,7 @@ export default function DownloadAppModal() {
     }
   };
 
-  const githubReleasesUrl = 'https://github.com/ritik46te45-debug/nexxchat/releases';
+  const downloadAppUrl = 'https://github.com/ritik46te45-debug/nexxchat/actions/runs/40645366535';
 
   return (
     <div
@@ -83,7 +83,7 @@ export default function DownloadAppModal() {
         <div className="space-y-3 mb-6">
           {/* 1. Android APK */}
           <a
-            href={githubReleasesUrl}
+            href={downloadAppUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center justify-between p-3.5 rounded-2xl bg-dark-input hover:bg-dark-hover border border-dark-border hover:border-accent-green/50 transition-all group"
@@ -96,7 +96,7 @@ export default function DownloadAppModal() {
                 <p className="text-sm font-bold text-white group-hover:text-accent-green transition-colors">
                   Android App (.apk)
                 </p>
-                <p className="text-[11px] text-surface-400">Free download for all Android phones</p>
+                <p className="text-[11px] text-surface-400">Download from latest GitHub build artifacts</p>
               </div>
             </div>
             <ExternalLink className="w-4 h-4 text-surface-400 group-hover:text-accent-green transition-colors" />
@@ -104,7 +104,7 @@ export default function DownloadAppModal() {
 
           {/* 2. Windows Desktop EXE */}
           <a
-            href={githubReleasesUrl}
+            href={downloadAppUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center justify-between p-3.5 rounded-2xl bg-dark-input hover:bg-dark-hover border border-dark-border hover:border-primary-400/50 transition-all group"
@@ -117,7 +117,7 @@ export default function DownloadAppModal() {
                 <p className="text-sm font-bold text-white group-hover:text-primary-400 transition-colors">
                   Windows PC App (.exe)
                 </p>
-                <p className="text-[11px] text-surface-400">Installer & Portable editions for Windows 10/11</p>
+                <p className="text-[11px] text-surface-400">Download Windows installer from latest build artifacts</p>
               </div>
             </div>
             <ExternalLink className="w-4 h-4 text-surface-400 group-hover:text-primary-400 transition-colors" />

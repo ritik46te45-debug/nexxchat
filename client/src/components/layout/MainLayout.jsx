@@ -23,7 +23,7 @@ import NewChatModal from '../../features/chat/NewChatModal';
 import NewGroupModal from '../../features/groups/NewGroupModal';
 import BatteryOnboardingModal from '../../features/auth/BatteryOnboardingModal';
 import DownloadAppModal from '../common/DownloadAppModal';
-import AdBannerPreview from '../common/AdBannerPreview';
+import UpdateNoticeModal from '../common/UpdateNoticeModal';
 import { showBannerAd, hideBannerAd } from '../../lib/admob';
 import { PhoneOff } from 'lucide-react';
 import { App as CapApp } from '@capacitor/app';
@@ -522,8 +522,8 @@ export default function MainLayout() {
       {/* Download App Popup / Modal */}
       <DownloadAppModal />
 
-      {/* AdMob Banner Preview (Web/Desktop Simulation) */}
-      <AdBannerPreview />
+      {/* Auto-Update Notice Modal */}
+      <UpdateNoticeModal />
     </div>
   );
 }

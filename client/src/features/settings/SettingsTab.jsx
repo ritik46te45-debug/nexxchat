@@ -4,7 +4,7 @@ import {
   Check, ChevronRight, Volume2, Music, Play, QrCode, Key,
   Radio, Send, AlertTriangle, Fingerprint, Sparkles, Palette,
   Search, Clock, MoonStar, Eye, PhoneCall, Users, AtSign, Vibrate, CheckCheck,
-  BatteryCharging, Monitor, Zap, Download
+  BatteryCharging, Monitor, Zap, Download, RefreshCw
 } from 'lucide-react';
 import api from '../../lib/api';
 import useAuthStore from '../../stores/authStore';
@@ -17,7 +17,7 @@ import toast from 'react-hot-toast';
 
 export default function SettingsTab({ onOpenProfile }) {
   const { user, updateUser, logout } = useAuthStore();
-  const { theme, setTheme, setShowWallpaperModal, isMobile, setSidebarView, setShowDownloadModal, showAdPreview, toggleAdPreview } = useUIStore();
+  const { theme, setTheme, setShowWallpaperModal, isMobile, setSidebarView, setShowDownloadModal } = useUIStore();
   const [searchQuery, setSearchQuery] = useState('');
 
   const [privacy, setPrivacy] = useState(user?.privacy || {});
@@ -366,30 +366,36 @@ export default function SettingsTab({ onOpenProfile }) {
                 </button>
               )}
 
-              {(!searchQuery || 'admob ad banner preview ads test'.includes(searchQuery.toLowerCase())) && (
-                <div className="flex items-center justify-between p-3.5 rounded-xl bg-dark-card border border-dark-border">
+              {(!searchQuery || 'update version upgrade new latest'.includes(searchQuery.toLowerCase())) && (
+                <button
+                  onClick={async () => {
+                    try {
+                      const { data } = await api.get('/version');
+                      if (data?.latestVersion && data.latestVersion !== '1.0.2') {
+                        toast(`New version v${data.latestVersion} available! Opening download...`, { icon: '🚀' });
+                        window.open(data.downloadUrl || 'https://github.com/ritik46te45-debug/nexxchat/actions/runs/40645366535', '_blank');
+                      } else {
+                        toast.success('You are using the latest version (v1.0.2)! 🎉');
+                      }
+                    } catch (e) {
+                      toast.error('Unable to check for updates right now');
+                    }
+                  }}
+                  className="w-full flex items-center justify-between p-3.5 rounded-xl bg-dark-card hover:bg-dark-hover border border-dark-border transition-all cursor-pointer group"
+                >
                   <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center">
-                      <Sparkles className="w-4 h-4" />
+                    <div className="w-9 h-9 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center group-hover:scale-105 transition-transform">
+                      <RefreshCw className="w-4 h-4" />
                     </div>
                     <div className="text-left">
-                      <p className="text-sm font-semibold text-white">Preview AdMob Banner</p>
-                      <p className="text-xs text-surface-400">Simulate bottom AdMob banner on laptop</p>
+                      <p className="text-sm font-semibold text-white group-hover:text-emerald-400 transition-colors">
+                        Check for Updates
+                      </p>
+                      <p className="text-xs text-surface-400">Current version: v1.0.2</p>
                     </div>
                   </div>
-                  <button
-                    onClick={toggleAdPreview}
-                    className={`w-12 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors duration-300 ${
-                      showAdPreview ? 'bg-amber-500' : 'bg-dark-hover border border-dark-border'
-                    }`}
-                  >
-                    <div
-                      className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-300 ${
-                        showAdPreview ? 'translate-x-6' : 'translate-x-0'
-                      }`}
-                    />
-                  </button>
-                </div>
+                  <ChevronRight className="w-4 h-4 text-surface-500 group-hover:text-white transition-colors" />
+                </button>
               )}
 
               {(!searchQuery || 'privacy lock passcode pin biometrics'.includes(searchQuery.toLowerCase())) && (
