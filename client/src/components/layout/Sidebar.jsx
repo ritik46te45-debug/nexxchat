@@ -1,7 +1,7 @@
 import {
   Home, MessageSquare, Users, Phone, Sparkles, Bell,
   Settings, LogOut, PanelLeftClose, PanelLeftOpen, User,
-  Command, Search
+  Command, Search, Download
 } from 'lucide-react';
 import useUIStore from '../../stores/uiStore';
 import useAuthStore from '../../stores/authStore';
@@ -12,7 +12,7 @@ export default function Sidebar({ onOpenProfile }) {
   const {
     sidebarView, setSidebarView, isMobile, showChatOnMobile,
     isSidebarExpanded, toggleSidebarExpanded,
-    setShowGlobalSearch, setShowCommandPalette, unreadNotifCount
+    setShowGlobalSearch, setShowCommandPalette, setShowDownloadModal, unreadNotifCount
   } = useUIStore();
   const { user, logout } = useAuthStore();
   const unreadTotal = useChatStore((s) => s.unreadTotal);
@@ -185,6 +185,23 @@ export default function Sidebar({ onOpenProfile }) {
 
       {/* Bottom Footer Actions */}
       <div className="flex flex-col gap-2 w-full">
+        {/* Download App Trigger */}
+        <button
+          onClick={() => setShowDownloadModal(true)}
+          className={`rounded-2xl bg-primary-500/10 hover:bg-primary-500/20 text-primary-400 border border-primary-500/30 flex items-center transition-all cursor-pointer group ${
+            isSidebarExpanded ? 'px-3.5 py-2.5 gap-3 w-full' : 'w-10 h-10 justify-center'
+          }`}
+          title="Download App (.apk / .exe)"
+        >
+          <Download className="w-5 h-5 flex-shrink-0 group-hover:scale-110 transition-transform" />
+          {isSidebarExpanded && (
+            <div className="text-left min-w-0">
+              <span className="text-xs font-bold block leading-none">Download App</span>
+              <span className="text-[10px] text-surface-400 block mt-0.5">Android & Windows</span>
+            </div>
+          )}
+        </button>
+
         {!isSidebarExpanded && (
           <button
             onClick={toggleSidebarExpanded}

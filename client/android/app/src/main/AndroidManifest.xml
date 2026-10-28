@@ -22,6 +22,11 @@
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="nexchat_messages_v3" />
 
+        <!-- Google AdMob Application ID -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-7458210699598859~4596153803" />
+
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
             android:name=".MainActivity"

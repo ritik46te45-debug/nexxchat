@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, memo } from 'react';
-import { Search, Plus, Edit3, Users, Archive, Pin, Volume2, VolumeX, Bell, Settings } from 'lucide-react';
+import { Search, Plus, Edit3, Users, Archive, Pin, Volume2, VolumeX, Bell, Settings, Download } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import useChatStore, { getConvTime } from '../../stores/chatStore';
 import useAuthStore from '../../stores/authStore';
@@ -26,6 +26,7 @@ export default function ChatList({ onOpenProfile }) {
   const setShowChatOnMobile = useUIStore((s) => s.setShowChatOnMobile);
   const unreadNotifCount = useUIStore((s) => s.unreadNotifCount);
   const setSidebarView = useUIStore((s) => s.setSidebarView);
+  const setShowDownloadModal = useUIStore((s) => s.setShowDownloadModal);
 
   const totalUnreadChats = useMemo(() => {
     return conversations.filter(c => (c.unreadCount || c._participant?.unreadCount || 0) > 0).length;
@@ -110,6 +111,13 @@ export default function ChatList({ onOpenProfile }) {
           </div>
 
           <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setShowDownloadModal(true)}
+              className="w-9 h-9 rounded-xl bg-dark-input text-surface-400 hover:text-primary-400 hover:bg-dark-hover flex items-center justify-center transition-all border border-dark-border cursor-pointer group"
+              title="Download App (.apk / .exe)"
+            >
+              <Download className="w-4 h-4 group-hover:scale-110 transition-transform" />
+            </button>
             <button
               onClick={() => setSidebarView('settings')}
               className="w-9 h-9 rounded-xl bg-dark-input text-surface-400 hover:text-white hover:bg-dark-hover flex items-center justify-center transition-all border border-dark-border cursor-pointer"

@@ -22,6 +22,8 @@ import CommandPalette from '../../features/command/CommandPalette';
 import NewChatModal from '../../features/chat/NewChatModal';
 import NewGroupModal from '../../features/groups/NewGroupModal';
 import BatteryOnboardingModal from '../../features/auth/BatteryOnboardingModal';
+import DownloadAppModal from '../common/DownloadAppModal';
+import { showBannerAd, hideBannerAd } from '../../lib/admob';
 import { PhoneOff } from 'lucide-react';
 import { App as CapApp } from '@capacitor/app';
 import api from '../../lib/api';
@@ -78,6 +80,15 @@ export default function MainLayout() {
       setShowBatteryModal(true);
     }
   }, [isMobile]);
+
+  // Manage AdMob Banner Ad lifecycle on native Android
+  useEffect(() => {
+    if (isMobile && showChatOnMobile) {
+      hideBannerAd();
+    } else {
+      showBannerAd();
+    }
+  }, [isMobile, showChatOnMobile]);
 
   // Global Keyboard Shortcuts (Ctrl+K / Cmd+K)
   useEffect(() => {
@@ -506,6 +517,9 @@ export default function MainLayout() {
 
       {/* App Lock / PIN Screen Overlay */}
       <AppLockOverlay />
+
+      {/* Download App Popup / Modal */}
+      <DownloadAppModal />
     </div>
   );
 }
