@@ -1,12 +1,16 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Eye, EyeOff, Mail, Lock, MessageCircle, ArrowRight, Loader2, Sparkles, HelpCircle } from 'lucide-react';
+import {
+  Eye, EyeOff, Mail, Lock, MessageCircle, ArrowRight, Loader2,
+  Sparkles, HelpCircle, Phone, Smartphone, CheckCircle2, RefreshCw
+} from 'lucide-react';
 import useAuthStore from '../../stores/authStore';
 import { triggerGoogleAuth, initGoogleAuth } from '../../lib/googleAuth';
 import ForgotPasswordModal from './ForgotPasswordModal';
 import toast from 'react-hot-toast';
 
 export default function LoginPage() {
+  const [authMethod, setAuthMethod] = useState('phone'); // 'phone' | 'email'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -18,10 +22,27 @@ export default function LoginPage() {
   const [totpCode, setTotpCode] = useState('');
   const [androidAuthSuccess, setAndroidAuthSuccess] = useState(null);
 
+  // Phone Login State
+  const [countryCode, setCountryCode] = useState('+91');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [phoneOtp, setPhoneOtp] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpCountdown, setOtpCountdown] = useState(0);
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+
   const searchParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
   const isAndroidAuthMode = searchParams.get('android') === 'true' || searchParams.get('android_auth') === '1';
 
-  const { login, googleLogin, verify2FALogin, error, clearError } = useAuthStore();
+  const { login, googleLogin, verify2FALogin, sendPhoneOTP, verifyPhoneOTP, error, clearError } = useAuthStore();
+
+  // Countdown timer for OTP resend
+  useEffect(() => {
+    if (otpCountdown > 0) {
+      const timer = setTimeout(() => setOtpCountdown(otpCountdown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [otpCountdown]);
 
   // When in Android Auth mode, do NOT automatically reuse stale tokens from previous browser sessions
   // so the user can always pick and authenticate the exact account they intend to use.
@@ -118,6 +139,58 @@ export default function LoginPage() {
       toast.error(err.message || 'Google sign-in failed', { id: 'google-auth' });
     } finally {
       setIsGoogleSubmitting(false);
+    }
+  };
+
+  const handleSendPhoneOTP = async (e) => {
+    e?.preventDefault?.();
+    const cleanDigits = phoneNumber.replace(/\D/g, '');
+    if (cleanDigits.length < 8) {
+      toast.error('Please enter a valid phone number (at least 8 digits)');
+      return;
+    }
+
+    const fullNumber = `${countryCode}${cleanDigits}`;
+    setIsSendingOtp(true);
+    clearError();
+    try {
+      const res = await sendPhoneOTP(fullNumber);
+      setOtpSent(true);
+      setOtpCountdown(60);
+      toast.success(res.message || 'OTP sent! Please check your phone.');
+      if (res.devOtp) {
+        toast(`OTP Code: ${res.devOtp}`, { icon: '🔑', duration: 9000 });
+      }
+    } catch (err) {
+      toast.error(err.message || 'Failed to send OTP');
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
+
+  const handleVerifyPhoneOTP = async (e) => {
+    e?.preventDefault?.();
+    if (phoneOtp.trim().length !== 6) {
+      toast.error('Please enter the 6-digit verification code');
+      return;
+    }
+
+    const cleanDigits = phoneNumber.replace(/\D/g, '');
+    const fullNumber = `${countryCode}${cleanDigits}`;
+    setIsVerifyingOtp(true);
+    clearError();
+    try {
+      const res = await verifyPhoneOTP(fullNumber, phoneOtp.trim());
+      toast.success('Welcome to NexChat! 🎉');
+      if (isAndroidAuthMode && res?.accessToken) {
+        setAndroidAuthSuccess({ token: res.accessToken, refreshToken: res.refreshToken });
+        const deepLink = `app.nexchat.messenger://auth?token=${encodeURIComponent(res.accessToken)}&refreshToken=${encodeURIComponent(res.refreshToken || '')}`;
+        window.location.href = deepLink;
+      }
+    } catch (err) {
+      toast.error(err.message || 'Invalid or expired OTP code');
+    } finally {
+      setIsVerifyingOtp(false);
     }
   };
 
@@ -222,89 +295,256 @@ export default function LoginPage() {
             </form>
           ) : (
             <>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                {/* Email */}
-                <div>
-                  <label className="block text-xs font-semibold text-surface-300 mb-1.5">Email</label>
-                  <div className="relative">
-                    <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-500" />
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="you@example.com"
-                      className="w-full pl-10 pr-4 py-2.5 bg-dark-input border border-dark-border rounded-xl text-sm text-white placeholder-surface-500 input-focus transition-all"
-                      required
-                      autoComplete="email"
-                    />
-                  </div>
-                </div>
+              {/* Tab Switcher: Phone vs Email */}
+              <div className="flex items-center gap-1.5 p-1 rounded-2xl bg-dark-input border border-dark-border mb-5">
+                <button
+                  type="button"
+                  onClick={() => { setAuthMethod('phone'); clearError(); }}
+                  className={`flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                    authMethod === 'phone'
+                      ? 'gradient-primary text-white shadow-lg shadow-primary-500/20'
+                      : 'text-surface-400 hover:text-white'
+                  }`}
+                >
+                  <Phone className="w-3.5 h-3.5" />
+                  <span>Phone Number</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setAuthMethod('email'); clearError(); }}
+                  className={`flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                    authMethod === 'email'
+                      ? 'gradient-primary text-white shadow-lg shadow-primary-500/20'
+                      : 'text-surface-400 hover:text-white'
+                  }`}
+                >
+                  <Mail className="w-3.5 h-3.5" />
+                  <span>Email & Password</span>
+                </button>
+              </div>
 
-                {/* Password */}
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="block text-xs font-semibold text-surface-300">Password</label>
-                    <button
-                      type="button"
-                      onClick={() => setShowForgotModal(true)}
-                      className="text-xs text-primary-400 hover:text-primary-300 transition-colors font-medium cursor-pointer"
-                    >
-                      Forgot password?
-                    </button>
-                  </div>
-                  <div className="relative">
-                    <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-500" />
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="••••••••"
-                      className="w-full pl-10 pr-10 py-2.5 bg-dark-input border border-dark-border rounded-xl text-sm text-white placeholder-surface-500 input-focus transition-all"
-                      required
-                      autoComplete="current-password"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-surface-500 hover:text-surface-300 transition-colors"
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
+              {authMethod === 'phone' ? (
+                /* Phone Number + Free OTP Login */
+                <div className="space-y-4">
+                  {!otpSent ? (
+                    <form onSubmit={handleSendPhoneOTP} className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-surface-300 mb-1.5">Mobile Number</label>
+                        <div className="flex gap-2">
+                          <select
+                            value={countryCode}
+                            onChange={(e) => setCountryCode(e.target.value)}
+                            className="w-28 px-2 py-2.5 bg-dark-input border border-dark-border rounded-xl text-xs text-white input-focus font-medium cursor-pointer"
+                          >
+                            <option value="+91">🇮🇳 +91 (IN)</option>
+                            <option value="+1">🇺🇸 +1 (US)</option>
+                            <option value="+44">🇬🇧 +44 (UK)</option>
+                            <option value="+971">🇦🇪 +971 (UAE)</option>
+                            <option value="+61">🇦🇺 +61 (AU)</option>
+                            <option value="+49">🇩🇪 +49 (DE)</option>
+                            <option value="+33">🇫🇷 +33 (FR)</option>
+                            <option value="+65">🇸🇬 +65 (SG)</option>
+                          </select>
 
-                {/* Error */}
-                {error && (
-                  <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3.5 py-2 animate-fade-in flex flex-col gap-1.5">
-                    <span>{error}</span>
-                    {error.toLowerCase().includes('google') && (
+                          <div className="relative flex-1">
+                            <input
+                              type="tel"
+                              value={phoneNumber}
+                              onChange={(e) => setPhoneNumber(e.target.value.replace(/[^\d]/g, ''))}
+                              placeholder="98765 43210"
+                              maxLength={14}
+                              className="w-full px-3.5 py-2.5 bg-dark-input border border-dark-border rounded-xl text-sm text-white placeholder-surface-500 input-focus font-mono"
+                              required
+                              autoFocus
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {error && (
+                        <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3.5 py-2 animate-fade-in">
+                          {error}
+                        </div>
+                      )}
+
+                      <button
+                        type="submit"
+                        disabled={isSendingOtp || phoneNumber.length < 8}
+                        className="w-full py-3 rounded-xl font-bold text-sm text-white gradient-primary hover:opacity-95 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary-500/25 cursor-pointer"
+                      >
+                        {isSendingOtp ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>Sending Free OTP...</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>Send Verification Code</span>
+                            <ArrowRight className="w-4 h-4" />
+                          </>
+                        )}
+                      </button>
+                    </form>
+                  ) : (
+                    <form onSubmit={handleVerifyPhoneOTP} className="space-y-4">
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="text-xs font-semibold text-surface-300">Enter 6-digit Code</label>
+                          <button
+                            type="button"
+                            onClick={() => setOtpSent(false)}
+                            className="text-xs text-primary-400 hover:underline cursor-pointer"
+                          >
+                            Change number
+                          </button>
+                        </div>
+
+                        <p className="text-[11px] text-surface-400 mb-2">
+                          Sent to <span className="font-mono text-white font-semibold">{countryCode} {phoneNumber}</span>
+                        </p>
+
+                        <input
+                          type="text"
+                          maxLength={6}
+                          value={phoneOtp}
+                          onChange={(e) => setPhoneOtp(e.target.value.replace(/[^\d]/g, ''))}
+                          placeholder="000000"
+                          className="w-full py-3 text-center text-2xl tracking-[0.5em] bg-dark-input border border-dark-border rounded-xl text-white font-mono input-focus"
+                          required
+                          autoFocus
+                        />
+                      </div>
+
+                      {error && (
+                        <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3.5 py-2 animate-fade-in">
+                          {error}
+                        </div>
+                      )}
+
+                      <button
+                        type="submit"
+                        disabled={isVerifyingOtp || phoneOtp.length !== 6}
+                        className="w-full py-3 rounded-xl font-bold text-sm text-white gradient-primary hover:opacity-95 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary-500/25 cursor-pointer"
+                      >
+                        {isVerifyingOtp ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>Signing in...</span>
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle2 className="w-4 h-4" />
+                            <span>Verify & Sign In</span>
+                          </>
+                        )}
+                      </button>
+
+                      <div className="text-center pt-1">
+                        {otpCountdown > 0 ? (
+                          <p className="text-xs text-surface-500">
+                            Resend code in <span className="font-mono text-primary-400 font-bold">{otpCountdown}s</span>
+                          </p>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={handleSendPhoneOTP}
+                            disabled={isSendingOtp}
+                            className="text-xs text-primary-400 hover:text-primary-300 font-semibold inline-flex items-center gap-1 cursor-pointer"
+                          >
+                            <RefreshCw className="w-3.5 h-3.5" />
+                            <span>Resend Code</span>
+                          </button>
+                        )}
+                      </div>
+                    </form>
+                  )}
+                </div>
+              ) : (
+                /* Email and Password Form */
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  {/* Email */}
+                  <div>
+                    <label className="block text-xs font-semibold text-surface-300 mb-1.5">Email</label>
+                    <div className="relative">
+                      <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-500" />
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="you@example.com"
+                        className="w-full pl-10 pr-4 py-2.5 bg-dark-input border border-dark-border rounded-xl text-sm text-white placeholder-surface-500 input-focus transition-all"
+                        required
+                        autoComplete="email"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Password */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block text-xs font-semibold text-surface-300">Password</label>
                       <button
                         type="button"
                         onClick={() => setShowForgotModal(true)}
-                        className="text-left text-primary-400 hover:text-primary-300 underline font-medium cursor-pointer mt-0.5"
+                        className="text-xs text-primary-400 hover:text-primary-300 transition-colors font-medium cursor-pointer"
                       >
-                        Set password for direct login →
+                        Forgot password?
                       </button>
-                    )}
+                    </div>
+                    <div className="relative">
+                      <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-500" />
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="w-full pl-10 pr-10 py-2.5 bg-dark-input border border-dark-border rounded-xl text-sm text-white placeholder-surface-500 input-focus transition-all"
+                        required
+                        autoComplete="current-password"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3.5 top-1/2 -translate-y-1/2 text-surface-500 hover:text-surface-300 transition-colors"
+                      >
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
                   </div>
-                )}
 
-                {/* Submit */}
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="w-full py-3 rounded-xl font-semibold text-sm text-white gradient-primary hover:opacity-90 disabled:opacity-50 transition-all duration-200 flex items-center justify-center gap-2 shadow-lg shadow-primary-500/25 hover:shadow-primary-500/40 cursor-pointer active:scale-98"
-                >
-                  {isSubmitting ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <>
-                      Sign In
-                      <ArrowRight className="w-4 h-4" />
-                    </>
+                  {/* Error */}
+                  {error && (
+                    <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3.5 py-2 animate-fade-in flex flex-col gap-1.5">
+                      <span>{error}</span>
+                      {error.toLowerCase().includes('google') && (
+                        <button
+                          type="button"
+                          onClick={() => setShowForgotModal(true)}
+                          className="text-left text-primary-400 hover:text-primary-300 underline font-medium cursor-pointer mt-0.5"
+                        >
+                          Set password for direct login →
+                        </button>
+                      )}
+                    </div>
                   )}
-                </button>
-              </form>
+
+                  {/* Submit */}
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="w-full py-3 rounded-xl font-semibold text-sm text-white gradient-primary hover:opacity-90 disabled:opacity-50 transition-all duration-200 flex items-center justify-center gap-2 shadow-lg shadow-primary-500/25 hover:shadow-primary-500/40 cursor-pointer active:scale-98"
+                  >
+                    {isSubmitting ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <>
+                        Sign In
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+                </form>
+              )}
 
               {/* Divider */}
               <div className="flex items-center gap-3 my-5">

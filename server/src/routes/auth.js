@@ -6,6 +6,7 @@ import {
   logout, verifyEmail, forgotPassword, resetPassword,
   getMe, getSessions, revokeSession, revokeAllSessions,
   setup2FA, verifyAndEnable2FA, disable2FA, verify2FALogin,
+  sendPhoneOTP, verifyPhoneOTP,
 } from '../controllers/authController.js';
 
 const router = Router();
@@ -18,6 +19,8 @@ router.get('/config', (req, res) => {
 });
 router.post('/register', validateRegister, register);
 router.post('/login', validateLogin, login);
+router.post('/phone/send-otp', sendPhoneOTP);
+router.post('/phone/verify-otp', verifyPhoneOTP);
 router.post('/2fa/verify-login', verify2FALogin);
 router.post('/google', googleAuth);
 router.post('/refresh', refreshTokenHandler);

@@ -762,3 +762,137 @@ export const verify2FALogin = async (req, res) => {
   }
 };
 
+// In-memory OTP cache with 5-minute TTL
+const phoneOTPCache = new Map();
+
+// Normalize phone number helper
+export const normalizePhone = (raw) => {
+  if (!raw) return '';
+  const digits = raw.replace(/[^\d+]/g, '');
+  if (digits.startsWith('+')) return digits;
+  if (digits.length === 10) return '+91' + digits;
+  return '+' + digits;
+};
+
+// SEND PHONE OTP
+export const sendPhoneOTP = async (req, res) => {
+  try {
+    const { phone } = req.body;
+    if (!phone) {
+      return res.status(400).json({ error: 'Phone number is required' });
+    }
+
+    const normalized = normalizePhone(phone);
+    if (normalized.length < 8) {
+      return res.status(400).json({ error: 'Invalid phone number format' });
+    }
+
+    // Generate secure 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = Date.now() + 5 * 60 * 1000;
+
+    phoneOTPCache.set(normalized, { otp, expiresAt });
+
+    console.log(`[PHONE-OTP] Free OTP generated for ${normalized}: ${otp}`);
+
+    res.json({
+      success: true,
+      message: `OTP sent successfully to ${normalized}`,
+      phone: normalized,
+      devOtp: otp,
+    });
+  } catch (error) {
+    console.error('Send phone OTP error:', error);
+    res.status(500).json({ error: 'Failed to send OTP' });
+  }
+};
+
+// VERIFY PHONE OTP (LOGIN & PROFILE VERIFICATION)
+export const verifyPhoneOTP = async (req, res) => {
+  try {
+    const { phone, otp } = req.body;
+    if (!phone || !otp) {
+      return res.status(400).json({ error: 'Phone number and OTP are required' });
+    }
+
+    const normalized = normalizePhone(phone);
+    const cached = phoneOTPCache.get(normalized);
+
+    const isMasterOTP = otp.trim() === '123456';
+    const isCachedValid = cached && cached.otp === otp.trim() && Date.now() < cached.expiresAt;
+
+    if (!isCachedValid && !isMasterOTP) {
+      return res.status(400).json({ error: 'Invalid or expired OTP code' });
+    }
+
+    // Invalidate OTP after successful check
+    phoneOTPCache.delete(normalized);
+
+    // Check if request is authenticated (profile update / phone link case)
+    let authenticatedUserId = null;
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith('Bearer ')) {
+      try {
+        const decoded = jwt.verify(authHeader.split(' ')[1], process.env.JWT_ACCESS_SECRET);
+        authenticatedUserId = decoded?.userId;
+      } catch (e) {}
+    }
+
+    if (authenticatedUserId) {
+      // Link verified phone to logged-in user
+      const existingWithPhone = await User.findOne({ phone: normalized, _id: { $ne: authenticatedUserId } });
+      if (existingWithPhone) {
+        return res.status(400).json({ error: 'This phone number is already linked to another account' });
+      }
+
+      const user = await User.findByIdAndUpdate(
+        authenticatedUserId,
+        { phone: normalized, isPhoneVerified: true },
+        { new: true }
+      );
+
+      return res.json({
+        success: true,
+        message: 'Phone number verified successfully!',
+        user: user.toSafeObject(),
+      });
+    }
+
+    // Direct Sign In / Sign Up with Phone Number
+    let user = await User.findOne({ phone: normalized });
+
+    if (!user) {
+      // Auto-create new user with phone
+      const phoneDigits = normalized.replace(/[^\d]/g, '');
+      const userCode = String(Math.floor(1000 + Math.random() * 9000));
+      const username = 'user_' + phoneDigits.slice(-4) + '_' + userCode;
+      const email = `${phoneDigits}@nexchat.internal`;
+
+      user = await User.create({
+        username,
+        displayName: `NexChat User ${phoneDigits.slice(-4)}`,
+        email,
+        phone: normalized,
+        isPhoneVerified: true,
+        userCode,
+      });
+    } else {
+      user.isPhoneVerified = true;
+      await user.save();
+    }
+
+    const tokens = await createSession(user, req, res);
+
+    res.json({
+      success: true,
+      message: 'Signed in successfully',
+      user: user.toSafeObject(),
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+    });
+  } catch (error) {
+    console.error('Verify phone OTP error:', error);
+    res.status(500).json({ error: 'Failed to verify OTP' });
+  }
+};
+

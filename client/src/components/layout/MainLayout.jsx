@@ -22,6 +22,7 @@ import CommandPalette from '../../features/command/CommandPalette';
 import NewChatModal from '../../features/chat/NewChatModal';
 import NewGroupModal from '../../features/groups/NewGroupModal';
 import BatteryOnboardingModal from '../../features/auth/BatteryOnboardingModal';
+import PhoneVerificationModal from '../../features/auth/PhoneVerificationModal';
 import UpdateNoticeModal from '../common/UpdateNoticeModal';
 import { showBannerAd, hideBannerAd } from '../../lib/admob';
 import { PhoneOff } from 'lucide-react';
@@ -517,6 +518,9 @@ export default function MainLayout() {
 
       {/* App Lock / PIN Screen Overlay */}
       <AppLockOverlay />
+
+      {/* Mandatory Phone Verification Gate */}
+      <PhoneVerificationModal />
 
       {/* Auto-Update Notice Modal */}
       <UpdateNoticeModal />
