@@ -63,8 +63,13 @@ export default function UpdateNoticeModal() {
 
   const handleUpdate = () => {
     if (isNative) {
-      const targetUrl = updateInfo.downloadUrl || 'https://github.com/ritik46te45-debug/nexxchat/actions/runs/40645366535';
-      window.open(targetUrl, '_blank', 'noopener,noreferrer');
+      const targetUrl = updateInfo.apkUrl || updateInfo.downloadUrl || 'https://github.com/ritik46te45-debug/nexxchat/releases/download/v-latest/NexChat.apk';
+      const link = document.createElement('a');
+      link.href = targetUrl;
+      link.setAttribute('download', 'NexChat.apk');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     } else {
       // On web: refresh cache and reload to fetch latest bundle
       toast.loading('Applying update...');

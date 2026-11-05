@@ -145,11 +145,22 @@ app.get('/api/version', (req, res) => {
   res.json({
     latestVersion: '1.0.3',
     minRequiredVersion: '1.0.0',
-    downloadUrl: 'https://github.com/ritik46te45-debug/nexxchat/actions/runs/40645366535',
-    releaseNotes: 'Performance improvements, native monetization, and auto-update support.',
+    downloadUrl: 'https://github.com/ritik46te45-debug/nexxchat/releases/download/v-latest/NexChat.apk',
+    apkUrl: 'https://github.com/ritik46te45-debug/nexxchat/releases/download/v-latest/NexChat.apk',
+    exeUrl: 'https://github.com/ritik46te45-debug/nexxchat/releases/download/v-latest/NexChat-Setup.exe',
+    releaseNotes: 'Performance improvements, ultra-fast messaging, chimes, and direct downloads.',
     forceUpdate: false,
     updatedAt: new Date().toISOString(),
   });
+});
+
+// Direct binary download endpoints
+app.get('/api/download/apk', (req, res) => {
+  res.redirect('https://github.com/ritik46te45-debug/nexxchat/releases/download/v-latest/NexChat.apk');
+});
+
+app.get('/api/download/exe', (req, res) => {
+  res.redirect('https://github.com/ritik46te45-debug/nexxchat/releases/download/v-latest/NexChat-Setup.exe');
 });
 
 // 404 handler

@@ -4,7 +4,7 @@ import {
   Check, ChevronRight, Volume2, Music, Play, QrCode, Key,
   Radio, Send, AlertTriangle, Fingerprint, Sparkles, Palette,
   Search, Clock, MoonStar, Eye, PhoneCall, Users, AtSign, Vibrate, CheckCheck,
-  BatteryCharging, Monitor, Zap, RefreshCw
+  BatteryCharging, Monitor, Zap, RefreshCw, Download
 } from 'lucide-react';
 import api from '../../lib/api';
 import useAuthStore from '../../stores/authStore';
@@ -74,6 +74,17 @@ export default function SettingsTab({ onOpenProfile }) {
 
   // Web Push status
   const [isPushRegistering, setIsPushRegistering] = useState(false);
+
+  // Direct download trigger (downloads file directly without opening repo)
+  const handleDownloadFile = (url, filename) => {
+    toast.success(`Starting download: ${filename}`, { icon: '📥' });
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const handleToggleSound = (enabled) => {
     setSoundEnabled(enabled);
@@ -341,6 +352,62 @@ export default function SettingsTab({ onOpenProfile }) {
               />
             </div>
 
+            {/* Download Apps Section */}
+            {(!searchQuery || 'download install apk exe app android windows mobile desktop setup'.includes(searchQuery.toLowerCase())) && (
+              <div className="p-3.5 rounded-2xl bg-dark-card border border-dark-border space-y-3">
+                <div className="flex items-center gap-2 border-b border-dark-border/60 pb-2">
+                  <Download className="w-4 h-4 text-primary-400" />
+                  <h3 className="text-xs font-bold text-white uppercase tracking-wider">Download NexChat Apps</h3>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {/* Android APK Download */}
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadFile('https://github.com/ritik46te45-debug/nexxchat/releases/download/v-latest/NexChat.apk', 'NexChat.apk')}
+                    className="flex items-center justify-between p-3 rounded-xl bg-dark-input hover:bg-dark-hover border border-dark-border hover:border-emerald-500/50 transition-all text-left group cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
+                        <Smartphone className="w-5 h-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs sm:text-sm font-semibold text-white group-hover:text-emerald-400 transition-colors truncate">
+                          Android App
+                        </p>
+                        <p className="text-[11px] text-surface-400">Direct .apk download</p>
+                      </div>
+                    </div>
+                    <div className="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center flex-shrink-0 ml-2 group-hover:bg-emerald-500 group-hover:text-white transition-all">
+                      <Download className="w-4 h-4" />
+                    </div>
+                  </button>
+
+                  {/* Windows EXE Download */}
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadFile('https://github.com/ritik46te45-debug/nexxchat/releases/download/v-latest/NexChat-Setup.exe', 'NexChat-Setup.exe')}
+                    className="flex items-center justify-between p-3 rounded-xl bg-dark-input hover:bg-dark-hover border border-dark-border hover:border-blue-500/50 transition-all text-left group cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-9 h-9 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
+                        <Monitor className="w-5 h-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs sm:text-sm font-semibold text-white group-hover:text-blue-400 transition-colors truncate">
+                          Windows App
+                        </p>
+                        <p className="text-[11px] text-surface-400">Installer .exe (PC)</p>
+                      </div>
+                    </div>
+                    <div className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center flex-shrink-0 ml-2 group-hover:bg-blue-500 group-hover:text-white transition-all">
+                      <Download className="w-4 h-4" />
+                    </div>
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Settings links */}
             <div className="space-y-2">
               {(isNativePlatform() || window.electronAPI?.isElectron) && (!searchQuery || 'update version upgrade new latest'.includes(searchQuery.toLowerCase())) && (
@@ -349,8 +416,9 @@ export default function SettingsTab({ onOpenProfile }) {
                     try {
                       const { data } = await api.get('/version');
                       if (data?.latestVersion && data.latestVersion !== '1.0.2') {
-                        toast(`New version v${data.latestVersion} available! Opening download...`, { icon: '🚀' });
-                        window.open(data.downloadUrl || 'https://github.com/ritik46te45-debug/nexxchat/actions/runs/40645366535', '_blank');
+                        toast(`New version v${data.latestVersion} available! Starting download...`, { icon: '🚀' });
+                        const targetUrl = data.apkUrl || data.downloadUrl || 'https://github.com/ritik46te45-debug/nexxchat/releases/download/v-latest/NexChat.apk';
+                        handleDownloadFile(targetUrl, 'NexChat.apk');
                       } else {
                         toast.success('You are using the latest version (v1.0.2)! 🎉');
                       }
