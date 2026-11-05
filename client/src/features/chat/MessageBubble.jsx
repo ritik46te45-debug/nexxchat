@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo, useEffect, memo } from 'react';
+import { useState, useRef, useMemo, useEffect, memo, lazy, Suspense } from 'react';
 import {
   Check, CheckCheck, Clock, AlertCircle, Reply, Forward, Star,
   Trash2, Copy, Edit3, MoreHorizontal, Download, Play, Pause,
@@ -12,14 +12,16 @@ import useAuthStore from '../../stores/authStore';
 import ViewOnceModal from './ViewOnceModal';
 import AudioWaveformPlayer from './AudioWaveformPlayer';
 import CustomVideoPlayer from './CustomVideoPlayer';
-import PdfViewerModal from './PdfViewerModal';
 import PdfCoverCard from './PdfCoverCard';
 import { downloadFile } from '../../lib/fileDownload';
-import { resolveMediaUrl } from '../../lib/api';
+import { resolveMediaUrl, getOptimizedMediaUrl } from '../../lib/api';
 import { copyTextToClipboard, copyImageToClipboard } from '../../lib/clipboard';
 import { triggerHaptic } from '../../lib/haptics';
 import toast from 'react-hot-toast';
 import Avatar from '../../components/common/Avatar';
+
+// Lazy-loaded PDF Viewer modal (loaded only on click to avoid 1.1MB worker overhead)
+const PdfViewerModal = lazy(() => import('./PdfViewerModal'));
 
 const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', '🎉', '👏', '💯', '🚀'];
 
@@ -180,7 +182,7 @@ function MessageBubbleComponent({
 
     return (
       <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'} my-2 px-2`}>
-        <div className="max-w-[85%] sm:max-w-[70%] px-4 py-3 rounded-2xl bg-dark-card/90 border border-dark-border/80 flex items-center gap-3.5 shadow-lg backdrop-blur-md">
+        <div className="max-w-[85%] sm:max-w-[70%] px-4 py-3 rounded-2xl bg-[#161F30] border border-white/[0.08] flex items-center gap-3.5 shadow-md">
           <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${iconColor}`}>
             <Icon className="w-5 h-5" />
           </div>
@@ -446,8 +448,8 @@ function MessageBubbleComponent({
         <div
           className={`px-3.5 sm:px-4 py-2 transition-all shadow-sm ${
             isOwn
-              ? 'gradient-primary text-white rounded-2xl rounded-br-sm'
-              : 'bg-dark-card border border-dark-border text-surface-100 rounded-2xl rounded-bl-sm'
+              ? 'bg-indigo-600 border border-indigo-500/30 text-white rounded-2xl rounded-br-sm shadow-indigo-950/20'
+              : 'bg-[#161F30] border border-white/[0.08] text-surface-100 rounded-2xl rounded-bl-sm'
           } ${message.replyTo ? 'rounded-t-none' : ''}`}
         >
           {/* Sender Name in Groups */}
@@ -477,7 +479,7 @@ function MessageBubbleComponent({
           {!message.isViewOnce && (message.type === 'image' || message.type === 'gif' || message.type === 'sticker') && message.attachments?.[0]?.url && (
             <div className="my-1 rounded-2xl overflow-hidden max-w-xs sm:max-w-sm md:max-w-md w-auto h-auto relative bg-dark-card/40 flex items-center justify-center border border-white/[0.06] shadow-sm">
               <img
-                src={resolveMediaUrl(message.attachments[0].url)}
+                src={getOptimizedMediaUrl(message.attachments[0].url, { width: 720 })}
                 alt=""
                 loading="lazy"
                 decoding="async"
@@ -672,13 +674,17 @@ function MessageBubbleComponent({
                   />
 
                   {/* WhatsApp-Style In-App PDF Viewer Modal */}
-                  <PdfViewerModal
-                    isOpen={showPdfViewer}
-                    onClose={() => setShowPdfViewer(false)}
-                    pdfUrl={resolvedPdfUrl}
-                    fileName={att.fileName}
-                    fileSize={att.fileSize}
-                  />
+                  {showPdfViewer && (
+                    <Suspense fallback={null}>
+                      <PdfViewerModal
+                        isOpen={showPdfViewer}
+                        onClose={() => setShowPdfViewer(false)}
+                        pdfUrl={resolvedPdfUrl}
+                        fileName={att.fileName}
+                        fileSize={att.fileSize}
+                      />
+                    </Suspense>
+                  )}
                 </div>
               );
             }

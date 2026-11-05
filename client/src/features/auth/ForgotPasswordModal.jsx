@@ -55,12 +55,12 @@ export default function ForgotPasswordModal({ onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
-      <div className="w-full max-w-md bg-dark-card border border-dark-border rounded-2xl shadow-2xl p-6 sm:p-7 relative">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+      <div className="w-full max-w-md bg-[#111622] border border-white/[0.08] rounded-2xl shadow-2xl shadow-black/80 p-6 sm:p-7 relative">
         {/* Close Button */}
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 text-surface-400 hover:text-white p-1 rounded-lg hover:bg-dark-hover transition-all"
+          className="absolute top-4 right-4 text-surface-400 hover:text-white p-1.5 rounded-lg hover:bg-white/[0.06] transition-colors cursor-pointer"
         >
           <X className="w-5 h-5" />
         </button>
@@ -68,10 +68,10 @@ export default function ForgotPasswordModal({ onClose }) {
         {!resetData ? (
           <>
             <div className="text-center mb-6">
-              <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl gradient-primary mb-3 text-white">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-indigo-600/20 border border-indigo-500/30 mb-3 text-indigo-400">
                 <Mail className="w-6 h-6" />
               </div>
-              <h2 className="text-xl font-bold text-white">Forgot Password?</h2>
+              <h2 className="text-xl font-bold text-white tracking-tight">Forgot Password?</h2>
               <p className="text-xs text-surface-400 mt-1">
                 Enter your registered email address and we'll help you reset your password.
               </p>
@@ -79,15 +79,15 @@ export default function ForgotPasswordModal({ onClose }) {
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-surface-300 mb-1.5">Email Address</label>
+                <label className="block text-xs font-medium text-surface-300 mb-1.5">Email Address</label>
                 <div className="relative">
-                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-500" />
+                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400" />
                   <input
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="you@example.com"
-                    className="w-full pl-10 pr-4 py-2.5 bg-dark-input border border-dark-border rounded-xl text-sm text-white placeholder-surface-500 input-focus transition-all"
+                    className="w-full h-11 pl-10 pr-4 bg-[#151D2C] border border-white/[0.08] rounded-xl text-sm text-white placeholder-surface-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 transition-colors"
                     required
                     autoFocus
                   />
@@ -97,7 +97,7 @@ export default function ForgotPasswordModal({ onClose }) {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full py-3 rounded-xl font-semibold text-sm text-white gradient-primary hover:opacity-90 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary-500/25 cursor-pointer"
+                className="w-full h-11 rounded-xl font-semibold text-sm text-white bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 transition-colors flex items-center justify-center gap-2 shadow-sm cursor-pointer disabled:opacity-50"
               >
                 {isSubmitting ? (
                   <>

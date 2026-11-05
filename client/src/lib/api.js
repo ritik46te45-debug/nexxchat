@@ -56,6 +56,15 @@ export const resolveMediaUrl = (url) => {
   return `${origin}${cleanPath}`;
 };
 
+export const getOptimizedMediaUrl = (url, { width = 600, quality = 'auto' } = {}) => {
+  const resolved = resolveMediaUrl(url);
+  if (!resolved || typeof resolved !== 'string') return '';
+  if (resolved.includes('res.cloudinary.com') && resolved.includes('/upload/') && !resolved.includes('/w_')) {
+    return resolved.replace('/upload/', `/upload/w_${width},c_limit,q_${quality},f_auto/`);
+  }
+  return resolved;
+};
+
 // Request interceptor — attach access token & fix FormData Content-Type
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('accessToken');

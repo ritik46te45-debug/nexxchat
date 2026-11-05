@@ -1,4 +1,4 @@
-import { useRef, useEffect, useLayoutEffect, useState, useCallback, useMemo } from 'react';
+import { useRef, useEffect, useLayoutEffect, useState, useCallback, useMemo, lazy, Suspense } from 'react';
 import { createPortal } from 'react-dom';
 import {
   ArrowLeft, Phone, Video, MoreVertical, Search, Loader2,
@@ -14,17 +14,19 @@ import MessageBubble from './MessageBubble';
 import MessageComposer from './MessageComposer';
 import PinnedMessagesBar from './PinnedMessagesBar';
 import ThreadDrawer from './ThreadDrawer';
-import StarredMessagesModal from './StarredMessagesModal';
-import ForwardModal from './ForwardModal';
-import ChatSearchModal from './ChatSearchModal';
-import ChatDetailsPanel from './ChatDetailsPanel';
-import ImageViewerModal from './ImageViewerModal';
-import MessageReminderModal from './MessageReminderModal';
 import MultiSelectToolbar from './MultiSelectToolbar';
 import { getSocket } from '../../lib/socket';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
 import Avatar from '../../components/common/Avatar';
+
+// Lazy-loaded auxiliary modals & panels
+const StarredMessagesModal = lazy(() => import('./StarredMessagesModal'));
+const ForwardModal = lazy(() => import('./ForwardModal'));
+const ChatSearchModal = lazy(() => import('./ChatSearchModal'));
+const ChatDetailsPanel = lazy(() => import('./ChatDetailsPanel'));
+const ImageViewerModal = lazy(() => import('./ImageViewerModal'));
+const MessageReminderModal = lazy(() => import('./MessageReminderModal'));
 
 export default function ChatWindow({ onStartCall }) {
   const activeConversation = useChatStore((s) => s.activeConversation);
@@ -65,6 +67,7 @@ export default function ChatWindow({ onStartCall }) {
   const [showScrollDown, setShowScrollDown] = useState(false);
   const [unreadNewCount, setUnreadNewCount] = useState(0);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [droppedFiles, setDroppedFiles] = useState([]);
   const [showDisappearingMenu, setShowDisappearingMenu] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, type: null, isSubmitting: false });
@@ -117,6 +120,19 @@ export default function ChatWindow({ onStartCall }) {
       document.removeEventListener('visibilitychange', handleFocus);
     };
   }, [activeConversation?._id]);
+
+  // Window-level drag & drop preventDefault so dragging files onto Chrome on PC doesn't navigate away
+  useEffect(() => {
+    const preventDrag = (e) => {
+      e.preventDefault();
+    };
+    window.addEventListener('dragover', preventDrag);
+    window.addEventListener('drop', preventDrag);
+    return () => {
+      window.removeEventListener('dragover', preventDrag);
+      window.removeEventListener('drop', preventDrag);
+    };
+  }, []);
 
   useEffect(() => {
     setPinnedList(activeConversation?.pinnedMessages || []);
@@ -539,23 +555,32 @@ export default function ChatWindow({ onStartCall }) {
     }
   };
 
-  // Drag & drop handlers
+  // Drag & drop handlers (PC File Explorer & Desktop Drop Support)
   const handleDragOver = (e) => {
     e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'copy';
+    }
     setIsDraggingOver(true);
   };
 
   const handleDragLeave = (e) => {
     e.preventDefault();
-    setIsDraggingOver(false);
+    e.stopPropagation();
+    // Only dismiss if leaving the container itself
+    if (e.currentTarget && !e.currentTarget.contains(e.relatedTarget)) {
+      setIsDraggingOver(false);
+    }
   };
 
   const handleDrop = (e) => {
     e.preventDefault();
+    e.stopPropagation();
     setIsDraggingOver(false);
-    const droppedFiles = Array.from(e.dataTransfer?.files || []);
-    if (droppedFiles.length > 0) {
-      toast.success(`Received ${droppedFiles.length} dropped file${droppedFiles.length > 1 ? 's' : ''}`);
+    const files = Array.from(e.dataTransfer?.files || []);
+    if (files.length > 0) {
+      setDroppedFiles(files);
     }
   };
 
@@ -642,12 +667,17 @@ export default function ChatWindow({ onStartCall }) {
       onDrop={handleDrop}
       className={`flex-1 flex flex-col w-full h-full min-h-0 min-w-0 ${wallpaperClass} relative overflow-hidden`}
     >
-      {/* Drag & Drop Fullscreen Dropzone Overlay */}
+      {/* Drag & Drop Fullscreen Dropzone Overlay (PC File Explorer Dropzone) */}
       {isDraggingOver && (
-        <div className="absolute inset-0 z-50 bg-primary-950/80 backdrop-blur-md border-4 border-dashed border-primary-500 rounded-3xl flex flex-col items-center justify-center p-6 text-center animate-fade-in pointer-events-none">
+        <div
+          onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+          onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setIsDraggingOver(false); }}
+          onDrop={handleDrop}
+          className="absolute inset-0 z-50 bg-primary-950/90 backdrop-blur-md border-4 border-dashed border-primary-500 rounded-3xl flex flex-col items-center justify-center p-6 text-center animate-fade-in pointer-events-auto select-none"
+        >
           <UploadCloud className="w-20 h-20 text-primary-400 animate-bounce mb-3" />
           <h3 className="text-xl font-bold text-white">Drop files to send into chat</h3>
-          <p className="text-xs text-primary-300 mt-1">Images, videos, documents, and archives supported</p>
+          <p className="text-xs text-primary-300 mt-1">Images, videos, documents, and archives up to 100MB</p>
         </div>
       )}
 
@@ -913,7 +943,7 @@ export default function ChatWindow({ onStartCall }) {
               const isSelected = Array.isArray(selectedMessageIds) && selectedMessageIds.includes(msg._id);
 
               return (
-                <div key={msg._id || msg.clientId || index}>
+                <div key={msg._id || msg.clientId || index} className="message-bubble-row">
                   {/* Sticky Date Badge Separator */}
                   {showDateHeader && (
                     <div className="sticky top-2 z-10 flex justify-center my-2 pointer-events-none">
@@ -1018,7 +1048,10 @@ export default function ChatWindow({ onStartCall }) {
 
         {/* Message Composer or Blocked State */}
         {!isBlocked ? (
-          <MessageComposer />
+          <MessageComposer
+            droppedFiles={droppedFiles}
+            onClearDroppedFiles={() => setDroppedFiles([])}
+          />
         ) : (
           <div className="p-3.5 border-t border-dark-border bg-dark-card/60 text-center text-xs text-surface-400 select-none">
             You cannot send messages to a blocked contact.
@@ -1028,63 +1061,66 @@ export default function ChatWindow({ onStartCall }) {
 
 
 
-      {/* In-Chat Search Modal */}
-      {showSearchModal && (
-        <ChatSearchModal
-          messages={messages}
-          onJumpToMessage={handleJumpToMessage}
-          onClose={() => setShowSearchModal(false)}
-        />
-      )}
+      {/* Auxiliary Modals & Lightbox (Loaded on Demand) */}
+      <Suspense fallback={null}>
+        {/* In-Chat Search Modal */}
+        {showSearchModal && (
+          <ChatSearchModal
+            messages={messages}
+            onJumpToMessage={handleJumpToMessage}
+            onClose={() => setShowSearchModal(false)}
+          />
+        )}
 
-      {/* Multi-recipient Forward Modal */}
-      {forwardingMessage && (
-        <ForwardModal
-          message={forwardingMessage}
-          onClose={() => setForwardingMessage(null)}
-        />
-      )}
+        {/* Multi-recipient Forward Modal */}
+        {forwardingMessage && (
+          <ForwardModal
+            message={forwardingMessage}
+            onClose={() => setForwardingMessage(null)}
+          />
+        )}
 
-      {/* Message Reminder Modal */}
-      {reminderMessage && (
-        <MessageReminderModal
-          message={reminderMessage}
-          onClose={() => setReminderMessage(null)}
-        />
-      )}
+        {/* Message Reminder Modal */}
+        {reminderMessage && (
+          <MessageReminderModal
+            message={reminderMessage}
+            onClose={() => setReminderMessage(null)}
+          />
+        )}
 
-      {/* Lightbox Image Viewer */}
-      {imageViewerData && (
-        <ImageViewerModal
-          images={imageViewerData.images}
-          initialIndex={imageViewerData.initialIndex}
-          onClose={() => setImageViewerData(null)}
-          onForward={(img) => {
-            setImageViewerData(null);
-            setForwardingMessage({ type: 'image', attachments: [img] });
-          }}
-        />
-      )}
+        {/* Lightbox Image Viewer */}
+        {imageViewerData && (
+          <ImageViewerModal
+            images={imageViewerData.images}
+            initialIndex={imageViewerData.initialIndex}
+            onClose={() => setImageViewerData(null)}
+            onForward={(img) => {
+              setImageViewerData(null);
+              setForwardingMessage({ type: 'image', attachments: [img] });
+            }}
+          />
+        )}
 
-      {/* Shared Media Gallery / Details Drawer */}
-      {showDetailsPanel && (
-        <div
-          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-end animate-fade-in select-none"
-          onClick={() => setShowDetailsPanel(false)}
-        >
+        {/* Shared Media Gallery / Details Drawer */}
+        {showDetailsPanel && (
           <div
-            className="w-full sm:w-96 h-full bg-dark-card border-l border-dark-border shadow-2xl flex flex-col overflow-hidden animate-slide-left"
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-end animate-fade-in select-none"
+            onClick={() => setShowDetailsPanel(false)}
           >
-            <ChatDetailsPanel
-              conversation={activeConversation}
-              messages={messages || []}
-              onClose={() => setShowDetailsPanel(false)}
-              onOpenImageViewer={(imgs, idx) => setImageViewerData({ images: Array.isArray(imgs) ? imgs : [imgs], initialIndex: idx || 0 })}
-            />
+            <div
+              className="w-full sm:w-96 h-full bg-dark-card border-l border-dark-border shadow-2xl flex flex-col overflow-hidden animate-slide-left"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <ChatDetailsPanel
+                conversation={activeConversation}
+                messages={messages || []}
+                onClose={() => setShowDetailsPanel(false)}
+                onOpenImageViewer={(imgs, idx) => setImageViewerData({ images: Array.isArray(imgs) ? imgs : [imgs], initialIndex: idx || 0 })}
+              />
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </Suspense>
 
       {/* User / Contact Details Profile Modal (Bio & Info Viewer when clicking DP) */}
       {showBioModal && (

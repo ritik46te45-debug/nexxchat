@@ -140,15 +140,19 @@ export class CallQualityController {
       const effectiveLoss = packetLossPct;
       const effectiveJitter = jitter || 15;
 
-      if (effectiveLoss < 1 && effectiveRtt < 120 && effectiveJitter < 30) {
+      if (effectiveLoss > 18 || effectiveRtt > 600) {
+        rating = 'extreme_poor';
+      } else if (effectiveLoss > 7 || effectiveRtt > 380 || effectiveJitter > 100) {
+        rating = 'poor';
+      } else if (effectiveLoss < 1 && effectiveRtt < 120 && effectiveJitter < 30) {
         rating = 'excellent';
       } else if (effectiveLoss < 3.5 && effectiveRtt < 220 && effectiveJitter < 60) {
         rating = 'good';
-      } else if (effectiveLoss < 7 && effectiveRtt < 380 && effectiveJitter < 100) {
-        rating = 'fair';
       } else {
-        rating = 'poor';
+        rating = 'fair';
       }
+
+      const isEmergencyVoiceSaver = rating === 'extreme_poor';
 
       const metrics = {
         rtt: effectiveRtt,
@@ -165,6 +169,8 @@ export class CallQualityController {
         transportProtocol,
         framesDropped,
         rating,
+        isEmergencyVoiceSaver,
+        voiceSaverMessage: isEmergencyVoiceSaver ? 'Poor connection: Video throttled to prioritize voice' : null,
         mode: this.mode,
       };
 
@@ -195,8 +201,8 @@ export class CallQualityController {
       return;
     }
 
-    const tierRank = { poor: 0, fair: 1, good: 2, excellent: 3 };
-    const isDowngrade = tierRank[newRating] < tierRank[this.currentTier];
+    const tierRank = { extreme_poor: 0, poor: 1, fair: 2, good: 3, excellent: 4 };
+    const isDowngrade = (tierRank[newRating] ?? 2) < (tierRank[this.currentTier] ?? 2);
 
     if (newRating !== this.currentTier) {
       if (isDowngrade) {
@@ -264,6 +270,17 @@ export class CallQualityController {
           maxFramerate = 24;
           scaleResolutionDownBy = 1.5;
           degradationPreference = 'balanced';
+          break;
+
+        case 'extreme_poor':
+          // EMERGENCY VOICE-SAVER TIER (WhatsApp Rule)
+          // Video takes too much bandwidth and causes bufferbloat.
+          // Drop video to absolute minimum (35 kbps, 8 FPS, 4x downscale)
+          // to dedicate almost 100% bandwidth to Opus voice packets.
+          maxBitrate = 35000;
+          maxFramerate = 8;
+          scaleResolutionDownBy = 4.0;
+          degradationPreference = 'maintain-framerate';
           break;
 
         case 'saver':

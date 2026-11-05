@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, lazy, Suspense } from 'react';
 import {
   Send, Smile, Mic, X, Image, FileText, Camera,
   Reply, Loader2, Video, MapPin, Bell, BellOff, Plus,
@@ -9,15 +9,17 @@ import useChatStore from '../../stores/chatStore';
 import useAuthStore from '../../stores/authStore';
 import { getSocket } from '../../lib/socket';
 import { playSentMessageSound } from '../../lib/notifications';
-import CircularVideoRecorder from './CircularVideoRecorder';
-import LocationPickerModal from './LocationPickerModal';
-import CreatePollModal from './CreatePollModal';
-import UnifiedPickerModal from './UnifiedPickerModal';
 import VoiceRecorder from './VoiceRecorder';
 import PdfCoverCard from './PdfCoverCard';
 import { triggerHaptic } from '../../lib/haptics';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
+
+// Lazy-loaded heavy pickers & modals (Emoji Mart, GIF, Video Notes, Polls)
+const CircularVideoRecorder = lazy(() => import('./CircularVideoRecorder'));
+const LocationPickerModal = lazy(() => import('./LocationPickerModal'));
+const CreatePollModal = lazy(() => import('./CreatePollModal'));
+const UnifiedPickerModal = lazy(() => import('./UnifiedPickerModal'));
 
 // Format bytes into readable string (B, KB, MB, GB)
 const formatFileSize = (bytes) => {
@@ -51,7 +53,7 @@ const calculateETA = (loaded, total, bytesPerSec) => {
   return `~${mins}m ${remSecs}s left`;
 };
 
-export default function MessageComposer() {
+export default function MessageComposer({ droppedFiles = [], onClearDroppedFiles }) {
   const activeConversation = useChatStore((s) => s.activeConversation);
   const sendMessage = useChatStore((s) => s.sendMessage);
   const saveDraft = useChatStore((s) => s.saveDraft);
@@ -70,6 +72,24 @@ export default function MessageComposer() {
   const [uploadProgress, setUploadProgress] = useState(null);
   const [isViewOnce, setIsViewOnce] = useState(false);
   const [isSilent, setIsSilent] = useState(false);
+
+  // Handle Drag & Drop files received from ChatWindow / Desktop PC
+  useEffect(() => {
+    if (droppedFiles && droppedFiles.length > 0) {
+      const valid = droppedFiles.filter((file) => {
+        if (file.size > 100 * 1024 * 1024) {
+          toast.error(`File "${file.name}" exceeds 100MB limit`);
+          return false;
+        }
+        return true;
+      });
+      if (valid.length > 0) {
+        setFiles((prev) => [...prev, ...valid]);
+        toast.success(`Attached ${valid.length} file${valid.length > 1 ? 's' : ''}`);
+      }
+      onClearDroppedFiles?.();
+    }
+  }, [droppedFiles, onClearDroppedFiles]);
 
   const uploadAbortControllerRef = useRef(null);
   const speedTrackerRef = useRef({
@@ -1008,12 +1028,14 @@ export default function MessageComposer() {
               {/* Active Unified Popover */}
               {showUnifiedPicker && (
                 <div className="absolute left-0 bottom-12 z-50">
-                  <UnifiedPickerModal
-                    onSelectEmoji={(emoji) => setText((prev) => prev + emoji)}
-                    onSelectGif={handleSendGif}
-                    onSelectSticker={handleSendSticker}
-                    onClose={() => setShowUnifiedPicker(false)}
-                  />
+                  <Suspense fallback={<div className="p-4 bg-dark-card rounded-2xl border border-dark-border text-xs text-surface-400">Loading emojis...</div>}>
+                    <UnifiedPickerModal
+                      onSelectEmoji={(emoji) => setText((prev) => prev + emoji)}
+                      onSelectGif={handleSendGif}
+                      onSelectSticker={handleSendSticker}
+                      onClose={() => setShowUnifiedPicker(false)}
+                    />
+                  </Suspense>
                 </div>
               )}
             </div>
@@ -1065,29 +1087,29 @@ export default function MessageComposer() {
         </div>
       )}
 
-      {/* Circular Video Note Modal */}
-      {showVideoNoteRecorder && (
-        <CircularVideoRecorder
-          onSendVideoNote={handleSendVideoNote}
-          onClose={() => setShowVideoNoteRecorder(false)}
-        />
-      )}
+      {/* Lazy Modals & Pickers */}
+      <Suspense fallback={null}>
+        {showVideoNoteRecorder && (
+          <CircularVideoRecorder
+            onSendVideoNote={handleSendVideoNote}
+            onClose={() => setShowVideoNoteRecorder(false)}
+          />
+        )}
 
-      {/* Location Picker Modal */}
-      {showLocationPicker && (
-        <LocationPickerModal
-          onSendLocation={handleSendLocation}
-          onClose={() => setShowLocationPicker(false)}
-        />
-      )}
+        {showLocationPicker && (
+          <LocationPickerModal
+            onSendLocation={handleSendLocation}
+            onClose={() => setShowLocationPicker(false)}
+          />
+        )}
 
-      {/* Create Poll Modal */}
-      {showPollModal && (
-        <CreatePollModal
-          onCreatePoll={handleSendPoll}
-          onClose={() => setShowPollModal(false)}
-        />
-      )}
+        {showPollModal && (
+          <CreatePollModal
+            onCreatePoll={handleSendPoll}
+            onClose={() => setShowPollModal(false)}
+          />
+        )}
+      </Suspense>
     </div>
   );
 }

@@ -152,6 +152,7 @@ const messageSchema = new mongoose.Schema({
 });
 
 // Indexes
+messageSchema.index({ conversation: 1, _id: -1 });
 messageSchema.index({ conversation: 1, createdAt: -1 });
 messageSchema.index({ sender: 1 });
 messageSchema.index({ conversation: 1, 'deletedFor': 1, createdAt: -1 });
