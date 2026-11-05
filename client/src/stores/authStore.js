@@ -206,39 +206,6 @@ const useAuthStore = create((set, get) => ({
     }
   },
 
-  // Send Phone OTP
-  sendPhoneOTP: async (phone) => {
-    set({ error: null });
-    try {
-      const { data } = await api.post('/auth/phone/send-otp', { phone });
-      return data;
-    } catch (error) {
-      const msg = error.response?.data?.error || 'Failed to send OTP';
-      set({ error: msg });
-      throw new Error(msg);
-    }
-  },
-
-  // Verify Phone OTP (login or profile verification)
-  verifyPhoneOTP: async (phone, otp) => {
-    set({ error: null });
-    try {
-      const { data } = await api.post('/auth/phone/verify-otp', { phone, otp });
-      if (data.accessToken) {
-        persistAuth(data);
-        set({ user: data.user, isAuthenticated: true, isLoading: false });
-        connectSocket(data.accessToken);
-      } else if (data.user) {
-        get().updateUser(data.user);
-      }
-      return data;
-    } catch (error) {
-      const msg = error.response?.data?.error || 'Invalid or expired OTP code';
-      set({ error: msg });
-      throw new Error(msg);
-    }
-  },
-
   // Logout
   logout: async () => {
     try {
