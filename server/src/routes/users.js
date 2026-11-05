@@ -6,6 +6,7 @@ import {
   updatePrivacy, updateNotificationSettings,
   searchUsers, getUserProfile,
   blockUser, unblockUser, getBlockedUsers,
+  syncContacts,
 } from '../controllers/userController.js';
 
 const upload = multer({
@@ -30,6 +31,7 @@ router.delete('/avatar', removeAvatar);
 router.put('/privacy', updatePrivacy);
 router.put('/notifications', updateNotificationSettings);
 router.get('/search', searchUsers);
+router.post('/sync-contacts', syncContacts);
 router.get('/blocked', getBlockedUsers);
 router.get('/:userId', getUserProfile);
 router.post('/:userId/block', blockUser);

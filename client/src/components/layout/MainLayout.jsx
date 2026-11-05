@@ -22,7 +22,6 @@ import CommandPalette from '../../features/command/CommandPalette';
 import NewChatModal from '../../features/chat/NewChatModal';
 import NewGroupModal from '../../features/groups/NewGroupModal';
 import BatteryOnboardingModal from '../../features/auth/BatteryOnboardingModal';
-import DownloadAppModal from '../common/DownloadAppModal';
 import UpdateNoticeModal from '../common/UpdateNoticeModal';
 import { showBannerAd, hideBannerAd } from '../../lib/admob';
 import { PhoneOff } from 'lucide-react';
@@ -518,9 +517,6 @@ export default function MainLayout() {
 
       {/* App Lock / PIN Screen Overlay */}
       <AppLockOverlay />
-
-      {/* Download App Popup / Modal */}
-      <DownloadAppModal />
 
       {/* Auto-Update Notice Modal */}
       <UpdateNoticeModal />

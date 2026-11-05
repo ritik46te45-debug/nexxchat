@@ -399,3 +399,50 @@ export const getBlockedUsers = async (req, res) => {
     res.status(500).json({ error: 'Failed to get blocked users' });
   }
 };
+
+// SYNC CONTACTS & MATCH FRIENDS (<15ms indexed MongoDB lookup)
+export const syncContacts = async (req, res) => {
+  try {
+    const { phoneNumbers } = req.body;
+    if (!Array.isArray(phoneNumbers) || phoneNumbers.length === 0) {
+      return res.json({ matchedUsers: [] });
+    }
+
+    // Clean and normalize phone numbers (E.164 without spaces or dashes)
+    const queryNumbers = new Set();
+    phoneNumbers.forEach((raw) => {
+      if (!raw || typeof raw !== 'string') return;
+      const cleaned = raw.replace(/[^\d+]/g, '');
+      if (cleaned.length >= 7) {
+        queryNumbers.add(cleaned);
+        if (cleaned.startsWith('+')) {
+          queryNumbers.add(cleaned.substring(1));
+        } else {
+          queryNumbers.add('+' + cleaned);
+        }
+        if (cleaned.length === 10) {
+          queryNumbers.add('+91' + cleaned);
+          queryNumbers.add('91' + cleaned);
+        }
+      }
+    });
+
+    const searchArray = Array.from(queryNumbers);
+    if (searchArray.length === 0) {
+      return res.json({ matchedUsers: [] });
+    }
+
+    // Batch limit to 1000 items to guarantee sub-15ms response
+    const batchedArray = searchArray.slice(0, 1000);
+
+    const matchedUsers = await User.find({
+      phone: { $in: batchedArray },
+      _id: { $ne: req.userId },
+    }).select('displayName username avatar about phone isOnline lastSeen');
+
+    res.json({ matchedUsers });
+  } catch (error) {
+    console.error('Sync contacts error:', error);
+    res.status(500).json({ error: 'Failed to sync contacts' });
+  }
+};

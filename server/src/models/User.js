@@ -89,6 +89,13 @@ const userSchema = new mongoose.Schema({
   phone: {
     type: String,
     default: '',
+    sparse: true,
+    index: true,
+  },
+  isPhoneVerified: {
+    type: Boolean,
+    default: false,
+    index: true,
   },
   isOnline: {
     type: Boolean,

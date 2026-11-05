@@ -407,9 +407,9 @@ export default function ChatWindow({ onStartCall }) {
     const isOwn = (lastMsg?.sender?._id || lastMsg?.sender)?.toString() === myId;
 
     if (isOwn) {
-      // Sent by me: scroll smoothly to bottom
+      // Sent by me: instant 0ms snap to bottom (WhatsApp parity)
       userScrolledUpRef.current = false;
-      scrollToBottom(true);
+      scrollToBottom(false);
       setUnreadNewCount(0);
     } else {
       // Incoming message from someone else:

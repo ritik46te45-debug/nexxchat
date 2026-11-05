@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Users, UserPlus, Clock, Ban, MessageCircle, Phone, Video, Check, X, Search, Loader2 } from 'lucide-react';
+import {
+  Users, UserPlus, Clock, Ban, MessageCircle, Phone, Video,
+  Check, X, Search, Loader2, Sparkles, Share2, RefreshCw, Smartphone
+} from 'lucide-react';
 import api from '../../lib/api';
 import { getSocket } from '../../lib/socket';
 import useAuthStore from '../../stores/authStore';
@@ -9,7 +12,7 @@ import toast from 'react-hot-toast';
 
 export default function ContactsTab({ onStartCall }) {
   const { user } = useAuthStore();
-  const [activeTab, setActiveTab] = useState('friends'); // 'friends', 'requests', 'blocked'
+  const [activeTab, setActiveTab] = useState('friends'); // 'friends', 'phone', 'requests', 'blocked'
   const [friends, setFriends] = useState([]);
   const [pendingRequests, setPendingRequests] = useState([]);
   const [sentRequests, setSentRequests] = useState([]);
@@ -18,6 +21,11 @@ export default function ContactsTab({ onStartCall }) {
   const [searchResults, setSearchResults] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSearching, setIsSearching] = useState(false);
+
+  // Phone Contact Sync State
+  const [matchedContacts, setMatchedContacts] = useState([]);
+  const [isSyncingContacts, setIsSyncingContacts] = useState(false);
+  const [hasSyncedOnce, setHasSyncedOnce] = useState(false);
 
   const { getOrCreateConversation, setActiveConversation, onlineUsers } = useChatStore();
   const { isMobile, setShowChatOnMobile, setSidebarView } = useUIStore();
@@ -128,6 +136,77 @@ export default function ContactsTab({ onStartCall }) {
     }
   };
 
+  // Sync Phone Contacts & Match Friends
+  const handleSyncPhoneContacts = async () => {
+    setIsSyncingContacts(true);
+    try {
+      let rawNumbers = [];
+
+      // 1. Try native Contact Picker API (Chrome Android / modern mobile browsers)
+      if (typeof navigator !== 'undefined' && 'contacts' in navigator && 'select' in navigator.contacts) {
+        try {
+          const props = ['name', 'tel'];
+          const selected = await navigator.contacts.select(props, { multiple: true });
+          if (selected && selected.length > 0) {
+            selected.forEach((c) => {
+              if (c.tel && Array.isArray(c.tel)) {
+                rawNumbers.push(...c.tel);
+              }
+            });
+          }
+        } catch (e) {
+          console.warn('Native contacts select cancelled or error:', e);
+        }
+      }
+
+      // 2. If no numbers yet (e.g. desktop or user dismissed picker), prompt simple input
+      if (rawNumbers.length === 0) {
+        const input = window.prompt(
+          'Enter phone numbers separated by commas (e.g. 9876543210, +919812345678) to find friends on NexChat:'
+        );
+        if (input && input.trim()) {
+          rawNumbers = input.split(',').map((s) => s.trim()).filter(Boolean);
+        }
+      }
+
+      if (rawNumbers.length === 0) {
+        setIsSyncingContacts(false);
+        return;
+      }
+
+      const { data } = await api.post('/users/sync-contacts', { phoneNumbers: rawNumbers });
+      const matched = data.matchedUsers || [];
+      setMatchedContacts(matched);
+      setHasSyncedOnce(true);
+
+      if (matched.length > 0) {
+        toast.success(`Found ${matched.length} friend${matched.length > 1 ? 's' : ''} on NexChat! 🎉`);
+      } else {
+        toast('No contacts found on NexChat yet. Invite them below!', { icon: '📱' });
+      }
+    } catch (err) {
+      console.error('Contact sync error:', err);
+      toast.error('Failed to sync contacts. Please try again.');
+    } finally {
+      setIsSyncingContacts(false);
+    }
+  };
+
+  // Invite friends via WhatsApp or Web Share
+  const handleInviteFriend = () => {
+    const inviteText = "Hey! I'm using NexChat for fast, private chats. Join me here: https://nexxchat-zeta.vercel.app";
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      navigator.share({
+        title: 'Join me on NexChat!',
+        text: inviteText,
+        url: 'https://nexxchat-zeta.vercel.app',
+      }).catch(() => {});
+    } else if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(inviteText);
+      toast.success('Invite link copied to clipboard!');
+    }
+  };
+
   const handleAcceptRequest = async (requestId) => {
     try {
       await api.post(`/friends/accept/${requestId}`);
@@ -197,6 +276,19 @@ export default function ContactsTab({ onStartCall }) {
             }`}
           >
             Friends ({friends.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('phone')}
+            className={`flex-1 py-1.5 rounded-lg text-xs font-semibold relative transition-all ${
+              activeTab === 'phone' ? 'bg-primary-500 text-white shadow-md' : 'text-surface-400 hover:text-white'
+            }`}
+          >
+            Phone Contacts
+            {matchedContacts.length > 0 && (
+              <span className="ml-1 px-1.5 py-0.2 bg-accent-green text-white text-[10px] rounded-full">
+                {matchedContacts.length}
+              </span>
+            )}
           </button>
           <button
             onClick={() => setActiveTab('requests')}
@@ -375,6 +467,107 @@ export default function ContactsTab({ onStartCall }) {
               );
             })
           )
+        ) : activeTab === 'phone' ? (
+          /* Phone Contacts & Sync Tab */
+          <div className="space-y-4">
+            {/* Sync Header Card */}
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-primary-950/40 to-dark-card border border-primary-500/30">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-10 h-10 rounded-xl gradient-primary flex items-center justify-center text-white shadow-lg shadow-primary-500/25">
+                  <Smartphone className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Find Friends on NexChat</h3>
+                  <p className="text-xs text-surface-400">Match your address book to chat instantly</p>
+                </div>
+              </div>
+
+              <button
+                onClick={handleSyncPhoneContacts}
+                disabled={isSyncingContacts}
+                className="w-full py-2.5 rounded-xl gradient-primary hover:opacity-95 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-primary-500/25 transition-all cursor-pointer disabled:opacity-50"
+              >
+                {isSyncingContacts ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Syncing & Matching...</span>
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-4 h-4" />
+                    <span>{hasSyncedOnce ? 'Re-Sync Device Contacts' : 'Sync Phone Contacts'}</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Matched Friends Section */}
+            {matchedContacts.length > 0 ? (
+              <div>
+                <div className="flex items-center justify-between px-2 mb-2">
+                  <p className="text-xs font-bold text-accent-green uppercase tracking-wider flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Friends on NexChat ({matchedContacts.length})</span>
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  {matchedContacts.map((contactUser) => (
+                    <div
+                      key={contactUser._id}
+                      className="flex items-center justify-between p-3 rounded-2xl bg-dark-card border border-dark-border hover:border-primary-500/30 transition-all"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-full gradient-primary flex items-center justify-center font-bold text-white text-sm">
+                          {contactUser.avatar?.url ? (
+                            <img src={contactUser.avatar.url} alt="" className="w-full h-full rounded-full object-cover" />
+                          ) : (
+                            contactUser.displayName?.charAt(0) || '?'
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-white truncate">{contactUser.displayName}</p>
+                          <p className="text-xs text-surface-400 truncate">
+                            {contactUser.phone || `@${contactUser.username}`}
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => handleStartChat(contactUser._id)}
+                        className="px-3.5 py-1.5 rounded-xl gradient-primary hover:opacity-95 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-primary-500/20 transition-all cursor-pointer"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5" />
+                        <span>Chat</span>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : hasSyncedOnce ? (
+              <div className="text-center py-6 px-4 rounded-2xl bg-dark-card border border-dark-border">
+                <p className="text-xs text-surface-300 font-semibold">None of your synced contacts are on NexChat yet.</p>
+                <p className="text-[11px] text-surface-500 mt-1">Send them an invite link below to get chatting!</p>
+              </div>
+            ) : null}
+
+            {/* Invite Friends Banner */}
+            <div className="p-4 rounded-2xl bg-dark-card border border-dark-border">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-white">Can&apos;t find a friend?</p>
+                  <p className="text-xs text-surface-400 mt-0.5">Invite them to join NexChat</p>
+                </div>
+                <button
+                  onClick={handleInviteFriend}
+                  className="px-3.5 py-2 rounded-xl bg-dark-input hover:bg-dark-hover border border-dark-border text-white text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer"
+                >
+                  <Share2 className="w-3.5 h-3.5 text-primary-400" />
+                  <span>Invite</span>
+                </button>
+              </div>
+            </div>
+          </div>
         ) : activeTab === 'requests' ? (
           /* Requests Tab */
           <div className="space-y-4">

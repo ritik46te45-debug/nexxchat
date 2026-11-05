@@ -17,7 +17,6 @@ const useUIStore = create((set) => ({
   // Global Modals & Overlays
   showGlobalSearch: false,
   showCommandPalette: false,
-  showDownloadModal: false,
   activeModal: null,
   modalData: null,
 
@@ -96,7 +95,6 @@ const useUIStore = create((set) => ({
 
   setShowGlobalSearch: (show) => set({ showGlobalSearch: show }),
   setShowCommandPalette: (show) => set({ showCommandPalette: show }),
-  setShowDownloadModal: (show) => set({ showDownloadModal: show }),
 
   toggleRightPanel: (view) => set((s) => ({
     isRightPanelOpen: view ? true : !s.isRightPanelOpen,

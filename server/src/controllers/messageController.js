@@ -137,98 +137,107 @@ export const sendMessage = async (req, res) => {
 
     await conversation.save();
 
-    // Populate sender info
-    const populatedMessage = await Message.findById(message._id)
-      .populate('sender', 'username displayName avatar')
-      .populate({
-        path: 'replyTo',
-        select: 'content type sender attachments',
-        populate: { path: 'sender', select: 'username displayName' },
-      });
+    // Fast-path sender population: Use in-memory req.user to eliminate a redundant MongoDB Atlas query
+    let populatedMessage;
+    if (replyTo) {
+      populatedMessage = await Message.findById(message._id)
+        .populate('sender', 'username displayName avatar')
+        .populate({
+          path: 'replyTo',
+          select: 'content type sender attachments',
+          populate: { path: 'sender', select: 'username displayName' },
+        });
+    } else {
+      populatedMessage = message.toObject();
+      populatedMessage.sender = {
+        _id: req.user._id,
+        username: req.user.username,
+        displayName: req.user.displayName,
+        avatar: req.user.avatar || { url: '', publicId: '' },
+      };
+    }
 
     // Recipients resolution
     const recipientIds = conversation.participants
       .filter(p => (p.user?._id || p.user)?.toString() !== req.userId.toString())
       .map(p => (p.user?._id || p.user)?.toString());
-    console.log(`[MSG-3] RECIPIENT_RESOLUTION -> recipientIds: [${recipientIds.join(', ')}]`);
 
-    recipientIds.forEach(rId => {
-      const sIds = connectionManager.getUserSockets(rId);
-      console.log(`[MSG-4] RECIPIENT_SOCKET_RESOLUTION -> recipientUserId: ${rId} | socketIds: [${sIds.join(', ')}] | count: ${sIds.length}`);
-    });
-
-    // Emit socket event to conversation room & participant rooms (EXACTLY like reactToMessage)
+    // Emit socket event to conversation room & participant rooms instantly
     const io = req.app.get('io');
     if (io) {
-      console.log(`[MSG-5] ABOUT_TO_EMIT -> event: message:new | messageId: ${message._id}`);
       emitToConversationParticipants(io, conversation, 'message:new', {
         message: populatedMessage,
         conversationId,
       });
-      console.log(`[MSG-6] MESSAGE_NEW_EMITTED -> messageId: ${message._id} | target: conv:${conversationId} & user rooms`);
-    } else {
-      console.error(`[MSG-ERR] req.app.get('io') returned null/undefined!`);
     }
 
+    // Respond to client IMMEDIATELY for WhatsApp-parity instant confirmation
+    res.status(201).json({ message: populatedMessage });
+
+    // Non-blocking background worker for in-app notifications and push notifications
     if (!req.body.isSilent) {
-      const otherParticipants = conversation.participants.filter(
-        p => (p.user?._id || p.user)?.toString() !== req.userId.toString()
-      );
+      setImmediate(async () => {
+        try {
+          const otherParticipants = conversation.participants.filter(
+            p => (p.user?._id || p.user)?.toString() !== req.userId.toString()
+          );
 
-      const notifBody = content || (type === 'video_note' ? 'Sent a video note 🎥' : type === 'voice' ? 'Sent a voice message 🎤' : `Sent a ${type}`);
+          const notifBody = content || (type === 'video_note' ? 'Sent a video note 🎥' : type === 'voice' ? 'Sent a voice message 🎤' : `Sent a ${type}`);
 
-      otherParticipants.forEach(async (p) => {
-        const pUserId = (p.user?._id || p.user)?.toString();
-        if (pUserId) {
-          try {
-            const notifType = conversation.type === 'group' ? 'group_message' : 'message';
-            const notifTitle = conversation.type === 'group'
-              ? `${populatedMessage.sender?.displayName || 'User'} (${conversation.groupName || conversation.groupDetails?.name || 'Group'})`
-              : (populatedMessage.sender?.displayName || 'User');
+          for (const p of otherParticipants) {
+            const pUserId = (p.user?._id || p.user)?.toString();
+            if (!pUserId) continue;
 
-            const notif = await Notification.create({
-              recipient: pUserId,
-              sender: req.userId,
-              type: notifType,
-              title: notifTitle,
-              body: notifBody,
-              data: {
+            try {
+              const notifType = conversation.type === 'group' ? 'group_message' : 'message';
+              const notifTitle = conversation.type === 'group'
+                ? `${populatedMessage.sender?.displayName || 'User'} (${conversation.groupName || conversation.groupDetails?.name || 'Group'})`
+                : (populatedMessage.sender?.displayName || 'User');
+
+              const notif = await Notification.create({
+                recipient: pUserId,
+                sender: req.userId,
+                type: notifType,
+                title: notifTitle,
+                body: notifBody,
+                data: {
+                  conversationId: conversationId.toString(),
+                  messageId: populatedMessage._id.toString(),
+                },
+              });
+
+              const unreadCount = await Notification.countDocuments({ recipient: pUserId, isRead: false });
+              if (io) {
+                io.to(`user:${pUserId}`).to(pUserId).emit('notification:count', { count: unreadCount });
+                io.to(`user:${pUserId}`).to(pUserId).emit('notification:new', notif);
+              }
+            } catch (notifErr) {
+              console.warn('[NOTIF] Background in-app notification error:', notifErr.message);
+            }
+
+            dispatchPush(
+              pUserId,
+              conversation.type === 'group' ? 'group_message' : 'message',
+              {
+                senderName: populatedMessage.sender?.displayName || 'User',
+                senderAvatar: populatedMessage.sender?.avatar?.url || '',
+                content: notifBody,
+                type: populatedMessage.type || 'text',
                 conversationId: conversationId.toString(),
                 messageId: populatedMessage._id.toString(),
+                senderId: req.userId.toString(),
               },
-            });
-
-            const unreadCount = await Notification.countDocuments({ recipient: pUserId, isRead: false });
-            if (io) {
-              io.to(`user:${pUserId}`).to(pUserId).emit('notification:count', { count: unreadCount });
-              io.to(`user:${pUserId}`).to(pUserId).emit('notification:new', notif);
-            }
-          } catch (notifErr) {
-            console.warn('[NOTIF] REST sendMessage in-app notification error:', notifErr.message);
+              {
+                conversationId: conversationId.toString(),
+                skipForegroundDevices: true,
+              }
+            ).catch(e => console.warn('[PUSH] Background push dispatch error:', e.message));
           }
-
-          dispatchPush(
-            pUserId,
-            conversation.type === 'group' ? 'group_message' : 'message',
-            {
-              senderName: populatedMessage.sender?.displayName || 'User',
-              senderAvatar: populatedMessage.sender?.avatar?.url || '',
-              content: notifBody,
-              type: populatedMessage.type || 'text',
-              conversationId: conversationId.toString(),
-              messageId: populatedMessage._id.toString(),
-              senderId: req.userId.toString(),
-            },
-            {
-              conversationId: conversationId.toString(),
-              skipForegroundDevices: true,
-            }
-          ).catch(e => console.warn('[PUSH] REST message push dispatch error:', e.message));
+        } catch (bgErr) {
+          console.warn('[MSG-BG] Non-blocking worker error:', bgErr.message);
         }
       });
     }
-
-    res.status(201).json({ message: populatedMessage });
   } catch (error) {
     console.error('Send message error:', error);
     res.status(500).json({ error: 'Failed to send message' });

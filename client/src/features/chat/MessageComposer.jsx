@@ -428,13 +428,19 @@ export default function MessageComposer() {
       const replyId = replyingMessage?._id;
       const silent = isSilent;
 
-      // Clear input, play audio, and retain focus immediately
+      // Clear input, retain focus, and render bubble at 0ms (WhatsApp parity)
       setText('');
       setReplyingMessage(null);
       if (conversationId) saveDraft(conversationId, '');
-      if (!silent) playSentMessageSound();
-      triggerHaptic('light');
       textareaRef.current?.focus();
+
+      // Defer audio playback so Web Audio synthesis never stalls the React paint cycle
+      if (!silent) {
+        setTimeout(() => {
+          playSentMessageSound();
+          triggerHaptic('light');
+        }, 0);
+      }
 
       // Trigger optimistic render & background HTTP post
       sendMessage(conversationId, {

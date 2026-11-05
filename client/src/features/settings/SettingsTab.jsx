@@ -4,7 +4,7 @@ import {
   Check, ChevronRight, Volume2, Music, Play, QrCode, Key,
   Radio, Send, AlertTriangle, Fingerprint, Sparkles, Palette,
   Search, Clock, MoonStar, Eye, PhoneCall, Users, AtSign, Vibrate, CheckCheck,
-  BatteryCharging, Monitor, Zap, Download, RefreshCw
+  BatteryCharging, Monitor, Zap, RefreshCw
 } from 'lucide-react';
 import api from '../../lib/api';
 import useAuthStore from '../../stores/authStore';
@@ -17,7 +17,7 @@ import toast from 'react-hot-toast';
 
 export default function SettingsTab({ onOpenProfile }) {
   const { user, updateUser, logout } = useAuthStore();
-  const { theme, setTheme, setShowWallpaperModal, isMobile, setSidebarView, setShowDownloadModal } = useUIStore();
+  const { theme, setTheme, setShowWallpaperModal, isMobile, setSidebarView } = useUIStore();
   const [searchQuery, setSearchQuery] = useState('');
 
   const [privacy, setPrivacy] = useState(user?.privacy || {});
@@ -343,29 +343,6 @@ export default function SettingsTab({ onOpenProfile }) {
 
             {/* Settings links */}
             <div className="space-y-2">
-              {(!searchQuery || 'download app install apk exe windows android'.includes(searchQuery.toLowerCase())) && (
-                <button
-                  onClick={() => setShowDownloadModal(true)}
-                  className="w-full flex items-center justify-between p-3.5 rounded-xl bg-gradient-to-r from-primary-950/40 to-dark-card hover:bg-dark-hover border border-primary-500/30 transition-all cursor-pointer group"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-primary-500/20 text-primary-400 flex items-center justify-center group-hover:scale-105 transition-transform">
-                      <Download className="w-4 h-4" />
-                    </div>
-                    <div className="text-left">
-                      <p className="text-sm font-semibold text-white group-hover:text-primary-400 transition-colors flex items-center gap-1.5">
-                        <span>Download NexChat App</span>
-                        <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-primary-500/20 text-primary-400 border border-primary-500/30">
-                          FREE
-                        </span>
-                      </p>
-                      <p className="text-xs text-surface-400">Android APK, Windows PC (.exe) & Web PWA</p>
-                    </div>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-surface-500 group-hover:text-white transition-colors" />
-                </button>
-              )}
-
               {(isNativePlatform() || window.electronAPI?.isElectron) && (!searchQuery || 'update version upgrade new latest'.includes(searchQuery.toLowerCase())) && (
                 <button
                   onClick={async () => {
@@ -494,11 +471,24 @@ export default function SettingsTab({ onOpenProfile }) {
             <div className="pt-4">
               <button
                 onClick={logout}
-                className="w-full py-3 rounded-xl bg-accent-red/10 border border-accent-red/20 text-accent-red hover:bg-accent-red/20 text-sm font-semibold flex items-center justify-center gap-2 transition-all"
+                className="w-full py-3 rounded-xl bg-accent-red/10 border border-accent-red/20 text-accent-red hover:bg-accent-red/20 text-sm font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer"
               >
                 <LogOut className="w-4 h-4" />
                 Sign Out
               </button>
+            </div>
+
+            {/* Version & App Info Footer */}
+            <div className="pt-6 pb-2 text-center select-none">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-dark-card border border-dark-border text-xs text-surface-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-accent-green animate-pulse" />
+                <span className="font-semibold text-white">NexChat</span>
+                <span>•</span>
+                <span className="font-mono text-primary-400">v1.0.2</span>
+              </div>
+              <p className="text-[11px] text-surface-500 mt-1.5">
+                Encrypted • Ultra-fast • WhatsApp-Parity
+              </p>
             </div>
           </>
         )}
