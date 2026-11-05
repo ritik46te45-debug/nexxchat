@@ -36,44 +36,6 @@ const DEFAULT_ICE_CONFIG = {
   iceTransportPolicy: 'all',
 };
 
-/**
- * SDP Munging for Extreme Low Bandwidth & High Packet Loss Resilience
- * Forces Opus In-Band FEC (Forward Error Correction), DTX (Discontinuous Transmission),
- * and variable bitrate throttle so audio remains crystal-clear even on 2G/3G connections.
- */
-function tuneSdpForExtremeNetwork(sdp) {
-  if (!sdp || typeof sdp !== 'string') return sdp;
-  try {
-    const opusMatch = sdp.match(/a=rtpmap:(\d+)\s+opus\/48000/i);
-    if (opusMatch) {
-      const pt = opusMatch[1];
-      const fmtpRegex = new RegExp(`a=fmtp:${pt}\\s+([^\r\n]+)`, 'i');
-      if (fmtpRegex.test(sdp)) {
-        sdp = sdp.replace(fmtpRegex, (match, params) => {
-          let updated = params;
-          if (!/useinbandfec=/i.test(updated)) updated += ';useinbandfec=1';
-          else updated = updated.replace(/useinbandfec=\d/i, 'useinbandfec=1');
-
-          if (!/dtx=/i.test(updated)) updated += ';dtx=1';
-          else updated = updated.replace(/dtx=\d/i, 'dtx=1');
-
-          if (!/cbr=/i.test(updated)) updated += ';cbr=0';
-          if (!/maxaveragebitrate=/i.test(updated)) updated += ';maxaveragebitrate=24000';
-          return `a=fmtp:${pt} ${updated}`;
-        });
-      } else {
-        sdp = sdp.replace(
-          new RegExp(`(a=rtpmap:${pt}\\s+opus\\/48000[^\r\n]*\r?\n)`, 'i'),
-          `$1a=fmtp:${pt} minptime=10;useinbandfec=1;dtx=1;cbr=0;maxaveragebitrate=24000\r\n`
-        );
-      }
-    }
-  } catch (err) {
-    console.warn('SDP tuning warning:', err);
-  }
-  return sdp;
-}
-
 export class WebRTCManager {
   constructor({
     socket,
@@ -357,14 +319,12 @@ export class WebRTCManager {
       };
 
       const offer = await this.pc.createOffer(offerOptions);
-      const tunedSdp = tuneSdpForExtremeNetwork(offer.sdp);
-      const tunedOffer = { type: offer.type, sdp: tunedSdp };
-      await this.pc.setLocalDescription(tunedOffer);
+      await this.pc.setLocalDescription(offer);
 
       const eventName = isIceRestart ? 'call:renegotiate' : 'call:offer';
       this.socket.emit(eventName, {
         to: this.targetUserId,
-        offer: tunedOffer,
+        offer,
         callId: this.callId,
       });
     } catch (err) {
@@ -405,13 +365,11 @@ export class WebRTCManager {
 
       if (this.pc.remoteDescription?.type === 'offer' && this.pc.signalingState === 'have-remote-offer') {
         const answer = await this.pc.createAnswer();
-        const tunedSdp = tuneSdpForExtremeNetwork(answer.sdp);
-        const tunedAnswer = { type: answer.type, sdp: tunedSdp };
-        await this.pc.setLocalDescription(tunedAnswer);
+        await this.pc.setLocalDescription(answer);
 
         this.socket.emit('call:answer', {
           to: this.targetUserId,
-          answer: tunedAnswer,
+          answer,
           callId: this.callId,
         });
       }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import useUIStore from '../../stores/uiStore';
 import useChatStore from '../../stores/chatStore';
 import useAuthStore from '../../stores/authStore';
@@ -9,7 +9,19 @@ import HomeTab from '../../features/home/HomeTab';
 import ChatList from '../../features/chat/ChatList';
 import ChatWindow from '../../features/chat/ChatWindow';
 import EmptyChat from '../../features/chat/EmptyChat';
+import ContactsTab from '../../features/contacts/ContactsTab';
+import StatusTab from '../../features/status/StatusTab';
+import CallsTab from '../../features/calls/CallsTab';
+import NotificationsTab from '../../features/notifications/NotificationsTab';
+import SettingsTab from '../../features/settings/SettingsTab';
+import ProfileModal from '../../features/profile/ProfileModal';
+import CallOverlay from '../../features/calls/CallOverlay';
 import AppLockOverlay from '../../features/auth/AppLockOverlay';
+import GlobalSearchModal from '../../features/search/GlobalSearchModal';
+import CommandPalette from '../../features/command/CommandPalette';
+import NewChatModal from '../../features/chat/NewChatModal';
+import NewGroupModal from '../../features/groups/NewGroupModal';
+import BatteryOnboardingModal from '../../features/auth/BatteryOnboardingModal';
 import UpdateNoticeModal from '../common/UpdateNoticeModal';
 import { showBannerAd, hideBannerAd } from '../../lib/admob';
 import { PhoneOff } from 'lucide-react';
@@ -17,20 +29,6 @@ import { App as CapApp } from '@capacitor/app';
 import api from '../../lib/api';
 import ErrorBoundary from '../common/ErrorBoundary';
 import { isNativePlatform, getPlatformName } from '../../lib/capacitorPush';
-
-// Lazy-loaded secondary tabs & modals (loaded on demand to keep initial bundle ultra-lean)
-const ContactsTab = lazy(() => import('../../features/contacts/ContactsTab'));
-const StatusTab = lazy(() => import('../../features/status/StatusTab'));
-const CallsTab = lazy(() => import('../../features/calls/CallsTab'));
-const NotificationsTab = lazy(() => import('../../features/notifications/NotificationsTab'));
-const SettingsTab = lazy(() => import('../../features/settings/SettingsTab'));
-const ProfileModal = lazy(() => import('../../features/profile/ProfileModal'));
-const CallOverlay = lazy(() => import('../../features/calls/CallOverlay'));
-const GlobalSearchModal = lazy(() => import('../../features/search/GlobalSearchModal'));
-const CommandPalette = lazy(() => import('../../features/command/CommandPalette'));
-const NewChatModal = lazy(() => import('../../features/chat/NewChatModal'));
-const NewGroupModal = lazy(() => import('../../features/groups/NewGroupModal'));
-const BatteryOnboardingModal = lazy(() => import('../../features/auth/BatteryOnboardingModal'));
 
 export default function MainLayout() {
   const {
@@ -428,20 +426,18 @@ export default function MainLayout() {
             ${isMobile && !showChatOnMobile ? 'pb-[56px]' : ''}
           `}
           >
-            <Suspense fallback={<div className="flex-1 flex items-center justify-center p-6"><div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" /></div>}>
-              {sidebarView === 'chats' && <ErrorBoundary><ChatList onOpenProfile={() => setShowProfileModal(true)} /></ErrorBoundary>}
-              {sidebarView === 'calls' && (
-                <ErrorBoundary><CallsTab onStartCall={(friend, type) => handleStartCall(friend, type)} /></ErrorBoundary>
-              )}
-              {sidebarView === 'status' && <ErrorBoundary><StatusTab /></ErrorBoundary>}
-              {sidebarView === 'contacts' && (
-                <ErrorBoundary><ContactsTab onStartCall={(friend, type) => handleStartCall(friend, type)} /></ErrorBoundary>
-              )}
-              {sidebarView === 'notifications' && <ErrorBoundary><NotificationsTab /></ErrorBoundary>}
-              {sidebarView === 'settings' && (
-                <ErrorBoundary><SettingsTab onOpenProfile={() => setShowProfileModal(true)} /></ErrorBoundary>
-              )}
-            </Suspense>
+            {sidebarView === 'chats' && <ErrorBoundary><ChatList onOpenProfile={() => setShowProfileModal(true)} /></ErrorBoundary>}
+            {sidebarView === 'calls' && (
+              <ErrorBoundary><CallsTab onStartCall={(friend, type) => handleStartCall(friend, type)} /></ErrorBoundary>
+            )}
+            {sidebarView === 'status' && <ErrorBoundary><StatusTab /></ErrorBoundary>}
+            {sidebarView === 'contacts' && (
+              <ErrorBoundary><ContactsTab onStartCall={(friend, type) => handleStartCall(friend, type)} /></ErrorBoundary>
+            )}
+            {sidebarView === 'notifications' && <ErrorBoundary><NotificationsTab /></ErrorBoundary>}
+            {sidebarView === 'settings' && (
+              <ErrorBoundary><SettingsTab onOpenProfile={() => setShowProfileModal(true)} /></ErrorBoundary>
+            )}
           </div>
 
           {/* Chat window / Right area */}
@@ -467,55 +463,57 @@ export default function MainLayout() {
         <Sidebar onOpenProfile={() => setShowProfileModal(true)} />
       )}
 
-      {/* Modals & Overlays (Loaded on demand via Suspense) */}
-      <Suspense fallback={null}>
-        {showProfileModal && (
-          <ProfileModal onClose={() => setShowProfileModal(false)} />
-        )}
+      {/* Profile Modal */}
+      {showProfileModal && (
+        <ProfileModal onClose={() => setShowProfileModal(false)} />
+      )}
 
-        {showGlobalSearch && (
-          <GlobalSearchModal
-            onClose={() => setShowGlobalSearch(false)}
-            onStartCall={(friend, type) => handleStartCall(friend, type)}
-          />
-        )}
+      {/* Universal Global Search Modal */}
+      {showGlobalSearch && (
+        <GlobalSearchModal
+          onClose={() => setShowGlobalSearch(false)}
+          onStartCall={(friend, type) => handleStartCall(friend, type)}
+        />
+      )}
 
-        {showCommandPalette && (
-          <CommandPalette
-            onClose={() => setShowCommandPalette(false)}
-            onOpenNewChat={() => setShowNewChat(true)}
-            onOpenNewGroup={() => setShowNewGroup(true)}
-            onOpenProfile={() => setShowProfileModal(true)}
-          />
-        )}
+      {/* Desktop Command Palette (Ctrl+K) */}
+      {showCommandPalette && (
+        <CommandPalette
+          onClose={() => setShowCommandPalette(false)}
+          onOpenNewChat={() => setShowNewChat(true)}
+          onOpenNewGroup={() => setShowNewGroup(true)}
+          onOpenProfile={() => setShowProfileModal(true)}
+        />
+      )}
 
-        {showNewChat && (
-          <NewChatModal onClose={() => setShowNewChat(false)} />
-        )}
+      {/* New DM Modal */}
+      {showNewChat && (
+        <NewChatModal onClose={() => setShowNewChat(false)} />
+      )}
 
-        {showNewGroup && (
-          <NewGroupModal onClose={() => setShowNewGroup(false)} />
-        )}
+      {/* New Group Modal */}
+      {showNewGroup && (
+        <NewGroupModal onClose={() => setShowNewGroup(false)} />
+      )}
 
-        {activeCall && (
-          <CallOverlay
-            callData={activeCall}
-            isIncoming={activeCall.isIncoming}
-            onEndCall={handleEndCall}
-            onCallIdUpdate={handleCallIdUpdate}
-            isFloatingPiP={isCallPiP}
-            onPiPChange={setIsCallPiP}
-            onDurationUpdate={setPipDuration}
-          />
-        )}
+      {/* WebRTC Video / Voice Call Overlay */}
+      {activeCall && (
+        <CallOverlay
+          callData={activeCall}
+          isIncoming={activeCall.isIncoming}
+          onEndCall={handleEndCall}
+          onCallIdUpdate={handleCallIdUpdate}
+          isFloatingPiP={isCallPiP}
+          onPiPChange={setIsCallPiP}
+          onDurationUpdate={setPipDuration}
+        />
+      )}
 
-        {showBatteryModal && (
-          <BatteryOnboardingModal
-            isOpen={showBatteryModal}
-            onClose={() => setShowBatteryModal(false)}
-          />
-        )}
-      </Suspense>
+      {/* Android Battery Whitelist & Reliability Onboarding */}
+      <BatteryOnboardingModal
+        isOpen={showBatteryModal}
+        onClose={() => setShowBatteryModal(false)}
+      />
 
       {/* App Lock / PIN Screen Overlay */}
       <AppLockOverlay />

@@ -756,9 +756,6 @@ export default function CallOverlay({
       return { text: 'Connection Failed', color: 'bg-accent-red/20 text-accent-red border-accent-red/30' };
     }
     if (callStatus === 'ongoing') {
-      if (stats?.isEmergencyVoiceSaver) {
-        return { text: 'Poor Connection (Voice Saver)', color: 'bg-amber-500/20 text-amber-300 border-amber-500/30' };
-      }
       if (stats?.rating === 'poor') {
         return { text: 'Poor (Audio Priority)', color: 'bg-accent-red/20 text-accent-red border-accent-red/30' };
       }

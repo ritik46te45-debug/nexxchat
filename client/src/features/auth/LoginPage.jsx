@@ -122,22 +122,25 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center p-4 py-8 bg-[#0B0F17] relative overflow-y-auto selection:bg-indigo-500/30">
-      {/* Subtle top ambient sheen */}
-      <div className="absolute inset-x-0 top-0 h-96 bg-[radial-gradient(ellipse_80%_60%_at_50%_-20%,rgba(99,102,241,0.12),transparent_70%)] pointer-events-none" />
+    <div className="min-h-screen w-full flex items-center justify-center p-4 py-8 bg-dark-bg relative overflow-y-auto">
+      {/* Background effects */}
+      <div className="absolute inset-0 gradient-glow" />
+      <div className="absolute top-1/4 -left-32 w-96 h-96 bg-primary-600/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute bottom-1/4 -right-32 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-primary-500/5 rounded-full blur-3xl pointer-events-none" />
 
       <div className="w-full max-w-md relative z-10 my-auto animate-fade-in">
         {/* Logo */}
         <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-b from-indigo-500 to-indigo-600 mb-3 shadow-lg shadow-indigo-950/50 ring-1 ring-white/20">
-            <MessageCircle className="w-7 h-7 text-white stroke-[2.2]" />
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl gradient-primary mb-3 shadow-lg shadow-primary-500/30">
+            <MessageCircle className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight mb-1">Welcome back</h1>
+          <h1 className="text-3xl font-bold text-white mb-1">Welcome back</h1>
           <p className="text-surface-400 text-sm">Sign in to continue to NexChat</p>
         </div>
 
         {/* Form Card */}
-        <div className="glass-card p-6 sm:p-8 relative">
+        <div className="glass-card p-6 sm:p-8">
           {androidAuthSuccess ? (
             <div className="text-center space-y-4 animate-scale-in">
               <div className="w-16 h-16 rounded-2xl bg-accent-green/20 text-accent-green flex items-center justify-center mx-auto border border-accent-green/30">
@@ -222,15 +225,15 @@ export default function LoginPage() {
               <form onSubmit={handleSubmit} className="space-y-4">
                 {/* Email */}
                 <div>
-                  <label className="block text-xs font-medium text-surface-300 mb-1.5">Email</label>
+                  <label className="block text-xs font-semibold text-surface-300 mb-1.5">Email</label>
                   <div className="relative">
-                    <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400" />
+                    <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-500" />
                     <input
                       type="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="you@example.com"
-                      className="w-full h-11 pl-10 pr-4 bg-[#151D2C] border border-white/[0.08] rounded-xl text-sm text-white placeholder-surface-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 transition-colors"
+                      className="w-full pl-10 pr-4 py-2.5 bg-dark-input border border-dark-border rounded-xl text-sm text-white placeholder-surface-500 input-focus transition-all"
                       required
                       autoComplete="email"
                     />
@@ -240,30 +243,30 @@ export default function LoginPage() {
                 {/* Password */}
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
-                    <label className="block text-xs font-medium text-surface-300">Password</label>
+                    <label className="block text-xs font-semibold text-surface-300">Password</label>
                     <button
                       type="button"
                       onClick={() => setShowForgotModal(true)}
-                      className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors font-medium cursor-pointer"
+                      className="text-xs text-primary-400 hover:text-primary-300 transition-colors font-medium cursor-pointer"
                     >
                       Forgot password?
                     </button>
                   </div>
                   <div className="relative">
-                    <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400" />
+                    <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-500" />
                     <input
                       type={showPassword ? 'text' : 'password'}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="••••••••"
-                      className="w-full h-11 pl-10 pr-10 bg-[#151D2C] border border-white/[0.08] rounded-xl text-sm text-white placeholder-surface-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 transition-colors"
+                      className="w-full pl-10 pr-10 py-2.5 bg-dark-input border border-dark-border rounded-xl text-sm text-white placeholder-surface-500 input-focus transition-all"
                       required
                       autoComplete="current-password"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-surface-400 hover:text-surface-200 transition-colors"
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-surface-500 hover:text-surface-300 transition-colors"
                     >
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
@@ -272,13 +275,13 @@ export default function LoginPage() {
 
                 {/* Error */}
                 {error && (
-                  <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-3.5 py-2.5 animate-fade-in flex flex-col gap-1">
+                  <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3.5 py-2 animate-fade-in flex flex-col gap-1.5">
                     <span>{error}</span>
                     {error.toLowerCase().includes('google') && (
                       <button
                         type="button"
                         onClick={() => setShowForgotModal(true)}
-                        className="text-left text-indigo-400 hover:text-indigo-300 underline font-medium cursor-pointer"
+                        className="text-left text-primary-400 hover:text-primary-300 underline font-medium cursor-pointer mt-0.5"
                       >
                         Set password for direct login →
                       </button>
@@ -290,7 +293,7 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full h-11 rounded-xl font-semibold text-sm text-white bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 transition-colors shadow-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  className="w-full py-3 rounded-xl font-semibold text-sm text-white gradient-primary hover:opacity-90 disabled:opacity-50 transition-all duration-200 flex items-center justify-center gap-2 shadow-lg shadow-primary-500/25 hover:shadow-primary-500/40 cursor-pointer active:scale-98"
                 >
                   {isSubmitting ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -305,9 +308,9 @@ export default function LoginPage() {
 
               {/* Divider */}
               <div className="flex items-center gap-3 my-5">
-                <div className="flex-1 h-px bg-white/[0.08]" />
-                <span className="text-[11px] text-surface-500 uppercase tracking-wider font-semibold">or continue with</span>
-                <div className="flex-1 h-px bg-white/[0.08]" />
+                <div className="flex-1 h-px bg-dark-border" />
+                <span className="text-[11px] text-surface-500 uppercase tracking-wider font-medium">or continue with</span>
+                <div className="flex-1 h-px bg-dark-border" />
               </div>
 
               {/* Google Login Button */}
@@ -315,7 +318,7 @@ export default function LoginPage() {
                 type="button"
                 onClick={handleGoogleLogin}
                 disabled={isGoogleSubmitting}
-                className="w-full h-11 rounded-xl font-medium text-xs text-surface-200 bg-[#161F2E] hover:bg-[#1C2638] border border-white/[0.08] hover:border-white/[0.15] hover:text-white transition-colors flex items-center justify-center gap-2.5 cursor-pointer active:scale-[0.99]"
+                className="w-full py-2.5 rounded-xl font-medium text-xs text-surface-200 bg-dark-input border border-dark-border hover:bg-dark-hover hover:border-primary-500/40 hover:text-white transition-all duration-200 flex items-center justify-center gap-2.5 cursor-pointer active:scale-98"
               >
                 {isGoogleSubmitting ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -335,7 +338,7 @@ export default function LoginPage() {
               {/* Sign up link */}
               <p className="text-center mt-5 text-xs text-surface-400">
                 Don&apos;t have an account?{' '}
-                <Link to="/register" className="text-indigo-400 hover:text-indigo-300 font-semibold transition-colors">
+                <Link to="/register" className="text-primary-400 hover:text-primary-300 font-semibold transition-colors">
                   Create account
                 </Link>
               </p>

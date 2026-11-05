@@ -73,34 +73,34 @@ export default function HomeTab({ onStartCall, onOpenNewChat, onOpenNewGroup }) 
 
   return (
     <div className="flex-1 flex flex-col h-full bg-dark-bg overflow-y-auto hide-scrollbar select-none p-4 sm:p-6 lg:p-8 space-y-6">
-      {/* Welcome & Morning Briefing Card */}
-      <div className="relative rounded-3xl p-6 sm:p-7 bg-[#111622] border border-white/[0.08] shadow-xl shadow-black/40 overflow-hidden animate-fade-in flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mt-1">
-        {/* Subtle top sheen */}
-        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/15 to-transparent pointer-events-none" />
-        <div className="absolute -right-20 -top-20 w-60 h-60 rounded-full bg-indigo-500/5 blur-3xl pointer-events-none" />
+      {/* Welcome & Profile Banner */}
+      <div className="relative rounded-3xl p-6 sm:p-8 gradient-primary text-white shadow-2xl overflow-hidden animate-fade-in flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mt-1">
+        {/* Background glow graphics */}
+        <div className="absolute -right-10 -bottom-10 w-48 h-48 rounded-full bg-white/10 blur-2xl pointer-events-none" />
+        <div className="absolute right-20 top-0 w-32 h-32 rounded-full bg-accent-purple/30 blur-xl pointer-events-none" />
 
-        <div className="relative z-10 space-y-1.5">
-          <div className="flex items-center gap-2 mb-1.5">
-            <span className="px-2.5 py-0.5 rounded-full bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 text-[11px] font-semibold tracking-wide">
+        <div className="relative z-10 space-y-1">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="px-3 py-1 rounded-full bg-white/20 text-white text-[11px] font-bold tracking-wider uppercase backdrop-blur-md">
               #{user?.userCode || '0000'}
             </span>
-            <span className="text-surface-400 text-xs font-medium">{format(new Date(), 'EEEE, MMMM d')}</span>
+            <span className="text-white/80 text-xs font-medium">{format(new Date(), 'EEEE, MMMM d')}</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
-            {greeting}, {user?.displayName || 'Friend'}
+          <h1 className="text-2xl sm:text-3xl font-black text-white leading-normal tracking-tight">
+            {greeting}, {user?.displayName || 'Friend'}!
           </h1>
-          <p className="text-xs sm:text-sm text-surface-400 max-w-xl leading-relaxed">
-            Encrypted messages, HD audio & video calls, and instant file sharing.
+          <p className="text-xs sm:text-sm text-white/85 max-w-xl leading-relaxed">
+            Welcome to NexChat — Real-time encrypted communication, crystal HD calls, and connected spaces.
           </p>
         </div>
 
         {/* Dashboard Customizer Toggle */}
         <button
           onClick={() => setShowCustomizeModal(true)}
-          className="relative z-10 px-3.5 py-2 rounded-xl bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] text-surface-200 hover:text-white text-xs font-medium flex items-center gap-2 transition-colors cursor-pointer flex-shrink-0"
+          className="relative z-10 px-3.5 py-2 rounded-2xl bg-white/15 hover:bg-white/25 border border-white/20 text-white text-xs font-bold flex items-center gap-2 backdrop-blur-md transition-all active:scale-95 cursor-pointer flex-shrink-0"
           title="Customize Home Dashboard"
         >
-          <SlidersHorizontal className="w-3.5 h-3.5 text-surface-400" />
+          <SlidersHorizontal className="w-4 h-4" />
           <span>Customize</span>
         </button>
       </div>
@@ -112,9 +112,9 @@ export default function HomeTab({ onStartCall, onOpenNewChat, onOpenNewGroup }) 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <button
               onClick={onOpenNewChat}
-              className="p-3.5 rounded-2xl bg-[#111622] hover:bg-[#151D2C] border border-white/[0.08] hover:border-indigo-500/40 flex flex-col items-start gap-2.5 transition-all group shadow-sm cursor-pointer"
+              className="p-3.5 rounded-2xl bg-dark-card/80 hover:bg-dark-hover border border-dark-border/80 hover:border-primary-500/50 flex flex-col items-start gap-2.5 transition-all group shadow-md cursor-pointer"
             >
-              <div className="w-10 h-10 rounded-xl bg-indigo-600/15 text-indigo-400 border border-indigo-500/25 flex items-center justify-center group-hover:scale-105 transition-transform">
+              <div className="w-10 h-10 rounded-xl gradient-primary text-white flex items-center justify-center shadow-md shadow-primary-500/30 group-hover:scale-110 transition-transform">
                 <MessageSquare className="w-5 h-5" />
               </div>
               <div className="text-left">
@@ -125,9 +125,9 @@ export default function HomeTab({ onStartCall, onOpenNewChat, onOpenNewGroup }) 
 
             <button
               onClick={onOpenNewGroup}
-              className="p-3.5 rounded-2xl bg-[#111622] hover:bg-[#151D2C] border border-white/[0.08] hover:border-indigo-500/40 flex flex-col items-start gap-2.5 transition-all group shadow-sm cursor-pointer"
+              className="p-3.5 rounded-2xl bg-dark-card/80 hover:bg-dark-hover border border-dark-border/80 hover:border-primary-500/50 flex flex-col items-start gap-2.5 transition-all group shadow-md cursor-pointer"
             >
-              <div className="w-10 h-10 rounded-xl bg-indigo-600/15 text-indigo-400 border border-indigo-500/25 flex items-center justify-center group-hover:scale-105 transition-transform">
+              <div className="w-10 h-10 rounded-xl bg-accent-purple/20 text-accent-purple flex items-center justify-center border border-accent-purple/30 group-hover:scale-110 transition-transform">
                 <Users className="w-5 h-5" />
               </div>
               <div className="text-left">
@@ -138,9 +138,9 @@ export default function HomeTab({ onStartCall, onOpenNewChat, onOpenNewGroup }) 
 
             <button
               onClick={() => setShowGlobalSearch(true)}
-              className="p-3.5 rounded-2xl bg-[#111622] hover:bg-[#151D2C] border border-white/[0.08] hover:border-indigo-500/40 flex flex-col items-start gap-2.5 transition-all group shadow-sm cursor-pointer"
+              className="p-3.5 rounded-2xl bg-dark-card/80 hover:bg-dark-hover border border-dark-border/80 hover:border-primary-500/50 flex flex-col items-start gap-2.5 transition-all group shadow-md cursor-pointer"
             >
-              <div className="w-10 h-10 rounded-xl bg-indigo-600/15 text-indigo-400 border border-indigo-500/25 flex items-center justify-center group-hover:scale-105 transition-transform">
+              <div className="w-10 h-10 rounded-xl bg-accent-blue/20 text-accent-blue flex items-center justify-center border border-accent-blue/30 group-hover:scale-110 transition-transform">
                 <Search className="w-5 h-5" />
               </div>
               <div className="text-left">
@@ -151,9 +151,9 @@ export default function HomeTab({ onStartCall, onOpenNewChat, onOpenNewGroup }) 
 
             <button
               onClick={() => setSidebarView('contacts')}
-              className="p-3.5 rounded-2xl bg-[#111622] hover:bg-[#151D2C] border border-white/[0.08] hover:border-indigo-500/40 flex flex-col items-start gap-2.5 transition-all group shadow-sm cursor-pointer"
+              className="p-3.5 rounded-2xl bg-dark-card/80 hover:bg-dark-hover border border-dark-border/80 hover:border-primary-500/50 flex flex-col items-start gap-2.5 transition-all group shadow-md cursor-pointer"
             >
-              <div className="w-10 h-10 rounded-xl bg-indigo-600/15 text-indigo-400 border border-indigo-500/25 flex items-center justify-center group-hover:scale-105 transition-transform">
+              <div className="w-10 h-10 rounded-xl bg-accent-green/20 text-accent-green flex items-center justify-center border border-accent-green/30 group-hover:scale-110 transition-transform">
                 <UserCheck className="w-5 h-5" />
               </div>
               <div className="text-left">
@@ -413,7 +413,7 @@ export default function HomeTab({ onStartCall, onOpenNewChat, onOpenNewGroup }) 
 
             <button
               onClick={() => setShowCustomizeModal(false)}
-              className="w-full h-11 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-semibold transition-colors cursor-pointer text-sm"
+              className="w-full py-2.5 rounded-xl gradient-primary text-white font-bold transition-all"
             >
               Done
             </button>

@@ -78,7 +78,7 @@ export default function Sidebar({ onOpenProfile }) {
   // ─── Desktop / Laptop: Vertical sidebar (Expandable / Collapsible) ───
   return (
     <div
-      className={`h-full bg-[#0E131F] border-r border-white/[0.08] flex flex-col justify-between py-4 flex-shrink-0 z-20 transition-all duration-200 select-none ${
+      className={`h-full bg-dark-card border-r border-dark-border flex flex-col justify-between py-4 flex-shrink-0 z-20 transition-all duration-200 select-none ${
         isSidebarExpanded ? 'w-56 px-3' : 'w-[68px] lg:w-[72px] items-center px-2'
       }`}
     >
@@ -155,12 +155,12 @@ export default function Sidebar({ onOpenProfile }) {
                 onClick={() => setSidebarView(id)}
                 title={label}
                 className={`
-                  relative rounded-2xl flex items-center transition-all duration-150 cursor-pointer ${
+                  relative rounded-2xl flex items-center transition-all duration-200 cursor-pointer ${
                     isSidebarExpanded ? 'px-3.5 py-2.5 gap-3 w-full' : 'w-10 h-10 lg:w-11 lg:h-11 justify-center'
                   } ${
                     isActive
-                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-950/40 font-semibold'
-                      : 'text-surface-400 hover:text-white hover:bg-white/[0.06]'
+                      ? 'gradient-primary text-white shadow-lg shadow-primary-500/25 font-bold'
+                      : 'text-surface-400 hover:text-white hover:bg-dark-hover'
                   }
                 `}
               >

@@ -1,13 +1,12 @@
-import { useState, useMemo, useCallback, memo, lazy, Suspense } from 'react';
-import { Search, Plus, Edit3, Users, Archive, Pin, Volume2, VolumeX, Bell, Settings, Image, Video, Mic, Paperclip, MapPin, User, BarChart2, Phone } from 'lucide-react';
+import { useState, useMemo, useCallback, memo } from 'react';
+import { Search, Plus, Edit3, Users, Archive, Pin, Volume2, VolumeX, Bell, Settings } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import useChatStore, { getConvTime } from '../../stores/chatStore';
 import useAuthStore from '../../stores/authStore';
 import useUIStore from '../../stores/uiStore';
+import NewChatModal from './NewChatModal';
+import NewGroupModal from '../groups/NewGroupModal';
 import Avatar from '../../components/common/Avatar';
-
-const NewChatModal = lazy(() => import('./NewChatModal'));
-const NewGroupModal = lazy(() => import('../groups/NewGroupModal'));
 
 export default function ChatList({ onOpenProfile }) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -242,18 +241,10 @@ export default function ChatList({ onOpenProfile }) {
       </div>
 
       {/* New Chat Modal */}
-      {showNewChat && (
-        <Suspense fallback={null}>
-          <NewChatModal onClose={() => setShowNewChat(false)} />
-        </Suspense>
-      )}
+      {showNewChat && <NewChatModal onClose={() => setShowNewChat(false)} />}
 
       {/* New Group Modal */}
-      {showNewGroup && (
-        <Suspense fallback={null}>
-          <NewGroupModal onClose={() => setShowNewGroup(false)} />
-        </Suspense>
-      )}
+      {showNewGroup && <NewGroupModal onClose={() => setShowNewGroup(false)} />}
     </>
   );
 }
@@ -322,16 +313,16 @@ const ConversationItem = memo(function ConversationItem({ conversation, userId, 
     if (lastMessage.isDeletedForEveryone) return { text: `${prefix}Message deleted` };
 
     switch (lastMessage.type) {
-      case 'image': return { text: `${prefix}Photo` };
-      case 'video': return { text: `${prefix}Video` };
-      case 'audio': case 'voice': return { text: `${prefix}Voice message` };
-      case 'document': case 'file': return { text: `${prefix}File` };
+      case 'image': return { text: `${prefix}📷 Photo` };
+      case 'video': return { text: `${prefix}🎥 Video` };
+      case 'audio': case 'voice': return { text: `${prefix}🎤 Voice message` };
+      case 'document': case 'file': return { text: `${prefix}📎 File` };
       case 'gif': return { text: `${prefix}GIF` };
       case 'sticker': return { text: `${prefix}Sticker` };
-      case 'location': return { text: `${prefix}Location` };
-      case 'contact': return { text: `${prefix}Contact` };
-      case 'poll': return { text: `${prefix}Poll` };
-      case 'call': return { text: `${prefix}Call` };
+      case 'location': return { text: `${prefix}📍 Location` };
+      case 'contact': return { text: `${prefix}👤 Contact` };
+      case 'poll': return { text: `${prefix}📊 Poll` };
+      case 'call': return { text: `${prefix}📞 Call` };
       default: return { text: `${prefix}${lastMessage.content || ''}` };
     }
   };
@@ -343,10 +334,10 @@ const ConversationItem = memo(function ConversationItem({ conversation, userId, 
     <button
       onClick={onClick}
       className={`
-        w-full flex items-center gap-3 px-3.5 py-3 transition-all duration-150 text-left rounded-2xl active:scale-[0.98] cursor-pointer
+        w-full flex items-center gap-3 px-3.5 py-3 transition-all duration-150 text-left rounded-2xl active:scale-[0.98]
         ${isActive
-          ? 'bg-indigo-600/15 text-white shadow-sm ring-1 ring-indigo-500/30'
-          : 'hover:bg-white/[0.04] active:bg-white/[0.08] text-surface-300'
+          ? 'bg-primary-500/15 text-white shadow-sm ring-1 ring-primary-500/30'
+          : 'hover:bg-dark-hover/60 active:bg-dark-hover text-surface-300'
         }
       `}
     >
@@ -365,7 +356,7 @@ const ConversationItem = memo(function ConversationItem({ conversation, userId, 
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between">
           <span className="font-semibold text-white text-sm truncate">{name}</span>
-          <span className="text-[11px] text-surface-500 flex-shrink-0 ml-2 tabular-nums">
+          <span className="text-[11px] text-surface-500 flex-shrink-0 ml-2">
             {(() => { try { if (!timeStr) return ''; const d = new Date(timeStr); return isNaN(d.getTime()) ? '' : formatDistanceToNow(d, { addSuffix: false }); } catch(e) { return ''; } })()}
           </span>
         </div>
