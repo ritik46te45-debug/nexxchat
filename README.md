@@ -5,7 +5,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Web%20%7C%20Android%20%7C%20Windows-green.svg)](https://github.com/ritik46te45-debug/nexxchat)
 
-**NexChat** is a production-grade, real-time messaging and VoIP calling platform inspired by WhatsApp. Built with a modern, high-performance architecture supporting **Web**, **Android (Native APK)**, and **Windows (Desktop .exe)**.
+**NexChat** (**NexxChat**) is a production-grade, real-time messaging and VoIP calling platform inspired by WhatsApp. Built with a modern, high-performance architecture supporting **Web**, **Android (Native APK)**, and **Windows (Desktop .exe)**.
+
+**🌐 Live Web App:** [https://nexxchat-zeta.vercel.app/](https://nexxchat-zeta.vercel.app/)
 
 ---
 
@@ -22,7 +24,7 @@
 
 | Platform | Technology | Distribution / Artifact |
 | :--- | :--- | :--- |
-| **🌐 Web App** | React 18, Vite, Tailwind CSS 3 | Hosted on Vercel / Cloudflare |
+| **🌐 Web App** | React 18, Vite, Tailwind CSS 3 | [nexxchat-zeta.vercel.app](https://nexxchat-zeta.vercel.app/) |
 | **📱 Android APK** | Capacitor 8, Android SDK 35, MediaStore API | GitHub Actions: `nexchat-apks` (`app-debug.apk`) |
 | **💻 Windows Desktop** | Electron, NSIS, Windows Action Center API | GitHub Actions: `nexchat-windows-exe` (Setup + Portable `.exe`) |
 

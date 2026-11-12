@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Allow: /login
+Allow: /register
+Disallow: /reset-password
+Disallow: /api/
+Disallow: /uploads/
+
+Sitemap: https://nexxchat-zeta.vercel.app/sitemap.xml
+

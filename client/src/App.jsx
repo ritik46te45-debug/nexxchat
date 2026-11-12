@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react';
-import { BrowserRouter, HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect, useRef, lazy, Suspense } from 'react';
+import { BrowserRouter, HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import toast, { Toaster } from 'react-hot-toast';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
@@ -10,11 +10,53 @@ import { getSocket, ensureSocketConnected } from './lib/socket';
 import { playIncomingMessageSound, showSystemNotification, requestNotificationPermission } from './lib/notifications';
 import { initPushNotifications } from './lib/capacitorPush';
 import api from './lib/api';
-import LoginPage from './features/auth/LoginPage';
-import RegisterPage from './features/auth/RegisterPage';
-import ResetPasswordPage from './features/auth/ResetPasswordPage';
-import MainLayout from './components/layout/MainLayout';
 import InAppNotificationBanner from './components/common/InAppNotificationBanner';
+
+const LandingPage = lazy(() => import('./features/landing/LandingPage'));
+const LoginPage = lazy(() => import('./features/auth/LoginPage'));
+const RegisterPage = lazy(() => import('./features/auth/RegisterPage'));
+const ResetPasswordPage = lazy(() => import('./features/auth/ResetPasswordPage'));
+const MainLayout = lazy(() => import('./components/layout/MainLayout'));
+
+const RouteLoadingFallback = () => (
+  <div className="h-screen flex items-center justify-center bg-dark-bg">
+    <div className="flex flex-col items-center gap-4">
+      <div className="w-12 h-12 border-4 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+      <p className="text-surface-400 animate-pulse-soft">Loading NexChat...</p>
+    </div>
+  </div>
+);
+
+const ROUTE_SEO = {
+  '/': {
+    title: 'NexChat (NexxChat) — Real-Time Messaging, HD Video Calls & File Sharing',
+    description: 'NexChat (NexxChat) is a fast, free, real-time messaging platform with HD WebRTC video and voice calls, group chats, voice notes, 2FA security, and native Web, Android APK, and Windows EXE apps.',
+    canonical: 'https://nexxchat-zeta.vercel.app/',
+  },
+  '/login': {
+    title: 'Sign In — NexChat Messenger',
+    description: 'Sign in to NexChat (NexxChat) to access encrypted real-time chats, HD WebRTC voice and video calls, and multi-device sync.',
+    canonical: 'https://nexxchat-zeta.vercel.app/login',
+  },
+  '/register': {
+    title: 'Create Free Account — NexChat Messenger',
+    description: 'Create a free NexChat account to start messaging, sharing files, and making HD video calls on Web, Android, and Windows.',
+    canonical: 'https://nexxchat-zeta.vercel.app/register',
+  },
+};
+
+function RouteMetaUpdater() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    const meta = ROUTE_SEO[pathname] || ROUTE_SEO['/'];
+    document.title = meta.title;
+    const descEl = document.querySelector('meta[name="description"]');
+    if (descEl) descEl.setAttribute('content', meta.description);
+    const canonicalEl = document.querySelector('link[rel="canonical"]');
+    if (canonicalEl) canonicalEl.setAttribute('href', meta.canonical);
+  }, [pathname]);
+  return null;
+}
 
 const isDesktopOrNative = typeof window !== 'undefined' && (
   Boolean(window.electronAPI?.isElectron) ||
@@ -27,19 +69,31 @@ const isDesktopOrNative = typeof window !== 'undefined' && (
 
 const AppRouter = isDesktopOrNative ? HashRouter : BrowserRouter;
 
+// Root entry: show chat app when logged in, login on native APK/EXE, and SEO landing page on public web
+function RootEntry() {
+  const { isAuthenticated, isLoading } = useAuthStore();
+
+  if (isLoading) {
+    return <RouteLoadingFallback />;
+  }
+
+  if (isAuthenticated) {
+    return <MainLayout />;
+  }
+
+  if (isDesktopOrNative) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <LandingPage />;
+}
+
 // Protected Route wrapper
 function ProtectedRoute({ children }) {
   const { isAuthenticated, isLoading } = useAuthStore();
 
   if (isLoading) {
-    return (
-      <div className="h-screen flex items-center justify-center bg-dark-bg">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
-          <p className="text-surface-400 animate-pulse-soft">Loading NexChat...</p>
-        </div>
-      </div>
-    );
+    return <RouteLoadingFallback />;
   }
 
   return isAuthenticated ? children : <Navigate to="/login" replace />;
@@ -562,6 +616,7 @@ function App() {
 
   return (
     <AppRouter>
+      <RouteMetaUpdater />
       <Toaster
         position="top-center"
         toastOptions={{
@@ -577,13 +632,16 @@ function App() {
         }}
       />
       <InAppNotificationBanner />
-      <Routes>
-        <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
-        <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
-        <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
-        <Route path="/reset-password" element={<ResetPasswordPage />} />
-        <Route path="/*" element={<ProtectedRoute><MainLayout /></ProtectedRoute>} />
-      </Routes>
+      <Suspense fallback={<RouteLoadingFallback />}>
+        <Routes>
+          <Route path="/" element={<RootEntry />} />
+          <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
+          <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
+          <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/*" element={<ProtectedRoute><MainLayout /></ProtectedRoute>} />
+        </Routes>
+      </Suspense>
     </AppRouter>
   );
 }
