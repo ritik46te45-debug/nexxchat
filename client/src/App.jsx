@@ -11,8 +11,8 @@ import { playIncomingMessageSound, showSystemNotification, requestNotificationPe
 import { initPushNotifications } from './lib/capacitorPush';
 import api from './lib/api';
 import InAppNotificationBanner from './components/common/InAppNotificationBanner';
+import LandingPage from './features/landing/LandingPage';
 
-const LandingPage = lazy(() => import('./features/landing/LandingPage'));
 const LoginPage = lazy(() => import('./features/auth/LoginPage'));
 const RegisterPage = lazy(() => import('./features/auth/RegisterPage'));
 const ResetPasswordPage = lazy(() => import('./features/auth/ResetPasswordPage'));

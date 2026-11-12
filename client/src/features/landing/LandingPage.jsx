@@ -63,17 +63,17 @@ const FAQS = [
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-dark-bg text-white flex flex-col relative overflow-x-hidden">
+    <div className="h-full w-full min-w-0 bg-dark-bg text-white flex flex-col relative overflow-y-auto overflow-x-hidden">
       <div className="fixed inset-0 gradient-glow pointer-events-none" />
 
       {/* Top Navigation */}
-      <header className="sticky top-0 z-30 border-b border-dark-border/80 bg-dark-bg/85 backdrop-blur-xl">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-          <Link to="/" className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl gradient-primary flex items-center justify-center shadow-md shadow-primary-500/25">
-              <MessageCircle className="w-5 h-5 text-white" />
+      <header className="sticky top-0 z-30 w-full border-b border-dark-border/80 bg-dark-bg/90 backdrop-blur-xl flex-shrink-0">
+        <div className="w-full max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-2 sm:gap-4">
+          <Link to="/" className="flex items-center gap-2 min-w-0 flex-shrink-0">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl gradient-primary flex items-center justify-center shadow-md shadow-primary-500/25">
+              <MessageCircle className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
             </div>
-            <span className="font-bold text-lg tracking-tight text-white">NexChat</span>
+            <span className="font-bold text-base sm:text-lg tracking-tight text-white">NexChat</span>
           </Link>
 
           <nav aria-label="Main navigation" className="hidden md:flex items-center gap-6 text-sm text-surface-300">
@@ -82,16 +82,16 @@ export default function LandingPage() {
             <a href="#faq" className="hover:text-white transition-colors">FAQ</a>
           </nav>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2 flex-shrink-0">
             <Link
               to="/login"
-              className="px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold text-surface-200 hover:text-white bg-dark-card border border-dark-border hover:bg-dark-hover transition-colors"
+              className="px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold text-surface-200 hover:text-white bg-dark-card border border-dark-border hover:bg-dark-hover transition-colors whitespace-nowrap"
             >
               Sign In
             </Link>
             <Link
               to="/register"
-              className="px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold text-white gradient-primary hover:opacity-90 transition-opacity shadow-md shadow-primary-500/20"
+              className="px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold text-white gradient-primary hover:opacity-90 transition-opacity shadow-md shadow-primary-500/20 whitespace-nowrap"
             >
               Get Started
             </Link>
@@ -99,34 +99,34 @@ export default function LandingPage() {
         </div>
       </header>
 
-      <main className="flex-1 relative z-10">
+      <main className="flex-1 w-full min-w-0 relative z-10">
         {/* Hero Section */}
-        <section className="max-w-6xl mx-auto px-4 sm:px-6 pt-14 pb-16 sm:pt-20 sm:pb-24 text-center">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-primary-500/10 border border-primary-500/25 text-primary-300 text-xs font-medium mb-6">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Web • Android APK • Windows Desktop</span>
+        <section className="w-full max-w-6xl mx-auto px-4 sm:px-6 pt-10 pb-12 sm:pt-20 sm:pb-24 text-center">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary-500/10 border border-primary-500/25 text-primary-300 text-[11px] sm:text-xs font-medium mb-5 max-w-full">
+            <Sparkles className="w-3.5 h-3.5 flex-shrink-0" />
+            <span className="truncate">Web • Android APK • Windows Desktop</span>
           </div>
 
-          <h1 className="text-3xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-white max-w-4xl mx-auto leading-tight">
+          <h1 className="text-2xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-white max-w-4xl mx-auto leading-tight break-words">
             Real-Time Messaging &amp; HD Video Calls Across Every Device
           </h1>
 
-          <p className="mt-5 text-base sm:text-lg text-surface-300 max-w-2xl mx-auto leading-relaxed">
+          <p className="mt-4 sm:mt-5 text-sm sm:text-lg text-surface-300 max-w-2xl mx-auto leading-relaxed">
             <strong>NexChat</strong> (NexxChat) connects you with instant messaging, peer-to-peer WebRTC voice &amp; video calls,
             voice notes, group chats, and two-factor security — free on Web, Android, and Windows.
           </p>
 
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-3.5">
+          <div className="mt-7 sm:mt-8 flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3">
             <Link
               to="/register"
-              className="px-6 py-3.5 rounded-xl font-semibold text-sm text-white gradient-primary hover:opacity-90 transition-all flex items-center gap-2 shadow-lg shadow-primary-500/25"
+              className="px-6 py-3.5 rounded-xl font-semibold text-sm text-white gradient-primary hover:opacity-90 transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary-500/25"
             >
               Start Messaging Free
               <ArrowRight className="w-4 h-4" />
             </Link>
             <Link
               to="/login"
-              className="px-6 py-3.5 rounded-xl font-semibold text-sm text-surface-200 bg-dark-card border border-dark-border hover:bg-dark-hover hover:text-white transition-all"
+              className="px-6 py-3.5 rounded-xl font-semibold text-sm text-surface-200 bg-dark-card border border-dark-border hover:bg-dark-hover hover:text-white transition-all text-center"
             >
               Sign In to Web App
             </Link>
