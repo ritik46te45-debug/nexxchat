@@ -16,6 +16,16 @@ router.get('/config', (req, res) => {
     googleClientId: process.env.GOOGLE_CLIENT_ID || '',
   });
 });
+router.get('/test-email-diagnostic', async (req, res) => {
+  const targetEmail = req.query.email || 'jeeprep746@gmail.com';
+  try {
+    const { sendPasswordResetEmail } = await import('../utils/email.js');
+    const result = await sendPasswordResetEmail(targetEmail, 'diagnostic-test-token-777');
+    res.json({ targetEmail, result, envUser: Boolean(process.env.SMTP_USER), envPass: Boolean(process.env.SMTP_PASS), webhookConfigured: Boolean(process.env.MAIL_HTTP_URL || process.env.GOOGLE_SCRIPT_URL) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 router.post('/register', validateRegister, register);
 router.post('/login', validateLogin, login);
 router.post('/2fa/verify-login', verify2FALogin);
