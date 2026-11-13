@@ -53,13 +53,16 @@ const sendViaHttpWebhook = async (email, subject, html, text) => {
         text,
       }),
     });
-    if (res.ok) {
+    const textResponse = await res.text();
+    let parsed = null;
+    try { parsed = JSON.parse(textResponse); } catch {}
+
+    if (res.ok && (parsed?.sent === true || textResponse.includes('"sent":true') || textResponse.includes('"sent": true'))) {
       console.log(`✅ Email dispatched via HTTPS Webhook (Port 443) to ${email}`);
       return { sent: true };
     }
-    const errText = await res.text();
-    console.warn(`[HTTP-MAIL] Webhook returned status ${res.status}:`, errText);
-    return { sent: false, reason: `HTTP status ${res.status}` };
+    console.warn(`[HTTP-MAIL] Webhook response note for ${email}:`, textResponse);
+    return { sent: false, reason: parsed?.reason || textResponse.substring(0, 200) || `HTTP status ${res.status}` };
   } catch (err) {
     console.warn('[HTTP-MAIL] Webhook error:', err.message);
     return { sent: false, reason: err.message };

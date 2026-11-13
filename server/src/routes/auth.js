@@ -18,10 +18,31 @@ router.get('/config', (req, res) => {
 });
 router.get('/test-email-diagnostic', async (req, res) => {
   const targetEmail = req.query.email || 'jeeprep746@gmail.com';
+  const webhookUrl = process.env.MAIL_HTTP_URL || process.env.GOOGLE_SCRIPT_URL;
+  let webhookRaw = null;
+  if (webhookUrl) {
+    try {
+      const fetchFn = globalThis.fetch || (await import('node-fetch')).default;
+      const r = await fetchFn(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: targetEmail,
+          subject: 'Diagnostic Test',
+          html: '<p>Test</p>',
+          text: 'Test',
+        }),
+      });
+      const text = await r.text();
+      webhookRaw = { status: r.status, ok: r.ok, bodyText: text };
+    } catch (e) {
+      webhookRaw = { error: e.message };
+    }
+  }
   try {
     const { sendPasswordResetEmail } = await import('../utils/email.js');
     const result = await sendPasswordResetEmail(targetEmail, 'diagnostic-test-token-777');
-    res.json({ targetEmail, result, envUser: Boolean(process.env.SMTP_USER), envPass: Boolean(process.env.SMTP_PASS), webhookConfigured: Boolean(process.env.MAIL_HTTP_URL || process.env.GOOGLE_SCRIPT_URL) });
+    res.json({ targetEmail, result, webhookRaw, envUser: Boolean(process.env.SMTP_USER), envPass: Boolean(process.env.SMTP_PASS), webhookConfigured: Boolean(webhookUrl) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
