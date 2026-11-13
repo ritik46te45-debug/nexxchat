@@ -471,7 +471,7 @@ export const forgotPassword = async (req, res) => {
     // Dispatch password reset email in background (non-blocking so the API responds in <100ms)
     sendPasswordResetEmail(user.email, resetToken, clientOrigin)
       .then((res) => {
-        if (res?.sent) console.log(`[PASSWORD-RESET] Email delivered to ${user.email}`);
+        if (res?.sent) console.log(`[PASSWORD-RESET] Email delivered to ${user.email} via ${res?.provider || 'default'}`);
         else console.warn(`[PASSWORD-RESET] Delivery note for ${user.email}:`, res?.reason);
       })
       .catch((err) => console.warn(`[PASSWORD-RESET] Email error for ${user.email}:`, err.message));
