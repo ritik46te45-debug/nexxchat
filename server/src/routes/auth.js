@@ -51,6 +51,28 @@ router.get('/mail-diagnostic', async (req, res) => {
     }
   }
 
+  // Also test Brevo SMTP if xsmtpsib is provided
+  let brevoSmtpTest = null;
+  if (brevoKey && brevoKey.startsWith('xsmtpsib')) {
+    try {
+      const nodemailer = (await import('nodemailer')).default;
+      const trans = nodemailer.createTransport({
+        host: 'smtp-relay.brevo.com',
+        port: 587,
+        secure: false,
+        auth: {
+          user: brevoSender,
+          pass: brevoKey,
+        },
+        connectionTimeout: 4000,
+      });
+      await trans.verify();
+      brevoSmtpTest = { connected: true };
+    } catch (err) {
+      brevoSmtpTest = { connected: false, error: err.message };
+    }
+  }
+
   res.json({
     hasBrevoKey: Boolean(brevoKey),
     brevoKeyPrefix: brevoKey ? brevoKey.substring(0, 8) + '...' : null,
@@ -58,6 +80,7 @@ router.get('/mail-diagnostic', async (req, res) => {
     brevoSender,
     hasWebhook: Boolean(process.env.MAIL_HTTP_URL || process.env.GOOGLE_SCRIPT_URL),
     brevoTest,
+    brevoSmtpTest,
   });
 });
 router.post('/register', validateRegister, register);
