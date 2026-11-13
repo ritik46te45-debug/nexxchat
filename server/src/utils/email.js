@@ -24,32 +24,22 @@ const hasSmtpConfig = () => {
 const createTransporter = () => {
   const { user, pass } = getSmtpCredentials();
   const host = process.env.SMTP_HOST || 'smtp.gmail.com';
-
-  // If using Gmail (either explicit host or @gmail.com address), use Gmail service preset (direct SSL port 465)
-  if (host.includes('gmail.com') || user.endsWith('@gmail.com')) {
-    return nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user,
-        pass,
-      },
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
-      socketTimeout: 15000,
-    });
-  }
+  const isGmail = host.includes('gmail.com') || user.endsWith('@gmail.com');
 
   return nodemailer.createTransport({
-    host,
-    port: parseInt(process.env.SMTP_PORT || '587'),
-    secure: parseInt(process.env.SMTP_PORT || '587') === 465,
+    host: isGmail ? 'smtp.gmail.com' : host,
+    port: isGmail ? 465 : parseInt(process.env.SMTP_PORT || '465'),
+    secure: true, // Port 465 direct SSL bypasses cloud firewall egress blocks on port 587
     auth: {
       user,
       pass,
     },
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 15000,
+    tls: {
+      rejectUnauthorized: false,
+    },
+    connectionTimeout: 20000,
+    greetingTimeout: 20000,
+    socketTimeout: 25000,
   });
 };
 
@@ -60,13 +50,14 @@ export const sendVerificationEmail = async (email, token) => {
   }
 
   try {
+    const { user } = getSmtpCredentials();
     const transporter = createTransporter();
     const baseUrl = (process.env.CLIENT_URL || 'https://nexxchat-zeta.vercel.app').replace(/\/+$/, '');
     const verifyUrl = `${baseUrl}/verify-email/${token}`;
 
     await Promise.race([
       transporter.sendMail({
-        from: `"NexChat" <${process.env.SMTP_USER || 'support@nexchat.app'}>`,
+        from: `"NexChat" <${user}>`,
         to: email,
         subject: 'Verify your NexChat account',
         text: `Welcome to NexChat! Please verify your email by clicking: ${verifyUrl}\n\nThis link expires in 24 hours.`,
@@ -89,7 +80,7 @@ export const sendVerificationEmail = async (email, token) => {
           </div>
         `,
       }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Verification email dispatch timeout')), 15000)),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Verification email dispatch timeout')), 25000)),
     ]);
     console.log(`✅ Verification email sent to ${email}`);
     return { sent: true };
@@ -106,13 +97,14 @@ export const sendPasswordResetEmail = async (email, token, clientOrigin = null) 
   }
 
   try {
+    const { user } = getSmtpCredentials();
     const transporter = createTransporter();
     const baseUrl = (clientOrigin || process.env.CLIENT_URL || 'https://nexxchat-zeta.vercel.app').replace(/\/+$/, '');
     const resetUrl = `${baseUrl}/reset-password/${token}`;
 
     await Promise.race([
       transporter.sendMail({
-        from: `"NexChat Security" <${process.env.SMTP_USER || 'support@nexchat.app'}>`,
+        from: `"NexChat Security" <${user}>`,
         to: email,
         subject: 'Reset your NexChat password',
         text: `You requested a password reset for your NexChat account.\n\nClick the link below to set a new password:\n${resetUrl}\n\nThis link expires in 2 hours. If you did not request this, please ignore this email.`,
@@ -140,7 +132,7 @@ export const sendPasswordResetEmail = async (email, token, clientOrigin = null) 
           </div>
         `,
       }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Email dispatch timeout')), 15000)),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Email dispatch timeout')), 25000)),
     ]);
     console.log(`✅ Password reset email sent to ${email}`);
     return { sent: true };
@@ -160,6 +152,7 @@ export const sendLoginAlertEmail = async (email, { displayName, deviceName, brow
   }
 
   try {
+    const { user } = getSmtpCredentials();
     const transporter = createTransporter();
     const formattedTime = (time ? new Date(time) : new Date()).toUTCString();
     const cleanDevice = deviceName || `${browser || 'Web Browser'} on ${os || 'Device'}`;
@@ -167,7 +160,7 @@ export const sendLoginAlertEmail = async (email, { displayName, deviceName, brow
 
     await Promise.race([
       transporter.sendMail({
-        from: `"NexChat Security" <${process.env.SMTP_USER || 'support@nexchat.app'}>`,
+        from: `"NexChat Security" <${user}>`,
         to: email,
         subject: `Security Alert: New login to NexChat (${cleanDevice})`,
         text: `Hi ${displayName || 'User'},\n\nA new login was detected on your NexChat account:\n\n- Device: ${cleanDevice}\n- Browser: ${browser || 'Unknown'}\n- Operating System: ${os || 'Unknown'}\n- IP Address: ${cleanIp}\n- Login Method: ${method}\n- Time: ${formattedTime}\n\nIf this was you, you can safely ignore this email.\nIf you did not sign in, please reset your password and revoke all sessions immediately in your Settings.`,
@@ -213,7 +206,7 @@ export const sendLoginAlertEmail = async (email, { displayName, deviceName, brow
           </div>
         `,
       }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Login alert email dispatch timeout')), 15000)),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Login alert email dispatch timeout')), 25000)),
     ]);
     console.log(`✅ Login alert email sent to ${email}`);
     return { sent: true };

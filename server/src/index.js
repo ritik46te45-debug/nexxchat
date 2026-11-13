@@ -266,6 +266,27 @@ const startServer = async () => {
 ║     Mode: ${(process.env.NODE_ENV || 'development').padEnd(24)}║
 ╚═══════════════════════════════════════╝
       `);
+
+      // 24/7 Keep-Alive self-ping to prevent Render free tier from sleeping (runs every 10 minutes)
+      const isProductionOrCloud = process.env.NODE_ENV === 'production' || process.env.RENDER || Boolean(process.env.RENDER_EXTERNAL_URL);
+      if (isProductionOrCloud) {
+        const pingUrl = process.env.RENDER_EXTERNAL_URL
+          ? `${process.env.RENDER_EXTERNAL_URL}/api/health`
+          : 'https://nexxchat-5d29.onrender.com/api/health';
+
+        setInterval(async () => {
+          try {
+            const fetchFn = globalThis.fetch || (await import('node-fetch')).default;
+            const res = await fetchFn(pingUrl);
+            if (res.ok) {
+              console.log(`[KEEP-ALIVE] 24/7 self-ping OK (${res.status}) at ${new Date().toISOString()}`);
+            }
+          } catch (e) {
+            console.warn('[KEEP-ALIVE] Ping note:', e.message);
+          }
+        }, 10 * 60 * 1000);
+        console.log(`✅ 24/7 Keep-Alive auto-pinger active for: ${pingUrl}`);
+      }
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error);

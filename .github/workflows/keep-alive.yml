@@ -1,0 +1,30 @@
+name: Keep Backend Alive 24/7
+
+on:
+  schedule:
+    # Runs every 10 minutes every hour, every day
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  keep-alive:
+    name: Ping NexChat API & Web
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Keep-Alive Heartbeat to Render Backend
+        run: |
+          echo "Pinging NexChat Backend on Render..."
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "https://nexxchat-5d29.onrender.com/api/health")
+          echo "Backend Response HTTP Code: $RESPONSE"
+          if [ "$RESPONSE" -eq 200 ] || [ "$RESPONSE" -eq 301 ] || [ "$RESPONSE" -eq 302 ]; then
+            echo "✅ NexChat backend is active, healthy, and awake!"
+          else
+            echo "⚠️ Backend responded with code $RESPONSE, retrying once..."
+            curl -s --max-time 45 "https://nexxchat-5d29.onrender.com/api/health" || true
+          fi
+
+      - name: Ping Frontend Vercel App
+        run: |
+          echo "Pinging NexChat Frontend on Vercel..."
+          curl -s -o /dev/null -w "%{http_code}" --max-time 20 "https://nexxchat-zeta.vercel.app/" || true
+          echo "✅ Keep-Alive cycle completed successfully."
