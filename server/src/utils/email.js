@@ -82,10 +82,10 @@ const createTransporter = () => {
     tls: {
       rejectUnauthorized: false,
     },
-    // Keep connection timeout short (4s) so if a cloud provider blocks SMTP sockets, it fails fast
-    connectionTimeout: 4000,
-    greetingTimeout: 4000,
-    socketTimeout: 6000,
+    // Generous timeouts (15s) so SMTP handshakes to external email domains succeed without false-positive timeouts
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 20000,
   });
 };
 
@@ -135,7 +135,7 @@ export const sendVerificationEmail = async (email, token) => {
         text,
         html,
       }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('SMTP timeout')), 5000)),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('SMTP timeout')), 15000)),
     ]);
     console.log(`✅ Verification email sent via SMTP to ${email}`);
     return { sent: true };
@@ -196,7 +196,7 @@ export const sendPasswordResetEmail = async (email, token, clientOrigin = null) 
         text,
         html,
       }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('SMTP timeout')), 5000)),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('SMTP timeout')), 15000)),
     ]);
     console.log(`✅ Password reset email sent via SMTP to ${email}`);
     return { sent: true };
@@ -279,7 +279,7 @@ export const sendLoginAlertEmail = async (email, { displayName, deviceName, brow
         text,
         html,
       }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('SMTP timeout')), 5000)),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('SMTP timeout')), 15000)),
     ]);
     console.log(`✅ Login alert email sent via SMTP to ${email}`);
     return { sent: true };

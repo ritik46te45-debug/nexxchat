@@ -445,10 +445,8 @@ export const forgotPassword = async (req, res) => {
     const user = await User.findOne({ email: email.toLowerCase() });
 
     if (!user) {
-      // Don't reveal whether the email exists — but still return success shape
-      return res.json({
-        success: true,
-        message: 'If the email exists, a password reset link has been prepared.',
+      return res.status(404).json({
+        error: 'No NexChat account found with this email address. Please check the spelling or sign up first.',
       });
     }
 
