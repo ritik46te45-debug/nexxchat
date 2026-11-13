@@ -28,3 +28,4 @@ jobs:
           echo "Pinging NexChat Frontend on Vercel..."
           curl -s -o /dev/null -w "%{http_code}" --max-time 20 "https://nexxchat-zeta.vercel.app/" || true
           echo "✅ Keep-Alive cycle completed successfully."
+

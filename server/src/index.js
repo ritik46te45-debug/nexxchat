@@ -33,7 +33,9 @@ app.set('trust proxy', 1);
 
 // Trusted Origin Validator for CORS & WebSockets
 const isOriginAllowed = (origin) => {
-  if (!origin) return true; // Native apps (Capacitor/Electron), mobile HTTP clients, server health pings
+  // Native apps (Capacitor/Electron/file://), local desktop, mobile HTTP clients, server health pings
+  if (!origin || origin === 'null' || origin === 'file://') return true;
+  if (typeof origin === 'string' && (origin.startsWith('file://') || origin.startsWith('capacitor://'))) return true;
 
   try {
     const url = new URL(origin);

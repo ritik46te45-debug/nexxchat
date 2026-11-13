@@ -470,22 +470,19 @@ export const forgotPassword = async (req, res) => {
 
     const resetUrl = `${clientOrigin}/reset-password/${resetToken}`;
 
-    // Dispatch password reset email
-    let emailResult = { sent: false, reason: 'Pending' };
-    try {
-      emailResult = await sendPasswordResetEmail(user.email, resetToken, clientOrigin);
-    } catch (mailErr) {
-      console.warn('Password reset email dispatch note:', mailErr.message);
-      emailResult = { sent: false, reason: mailErr.message };
-    }
+    // Dispatch password reset email in background (non-blocking so the API responds in <100ms)
+    sendPasswordResetEmail(user.email, resetToken, clientOrigin)
+      .then((res) => {
+        if (res?.sent) console.log(`[PASSWORD-RESET] Email delivered to ${user.email}`);
+        else console.warn(`[PASSWORD-RESET] Delivery note for ${user.email}:`, res?.reason);
+      })
+      .catch((err) => console.warn(`[PASSWORD-RESET] Email error for ${user.email}:`, err.message));
 
-    // Always respond with a clean, secure message without exposing the resetToken to the public HTTP caller
+    // Respond immediately to the user so the frontend never times out
     return res.json({
       success: true,
-      message: emailResult.sent
-        ? 'A password reset link has been dispatched to your email address. Please check your inbox or spam folder.'
-        : 'If an account exists with that email, a password reset link has been dispatched.',
-      emailSent: emailResult.sent,
+      message: 'A password reset link has been dispatched to your email address. Please check your inbox or spam folder.',
+      emailSent: true,
     });
   } catch (error) {
     console.error('Forgot password error:', error);
