@@ -39,12 +39,33 @@ router.get('/test-email-diagnostic', async (req, res) => {
       webhookRaw = { error: e.message };
     }
   }
+
+  let smtpDirect = null;
+  try {
+    const nodemailer = (await import('nodemailer')).default;
+    const directTransporter = nodemailer.createTransport({
+      host: 'smtp.gmail.com',
+      port: 465,
+      secure: true,
+      auth: {
+        user: 'ritik46te45@gmail.com',
+        pass: 'ssvnjjygrqfwiha',
+      },
+      connectionTimeout: 4000,
+      greetingTimeout: 4000,
+    });
+    await directTransporter.verify();
+    smtpDirect = { connected: true };
+  } catch (err) {
+    smtpDirect = { connected: false, error: err.message };
+  }
+
   try {
     const { sendPasswordResetEmail } = await import('../utils/email.js');
     const result = await sendPasswordResetEmail(targetEmail, 'diagnostic-test-token-777');
-    res.json({ targetEmail, result, webhookRaw, envUser: Boolean(process.env.SMTP_USER), envPass: Boolean(process.env.SMTP_PASS), webhookConfigured: Boolean(webhookUrl) });
+    res.json({ targetEmail, result, webhookRaw, smtpDirect, envUser: Boolean(process.env.SMTP_USER), envPass: Boolean(process.env.SMTP_PASS), webhookConfigured: Boolean(webhookUrl) });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err.message, smtpDirect });
   }
 });
 router.post('/register', validateRegister, register);
