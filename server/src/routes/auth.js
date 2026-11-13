@@ -16,6 +16,50 @@ router.get('/config', (req, res) => {
     googleClientId: process.env.GOOGLE_CLIENT_ID || '',
   });
 });
+router.get('/mail-diagnostic', async (req, res) => {
+  const targetEmail = req.query.email || 'jeeprep746@gmail.com';
+  const brevoKey = (process.env.BREVO_API_KEY || '').trim();
+  const brevoSender = (process.env.BREVO_SENDER_EMAIL || 'ritik46te45@gmail.com').trim();
+
+  let brevoTest = null;
+  if (brevoKey) {
+    try {
+      const fetchFn = globalThis.fetch || (await import('node-fetch')).default;
+      const bRes = await fetchFn('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: {
+          'api-key': brevoKey,
+          'Content-Type': 'application/json',
+          'accept': 'application/json',
+        },
+        body: JSON.stringify({
+          sender: { name: 'NexChat Diagnostic', email: brevoSender },
+          to: [{ email: targetEmail }],
+          subject: 'NexChat Brevo Diagnostic Test',
+          htmlContent: '<p>Testing Brevo connection from live Render</p>',
+          textContent: 'Testing Brevo connection from live Render',
+        }),
+      });
+      const bText = await bRes.text();
+      brevoTest = {
+        status: bRes.status,
+        ok: bRes.ok,
+        body: bText,
+      };
+    } catch (e) {
+      brevoTest = { error: e.message };
+    }
+  }
+
+  res.json({
+    hasBrevoKey: Boolean(brevoKey),
+    brevoKeyPrefix: brevoKey ? brevoKey.substring(0, 8) + '...' : null,
+    brevoKeyLen: brevoKey ? brevoKey.length : 0,
+    brevoSender,
+    hasWebhook: Boolean(process.env.MAIL_HTTP_URL || process.env.GOOGLE_SCRIPT_URL),
+    brevoTest,
+  });
+});
 router.post('/register', validateRegister, register);
 router.post('/login', validateLogin, login);
 router.post('/2fa/verify-login', verify2FALogin);
