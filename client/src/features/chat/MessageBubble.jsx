@@ -4,11 +4,12 @@ import {
   Trash2, Copy, Edit3, MoreHorizontal, Download, Play, Pause,
   FileText, MapPin, Users2, BarChart2, Smile, Timer, Pin,
   MessageSquare, ExternalLink, Globe, Bell, CheckSquare, Eye,
-  UploadCloud, Zap, X, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Video
+  UploadCloud, Zap, X, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Video, Lock
 } from 'lucide-react';
 import { format } from 'date-fns';
 import useChatStore from '../../stores/chatStore';
 import useAuthStore from '../../stores/authStore';
+import cryptoE2EE from '../../lib/cryptoE2EE';
 import ViewOnceModal from './ViewOnceModal';
 import AudioWaveformPlayer from './AudioWaveformPlayer';
 import CustomVideoPlayer from './CustomVideoPlayer';
@@ -58,6 +59,19 @@ function MessageBubbleComponent({
   const [translatedText, setTranslatedText] = useState(null);
   const [isTranslating, setIsTranslating] = useState(false);
   const [showPdfViewer, setShowPdfViewer] = useState(false);
+  const [decryptedText, setDecryptedText] = useState(null);
+
+  useEffect(() => {
+    if (message?.isEncrypted && message?.iv) {
+      const activeConv = useChatStore.getState().activeConversation;
+      const peerKey = activeConv?.peerPublicKeyJwk || message?.peerPublicKeyJwk;
+      cryptoE2EE.decryptPayload(message.conversation, message, peerKey).then((txt) => {
+        setDecryptedText(txt);
+      }).catch(() => {
+        setDecryptedText('[🔒 Encrypted Message]');
+      });
+    }
+  }, [message?.isEncrypted, message?.content, message?.iv]);
 
   const longPressTimer = useRef(null);
   const contextMenuRef = useRef(null);
@@ -444,10 +458,10 @@ function MessageBubbleComponent({
 
         {/* Bubble Core */}
         <div
-          className={`px-3.5 sm:px-4 py-2 transition-all shadow-sm ${
+          className={`px-3.5 sm:px-4 py-2 transition-all spring-tactile shadow-sm ${
             isOwn
-              ? 'gradient-primary text-white rounded-2xl rounded-br-sm'
-              : 'bg-dark-card border border-dark-border text-surface-100 rounded-2xl rounded-bl-sm'
+              ? 'msg-bubble-sent'
+              : 'msg-bubble-received'
           } ${message.replyTo ? 'rounded-t-none' : ''}`}
         >
           {/* Sender Name in Groups */}
@@ -791,7 +805,7 @@ function MessageBubbleComponent({
           {/* TEXT CONTENT */}
           {message.content && message.type !== 'poll' && (
             <p className={`whitespace-pre-wrap break-words leading-relaxed select-text cursor-text ${isOnlyEmoji ? 'text-3xl my-1' : 'text-xs sm:text-sm'}`}>
-              {message.content}
+              {decryptedText || message.content}
             </p>
           )}
 
@@ -805,6 +819,7 @@ function MessageBubbleComponent({
 
           {/* Metadata Footer */}
           <div className="flex items-center justify-end gap-1.5 mt-1 text-[10px] text-surface-400/90 select-none">
+            {message.isEncrypted && <Lock className="w-2.5 h-2.5 text-emerald-400 inline" title="End-to-End Encrypted" />}
             {isPinned && <Pin className="w-3 h-3 text-primary-400 rotate-45" />}
             {isStarred && <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />}
             {message.isEdited && <span className="italic">edited</span>}

@@ -18,6 +18,7 @@ import PdfCoverCard from './PdfCoverCard';
 import { triggerHaptic } from '../../lib/haptics';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
+import cryptoE2EE from '../../lib/cryptoE2EE';
 
 // Format bytes into readable string (B, KB, MB, GB)
 const formatFileSize = (bytes) => {
@@ -442,16 +443,36 @@ export default function MessageComposer() {
         }, 0);
       }
 
-      // Trigger optimistic render & background HTTP post
-      sendMessage(conversationId, {
-        type: 'text',
-        content: msgContent,
-        replyTo: replyId,
-        isSilent: silent,
-      }).catch((err) => {
-        console.error('Send message error:', err);
-        toast.error('Failed to send message');
-      });
+      // Prepare payload with optional E2EE encryption for Secret Chats
+      (async () => {
+        let payload = {
+          type: 'text',
+          content: msgContent,
+          replyTo: replyId,
+          isSilent: silent,
+        };
+
+        if (activeConversation?.isSecret) {
+          const myId = (user?._id || user)?.toString();
+          const otherParticipant = activeConversation.participants?.find(
+            p => (p.user?._id || p.user)?.toString() !== myId
+          );
+          const peerKey = otherParticipant?.user?.publicKeyJwk || activeConversation?.peerPublicKeyJwk;
+          if (peerKey) {
+            const enc = await cryptoE2EE.encryptPayload(conversationId, msgContent, peerKey);
+            if (enc?.isEncrypted) {
+              payload.content = enc.content;
+              payload.iv = enc.iv;
+              payload.isEncrypted = true;
+            }
+          }
+        }
+
+        sendMessage(conversationId, payload).catch((err) => {
+          console.error('Send message error:', err);
+          toast.error('Failed to send message');
+        });
+      })();
     }
   };
 
@@ -774,7 +795,8 @@ export default function MessageComposer() {
   };
 
   return (
-    <div className="border-t border-dark-border bg-dark-card/90 backdrop-blur-xl p-2.5 sm:p-3.5 relative flex-shrink-0 safe-bottom">
+    <div className="p-2 sm:p-3 relative flex-shrink-0 safe-bottom bg-gradient-to-t from-[#080b11] via-[#080b11]/90 to-transparent">
+      <div className="composer-dock rounded-3xl p-1.5 sm:p-2 transition-all">
       {/* Hidden File Inputs */}
       <input
         ref={fileInputRef}
@@ -1064,6 +1086,7 @@ export default function MessageComposer() {
           )}
         </div>
       )}
+      </div>
 
       {/* Circular Video Note Modal */}
       {showVideoNoteRecorder && (

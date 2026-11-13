@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import api from '../lib/api';
 import { getSocket } from '../lib/socket';
 import useAuthStore from './authStore';
+import idb from '../lib/idbStore';
 
 export const getConvTime = (c) => {
   if (!c) return 0;
@@ -101,6 +102,7 @@ const useChatStore = create((set, get) => ({
       }, 0);
       const sorted = sortConversations(convs);
       set({ conversations: sorted, isLoadingConversations: false, unreadTotal });
+      idb.setConversations(sorted);
       try {
         localStorage.setItem('nexchat_cached_conversations', JSON.stringify(sorted.slice(0, 50)));
       } catch (e) {}
@@ -187,7 +189,7 @@ const useChatStore = create((set, get) => ({
       // Silently revalidate in background (SWR pattern)
       get().fetchMessages(convId, null, true);
     } else {
-      // Clean fresh load: avoid flashing days-old lastMessage which triggered inverted scroll pagination
+      // 0.0s instant offline hydration from IndexedDB before waiting for network
       set({
         activeConversation: conversation,
         messages: [],
@@ -195,7 +197,23 @@ const useChatStore = create((set, get) => ({
         isLoadingMessages: true,
         _fetchGeneration: gen,
       });
-      get().fetchMessages(convId);
+
+      idb.getMessages(convId).then((diskCached) => {
+        if (Array.isArray(diskCached) && diskCached.length > 0 && get()._fetchGeneration === gen) {
+          set({
+            messages: diskCached,
+            isLoadingMessages: false,
+          });
+          // Silently revalidate in background
+          get().fetchMessages(convId, null, true);
+        } else if (get()._fetchGeneration === gen) {
+          get().fetchMessages(convId);
+        }
+      }).catch(() => {
+        if (get()._fetchGeneration === gen) {
+          get().fetchMessages(convId);
+        }
+      });
     }
 
     // Silently revalidate conversation participants (avatar, name, bio) in background
@@ -391,6 +409,9 @@ const useChatStore = create((set, get) => ({
 
       set((state) => {
         const nextMessages = before ? [...incoming, ...state.messages] : incoming;
+        if (convIdStr && !before) {
+          idb.setMessages(convIdStr, nextMessages);
+        }
         return {
           messages: nextMessages,
           hasMoreMessages: hasMore,
@@ -545,15 +566,67 @@ const useChatStore = create((set, get) => ({
   },
 
   reactToMessage: async (messageId, emoji) => {
-    try {
-      const { data } = await api.post(`/messages/${messageId}/react`, { emoji });
+    const myId = (useAuthStore.getState().user?._id || useAuthStore.getState().user)?.toString();
+    const currentMessages = get().messages;
+    const targetMsg = currentMessages.find(m => m._id === messageId || m.clientId === messageId);
+
+    // 0ms Optimistic reaction calculation
+    if (targetMsg) {
+      const prevReactions = Array.isArray(targetMsg.reactions) ? targetMsg.reactions : [];
+      let updatedReactions;
+
+      const existingIndex = prevReactions.findIndex(r => {
+        const uId = (r.user?._id || r.user)?.toString();
+        return uId === myId;
+      });
+
+      if (existingIndex > -1) {
+        if (prevReactions[existingIndex].emoji === emoji) {
+          // Toggle off
+          updatedReactions = prevReactions.filter((_, idx) => idx !== existingIndex);
+        } else {
+          // Change emoji
+          updatedReactions = prevReactions.map((r, idx) =>
+            idx === existingIndex ? { ...r, emoji } : r
+          );
+        }
+      } else {
+        // Add new reaction
+        updatedReactions = [...prevReactions, { user: myId, emoji }];
+      }
+
       set((state) => ({
         messages: state.messages.map(m =>
-          m._id === messageId ? { ...m, reactions: data.reactions } : m
+          (m._id === messageId || m.clientId === messageId)
+            ? { ...m, reactions: updatedReactions }
+            : m
         ),
       }));
+    }
+
+    try {
+      const { data } = await api.post(`/messages/${messageId}/react`, { emoji });
+      if (data?.reactions) {
+        set((state) => ({
+          messages: state.messages.map(m =>
+            (m._id === messageId || m.clientId === messageId)
+              ? { ...m, reactions: data.reactions }
+              : m
+          ),
+        }));
+      }
     } catch (error) {
       console.error('React error:', error);
+      // Rollback on failure
+      if (targetMsg) {
+        set((state) => ({
+          messages: state.messages.map(m =>
+            (m._id === messageId || m.clientId === messageId)
+              ? { ...m, reactions: targetMsg.reactions }
+              : m
+          ),
+        }));
+      }
     }
   },
 
@@ -781,6 +854,9 @@ const useChatStore = create((set, get) => ({
         }));
       }
     }
+    if (msgConvId) {
+      idb.appendMessage(msgConvId, message);
+    }
     state.updateConversationInList(msgConvId, message);
   },
 
@@ -987,5 +1063,17 @@ const useChatStore = create((set, get) => ({
     return get().drafts[conversationId] || '';
   },
 }));
+
+// Instant 0.0s offline hydration from IndexedDB on startup
+if (typeof window !== 'undefined') {
+  idb.getConversations().then((stored) => {
+    if (Array.isArray(stored) && stored.length > 0) {
+      useChatStore.setState({
+        conversations: sortConversations(stored),
+        unreadTotal: stored.reduce((sum, c) => sum + (c.unreadCount || 0), 0),
+      });
+    }
+  }).catch(() => {});
+}
 
 export default useChatStore;

@@ -38,6 +38,7 @@ export const sendMessage = async (req, res) => {
     const {
       content, type = 'text', replyTo, mentions,
       clientId, location, contact, poll, linkPreview, attachments,
+      isEncrypted, iv,
     } = req.body;
 
     console.log(`[MSG-1] SEND_MESSAGE_REQUEST -> senderId: ${req.userId} | convId: ${conversationId} | clientId: ${clientId} | type: ${type}`);
@@ -99,6 +100,8 @@ export const sendMessage = async (req, res) => {
       clientId,
       mentions: mentions || [],
       isViewOnce: Boolean(req.body.isViewOnce),
+      isEncrypted: Boolean(isEncrypted),
+      iv: iv || null,
     };
 
     if (attachments && Array.isArray(attachments)) messageData.attachments = attachments;

@@ -139,6 +139,9 @@ const messageSchema = new mongoose.Schema({
   },
   // Disappearing
   expiresAt: { type: Date, default: null },
+  // Military-grade E2EE
+  isEncrypted: { type: Boolean, default: false },
+  iv: { type: String, default: null },
   // View Once (Self-destructing media)
   isViewOnce: { type: Boolean, default: false },
   viewedBy: [{

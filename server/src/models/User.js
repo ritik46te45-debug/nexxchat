@@ -117,6 +117,10 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: null,
   },
+  publicKeyJwk: {
+    type: Object,
+    default: null,
+  },
   userCode: {
     type: String,
     length: 4,

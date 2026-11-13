@@ -13,7 +13,7 @@ const hasValidCloudinaryConfig = () => {
 // UPDATE PROFILE
 export const updateProfile = async (req, res) => {
   try {
-    const allowedFields = ['displayName', 'about', 'phone', 'theme', 'language'];
+    const allowedFields = ['displayName', 'about', 'phone', 'theme', 'language', 'publicKeyJwk'];
     const updates = {};
 
     for (const field of allowedFields) {

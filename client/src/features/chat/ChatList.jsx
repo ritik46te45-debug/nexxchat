@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, memo } from 'react';
-import { Search, Plus, Edit3, Users, Archive, Pin, Volume2, VolumeX, Bell, Settings } from 'lucide-react';
+import { Search, Plus, Edit3, Users, Archive, Pin, Volume2, VolumeX, Bell, Settings, Lock } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import useChatStore, { getConvTime } from '../../stores/chatStore';
 import useAuthStore from '../../stores/authStore';
@@ -47,13 +47,15 @@ export default function ChatList({ onOpenProfile }) {
       return true;
     });
 
-    // Apply Unread / Groups / Direct Filter
+    // Apply Unread / Groups / Direct / Secret Filter
     if (chatFilter === 'unread') {
       convs = convs.filter(c => (c.unreadCount || c._participant?.unreadCount || 0) > 0);
     } else if (chatFilter === 'groups') {
       convs = convs.filter(c => c.type === 'group');
     } else if (chatFilter === 'direct') {
-      convs = convs.filter(c => c.type === 'private');
+      convs = convs.filter(c => c.type === 'private' && !c.isSecret);
+    } else if (chatFilter === 'secret') {
+      convs = convs.filter(c => c.isSecret);
     }
 
     if (searchQuery) {
@@ -197,6 +199,17 @@ export default function ChatList({ onOpenProfile }) {
             }`}
           >
             Direct
+          </button>
+          <button
+            onClick={() => setChatFilter('secret')}
+            className={`px-3 py-1 rounded-full text-xs font-semibold transition-all flex items-center gap-1 whitespace-nowrap cursor-pointer ${
+              chatFilter === 'secret'
+                ? 'bg-emerald-600 text-white shadow-sm'
+                : 'bg-dark-card hover:bg-dark-hover text-surface-400 hover:text-white border border-dark-border'
+            }`}
+          >
+            <Lock className="w-3 h-3 text-emerald-400" />
+            <span>Secret</span>
           </button>
         </div>
 
@@ -349,13 +362,20 @@ const ConversationItem = memo(function ConversationItem({ conversation, userId, 
           size="lg"
           className="shadow-sm"
         />
-        {showOnline && <div className="absolute bottom-0 right-0 online-dot" />}
+        {showOnline && (
+          <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-accent-green border-2 border-dark-card status-breathing" />
+        )}
       </div>
 
       {/* Content */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between">
-          <span className="font-semibold text-white text-sm truncate">{name}</span>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="font-semibold text-white text-sm truncate">{name}</span>
+            {conversation.isSecret && (
+              <Lock className="w-3 h-3 text-emerald-400 flex-shrink-0" title="Secret Chat (E2EE)" />
+            )}
+          </div>
           <span className="text-[11px] text-surface-500 flex-shrink-0 ml-2">
             {(() => { try { if (!timeStr) return ''; const d = new Date(timeStr); return isNaN(d.getTime()) ? '' : formatDistanceToNow(d, { addSuffix: false }); } catch(e) { return ''; } })()}
           </span>

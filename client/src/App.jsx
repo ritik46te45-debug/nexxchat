@@ -12,6 +12,8 @@ import { initPushNotifications } from './lib/capacitorPush';
 import api from './lib/api';
 import InAppNotificationBanner from './components/common/InAppNotificationBanner';
 import LandingPage from './features/landing/LandingPage';
+import AppLockOverlay from './features/auth/AppLockOverlay';
+import cryptoE2EE from './lib/cryptoE2EE';
 
 const LoginPage = lazy(() => import('./features/auth/LoginPage'));
 const RegisterPage = lazy(() => import('./features/auth/RegisterPage'));
@@ -277,6 +279,16 @@ function App() {
           })
           .catch(() => {});
       }, 2000);
+
+      // Sync E2EE public key if not yet published on account
+      cryptoE2EE.getOrCreateKeyPair().then((keys) => {
+        if (keys?.publicKeyJwk) {
+          const userState = useAuthStore.getState().user;
+          if (!userState?.publicKeyJwk) {
+            api.put('/users/profile', { publicKeyJwk: keys.publicKeyJwk }).catch(() => {});
+          }
+        }
+      }).catch(() => {});
 
       return () => clearTimeout(notifTimer);
     }
@@ -632,16 +644,18 @@ function App() {
         }}
       />
       <InAppNotificationBanner />
-      <Suspense fallback={<RouteLoadingFallback />}>
-        <Routes>
-          <Route path="/" element={<RootEntry />} />
-          <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
-          <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
-          <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
-          <Route path="/reset-password" element={<ResetPasswordPage />} />
-          <Route path="/*" element={<ProtectedRoute><MainLayout /></ProtectedRoute>} />
-        </Routes>
-      </Suspense>
+      <AppLockOverlay>
+        <Suspense fallback={<RouteLoadingFallback />}>
+          <Routes>
+            <Route path="/" element={<RootEntry />} />
+            <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
+            <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
+            <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
+            <Route path="/*" element={<ProtectedRoute><MainLayout /></ProtectedRoute>} />
+          </Routes>
+        </Suspense>
+      </AppLockOverlay>
     </AppRouter>
   );
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Search, Loader2, UserPlus, MessageCircle } from 'lucide-react';
+import { X, Search, Loader2, UserPlus, MessageCircle, Lock } from 'lucide-react';
 import api from '../../lib/api';
 import useChatStore from '../../stores/chatStore';
 import useUIStore from '../../stores/uiStore';
@@ -57,12 +57,18 @@ export default function NewChatModal({ onClose }) {
     return () => clearTimeout(timer);
   }, [query]);
 
-  const handleStartChat = async (userId) => {
+  const handleStartChat = async (userId, isSecret = false) => {
     try {
       const conv = await getOrCreateConversation(userId);
+      if (isSecret) {
+        conv.isSecret = true;
+      }
       setActiveConversation(conv);
       if (isMobile) setShowChatOnMobile(true);
       onClose();
+      if (isSecret) {
+        toast('🔐 End-to-End Encrypted Secret Chat active', { icon: '🛡️' });
+      }
     } catch (error) {
       toast.error('Failed to start conversation');
     }
@@ -149,17 +155,24 @@ export default function NewChatModal({ onClose }) {
                 {!u.isSelf && (
                   <div className="flex gap-2">
                     <button
-                      onClick={() => handleStartChat(u._id)}
-                      className="p-2 rounded-lg bg-primary-500/20 text-primary-400 hover:bg-primary-500/30 transition-all"
-                      title="Start chat"
+                      onClick={() => handleStartChat(u._id, false)}
+                      className="p-2 rounded-xl bg-primary-500/20 text-primary-400 hover:bg-primary-500/30 transition-all cursor-pointer"
+                      title="Start Chat"
                     >
                       <MessageCircle className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleStartChat(u._id, true)}
+                      className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition-all cursor-pointer"
+                      title="Start End-to-End Encrypted Secret Chat 🔐"
+                    >
+                      <Lock className="w-4 h-4" />
                     </button>
                     {query.trim().length > 0 && (
                       <button
                         onClick={() => handleSendFriendRequest(u._id)}
-                        className="p-2 rounded-lg bg-accent-green/20 text-accent-green hover:bg-accent-green/30 transition-all"
-                        title="Add friend"
+                        className="p-2 rounded-xl bg-accent-green/20 text-accent-green hover:bg-accent-green/30 transition-all cursor-pointer"
+                        title="Add Friend"
                       >
                         <UserPlus className="w-4 h-4" />
                       </button>

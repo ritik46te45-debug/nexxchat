@@ -679,7 +679,7 @@ export default function ChatWindow({ onStartCall }) {
           >
             <Avatar src={avatar} name={name} size="md" className="shadow-sm" />
             {isOnline && (
-              <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-accent-green border-2 border-dark-card" />
+              <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-accent-green border-2 border-dark-card status-breathing" />
             )}
           </div>
 
@@ -694,6 +694,12 @@ export default function ChatWindow({ onStartCall }) {
           >
             <div className="flex items-center gap-1.5">
               <h2 className="font-bold text-white text-sm sm:text-base truncate leading-tight">{name}</h2>
+              {activeConversation.isSecret && (
+                <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-[10px] text-emerald-400 font-semibold flex-shrink-0">
+                  <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                  <span>E2EE</span>
+                </span>
+              )}
               {activeConversation.disappearingMessages?.enabled && (
                 <Timer className="w-3.5 h-3.5 text-primary-400 flex-shrink-0" title={`Disappearing: ${currentDurationLabel}`} />
               )}
