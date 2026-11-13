@@ -5,7 +5,7 @@ import { uploadFile, uploadMultipleFiles, deleteFile, downloadFileProxy, getGrid
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB max in-memory limit to prevent container OOM
+  limits: { fileSize: 25 * 1024 * 1024 }, // 25MB max in-memory buffer to prevent container OOM on Render 512MB RAM
 });
 
 const router = Router();
@@ -17,7 +17,7 @@ router.get('/gridfs/:filename', getGridFSFile);
 router.use(authenticate);
 
 router.post('/single', upload.single('file'), uploadFile);
-router.post('/multiple', upload.array('files', 10), uploadMultipleFiles);
+router.post('/multiple', upload.array('files', 5), uploadMultipleFiles);
 router.delete('/', deleteFile);
 
 // Storage management endpoints (require auth)

@@ -31,10 +31,51 @@ const httpServer = createServer(app);
 // Enable trust proxy for Render / Cloudflare / reverse proxy rate limiting
 app.set('trust proxy', 1);
 
+// Trusted Origin Validator for CORS & WebSockets
+const isOriginAllowed = (origin) => {
+  if (!origin) return true; // Native apps (Capacitor/Electron), mobile HTTP clients, server health pings
+
+  try {
+    const url = new URL(origin);
+    const host = url.hostname;
+
+    // Local development & test origins
+    if (host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0') return true;
+
+    // Production Vercel domain & preview deployments
+    if (host === 'nexxchat-zeta.vercel.app' || host.endsWith('.vercel.app')) return true;
+
+    // Render backend domain self-requests
+    if (host === 'nexxchat-5d29.onrender.com' || host.endsWith('.onrender.com')) return true;
+
+    // Capacitor native origin
+    if (url.protocol === 'capacitor:' || origin.startsWith('capacitor://')) return true;
+
+    // Configured CLIENT_URL or ALLOWED_ORIGINS environment variables
+    if (process.env.CLIENT_URL && origin.startsWith(process.env.CLIENT_URL.replace(/\/+$/, ''))) return true;
+    if (process.env.ALLOWED_ORIGINS) {
+      const allowed = process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim());
+      if (allowed.includes(origin)) return true;
+    }
+  } catch (e) {
+    return false;
+  }
+  return false;
+};
+
+const corsOriginCallback = (origin, callback) => {
+  if (isOriginAllowed(origin)) {
+    callback(null, true);
+  } else {
+    console.warn(`[CORS-BLOCKED] Rejected untrusted origin: ${origin}`);
+    callback(new Error('Blocked by CORS policy: Origin not allowed'));
+  }
+};
+
 // Socket.IO
 const io = new Server(httpServer, {
   cors: {
-    origin: (origin, callback) => callback(null, true),
+    origin: corsOriginCallback,
     credentials: true,
     methods: ['GET', 'POST'],
   },
@@ -55,7 +96,7 @@ app.use(helmet({
 
 // CORS options configuration
 const corsOptions = {
-  origin: (origin, callback) => callback(null, true),
+  origin: corsOriginCallback,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin', 'x-refresh-token'],
@@ -68,9 +109,8 @@ app.options('*', cors(corsOptions));
 // Rate limiting (generous for real-time chat, never rate-limit CORS preflight OPTIONS)
 // Custom handler ensures CORS headers are present even on 429 responses
 const rateLimitHandler = (req, res) => {
-  // Explicitly set CORS headers on rate-limited responses so browsers don't report CORS errors
   const origin = req.headers.origin;
-  if (origin) {
+  if (origin && isOriginAllowed(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Credentials', 'true');
   }
@@ -172,9 +212,9 @@ app.use((req, res) => {
 app.use((err, req, res, next) => {
   console.error('❌ Server Error:', err);
 
-  // Ensure CORS headers are present even on error responses
+  // Ensure CORS headers are present even on error responses for allowed origins
   const origin = req.headers.origin;
-  if (origin) {
+  if (origin && isOriginAllowed(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Credentials', 'true');
   }

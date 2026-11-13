@@ -6,13 +6,15 @@ import * as OTPAuth from 'otpauth';
 import User from '../models/User.js';
 import Session from '../models/Session.js';
 import { generateAccessToken, generateRefreshToken } from '../middleware/auth.js';
-import { sendVerificationEmail, sendPasswordResetEmail } from '../utils/email.js';
+import { sendVerificationEmail, sendPasswordResetEmail, sendLoginAlertEmail } from '../utils/email.js';
 
 // Create session and set cookies
 const createSession = async (user, req, res) => {
   const ua = new UAParser(req.headers['user-agent']);
   const browser = ua.getBrowser();
   const os = ua.getOS();
+  const deviceName = `${browser.name || 'Unknown'} on ${os.name || 'Unknown'}`;
+  const ip = req.ip || req.connection?.remoteAddress || '';
 
   const accessToken = generateAccessToken(user._id);
   const refreshToken = generateRefreshToken(user._id);
@@ -21,10 +23,10 @@ const createSession = async (user, req, res) => {
   await Session.create({
     user: user._id,
     refreshToken,
-    deviceName: `${browser.name || 'Unknown'} on ${os.name || 'Unknown'}`,
+    deviceName,
     browser: browser.name || 'Unknown',
     os: os.name || 'Unknown',
-    ip: req.ip || req.connection?.remoteAddress || '',
+    ip,
     expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
   });
 
@@ -46,7 +48,16 @@ const createSession = async (user, req, res) => {
     path: '/api/auth/refresh',
   });
 
-  return { accessToken, refreshToken };
+  return {
+    accessToken,
+    refreshToken,
+    deviceDetails: {
+      deviceName,
+      browser: browser.name || 'Web Browser',
+      os: os.name || 'Device',
+      ip,
+    },
+  };
 };
 
 // REGISTER
@@ -141,6 +152,14 @@ export const login = async (req, res) => {
     await user.resetLoginAttempts();
     const tokens = await createSession(user, req, res);
 
+    // Non-blocking security alert: notify user email of login
+    sendLoginAlertEmail(user.email, {
+      displayName: user.displayName,
+      ...tokens.deviceDetails,
+      time: new Date(),
+      method: 'Password',
+    }).catch((err) => console.warn('Login alert email dispatch note:', err.message));
+
     res.json({
       message: 'Login successful',
       user: user.toSafeObject(),
@@ -160,8 +179,8 @@ export const googleAuth = async (req, res) => {
 
     let googleId, email, name, picture;
 
-    if (credential && (credential.startsWith('mock-') || credential === 'dev')) {
-      // Dev / Quick login mode — generate a unique demo user per browser session
+    // Dev/Mock mode is strictly prohibited in production for security
+    if (process.env.NODE_ENV !== 'production' && credential && (credential.startsWith('mock-') || credential === 'dev')) {
       const seed = credential === 'dev' ? crypto.randomBytes(8).toString('hex') : credential;
       const hash = crypto.createHash('md5').update(seed).digest('hex').slice(0, 8);
       googleId = `google_demo_${hash}`;
@@ -177,6 +196,13 @@ export const googleAuth = async (req, res) => {
           const response = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${credential}`);
           if (response.ok) {
             const payload = await response.json();
+
+            // Strict audience verification: Ensure token was issued for our Google OAuth Client ID
+            if (process.env.GOOGLE_CLIENT_ID && payload.aud !== process.env.GOOGLE_CLIENT_ID) {
+              console.warn('[AUTH-WARN] Google token audience mismatch:', payload.aud);
+              return res.status(401).json({ error: 'Google authentication failed: audience mismatch' });
+            }
+
             googleId = payload.sub;
             email = payload.email;
             name = payload.name;
@@ -247,6 +273,14 @@ export const googleAuth = async (req, res) => {
     }
 
     const tokens = await createSession(user, req, res);
+
+    // Non-blocking security alert: notify user email of login
+    sendLoginAlertEmail(user.email, {
+      displayName: user.displayName,
+      ...tokens.deviceDetails,
+      time: new Date(),
+      method: 'Google Sign-In',
+    }).catch((err) => console.warn('Login alert email dispatch note:', err.message));
 
     res.json({
       message: 'Google login successful',
@@ -436,7 +470,7 @@ export const forgotPassword = async (req, res) => {
 
     const resetUrl = `${clientOrigin}/reset-password/${resetToken}`;
 
-    // Try sending email with safety timeout
+    // Dispatch password reset email
     let emailResult = { sent: false, reason: 'Pending' };
     try {
       emailResult = await sendPasswordResetEmail(user.email, resetToken, clientOrigin);
@@ -445,25 +479,13 @@ export const forgotPassword = async (req, res) => {
       emailResult = { sent: false, reason: mailErr.message };
     }
 
-    if (emailResult.sent) {
-      // Email sent successfully — provide confirmation AND direct link
-      return res.json({
-        success: true,
-        message: 'Password reset link sent to your email. You can also click the direct link below.',
-        emailSent: true,
-        resetUrl,
-        resetToken,
-      });
-    }
-
-    // Email failed or SMTP slow — provide reset link directly
-    console.warn(`Password reset email failed for ${user.email}: ${emailResult.reason}. Returning reset link directly.`);
+    // Always respond with a clean, secure message without exposing the resetToken to the public HTTP caller
     return res.json({
       success: true,
-      message: 'Reset link ready. Use the link below to set your new password.',
-      emailSent: false,
-      resetUrl,
-      resetToken,
+      message: emailResult.sent
+        ? 'A password reset link has been dispatched to your email address. Please check your inbox or spam folder.'
+        : 'If an account exists with that email, a password reset link has been dispatched.',
+      emailSent: emailResult.sent,
     });
   } catch (error) {
     console.error('Forgot password error:', error);
@@ -749,6 +771,14 @@ export const verify2FALogin = async (req, res) => {
 
     await user.resetLoginAttempts();
     const tokens = await createSession(user, req, res);
+
+    // Non-blocking security alert: notify user email of login
+    sendLoginAlertEmail(user.email, {
+      displayName: user.displayName,
+      ...tokens.deviceDetails,
+      time: new Date(),
+      method: 'Two-Factor Authentication',
+    }).catch((err) => console.warn('Login alert email dispatch note:', err.message));
 
     res.json({
       message: '2FA verification successful',

@@ -25,7 +25,7 @@ const ALLOWED_TYPES = {
     'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-    'text/plain', 'text/csv', 'text/html', 'text/css', 'text/javascript',
+    'text/plain', 'text/csv', 'text/css',
     'application/json', 'application/xml',
     'application/zip', 'application/x-rar-compressed', 'application/x-7z-compressed',
     'application/gzip',
@@ -35,8 +35,8 @@ const ALLOWED_TYPES = {
 
 const ALL_ALLOWED = [...ALLOWED_TYPES.image, ...ALLOWED_TYPES.video, ...ALLOWED_TYPES.audio, ...ALLOWED_TYPES.document];
 
-// Dangerous executable extensions to block
-const BLOCKED_EXTENSIONS = ['.exe', '.bat', '.cmd', '.scr', '.pif', '.com', '.vbs', '.js', '.wsh', '.wsf', '.msi', '.ps1', '.sh'];
+// Dangerous executable & script extensions to block
+const BLOCKED_EXTENSIONS = ['.exe', '.bat', '.cmd', '.scr', '.pif', '.com', '.vbs', '.js', '.mjs', '.cjs', '.html', '.htm', '.xhtml', '.wsh', '.wsf', '.msi', '.ps1', '.sh', '.jar'];
 
 // Max file sizes (bytes) - 500MB for all file types
 const MAX_SIZES = {
