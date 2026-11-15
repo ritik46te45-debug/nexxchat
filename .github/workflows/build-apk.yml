@@ -51,12 +51,20 @@ jobs:
           cp -r dist/* android/app/src/main/assets/public/
           cp capacitor.config.json android/app/src/main/assets/capacitor.config.json
 
-      - name: Decode Android Keystore from Secret (if configured)
-        if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
+      - name: Setup Android Release Keystore
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
-          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > client/android/app/nexchat-release.keystore
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "Decoding release keystore from repository secrets..."
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > client/android/app/nexchat-release.keystore
+          elif [ ! -f "client/android/app/nexchat-release.keystore" ]; then
+            echo "No keystore found. Generating dedicated CI release keystore..."
+            keytool -genkeypair -v -keystore client/android/app/nexchat-release.keystore \
+              -alias nexchat -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass nexchat123 -keypass nexchat123 \
+              -dname "CN=NexChat, OU=Mobile, O=NexChat, L=City, ST=State, C=US"
+          fi
 
       - name: Build Android APKs with Gradle
         env:
