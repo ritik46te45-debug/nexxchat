@@ -52,10 +52,14 @@ jobs:
           cp capacitor.config.json android/app/src/main/assets/capacitor.config.json
 
       - name: Build Android APKs with Gradle
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           cd client/android
           ./gradlew assembleDebug --no-daemon --stacktrace
-          ./gradlew assembleRelease --no-daemon --stacktrace || true
+          ./gradlew assembleRelease --no-daemon --stacktrace
 
       - name: Upload APKs Artifact
         uses: actions/upload-artifact@v4

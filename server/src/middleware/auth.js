@@ -1,12 +1,11 @@
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
+import Session from '../models/Session.js';
 
-// Generate access token (long-lived 30 days for continuous login across tabs and restarts)
-export const generateAccessToken = (userId) => {
-  const expires = process.env.JWT_ACCESS_EXPIRES && !['15m', '30m', '1h', '2h', '1d', '7d'].includes(process.env.JWT_ACCESS_EXPIRES)
-    ? process.env.JWT_ACCESS_EXPIRES
-    : '30d';
-  return jwt.sign({ userId }, process.env.JWT_ACCESS_SECRET, {
+// Generate access token (supports sessionId and tokenVersion for immediate revocation)
+export const generateAccessToken = (userId, extraPayload = {}) => {
+  const expires = process.env.JWT_ACCESS_EXPIRES || '24h';
+  return jwt.sign({ userId, ...extraPayload }, process.env.JWT_ACCESS_SECRET, {
     expiresIn: expires,
   });
 };
@@ -18,7 +17,7 @@ export const generateRefreshToken = (userId) => {
   });
 };
 
-// Auth middleware — verify access token
+// Auth middleware — verify access token & active session
 export const authenticate = async (req, res, next) => {
   try {
     let token = null;
@@ -51,6 +50,19 @@ export const authenticate = async (req, res, next) => {
       return res.status(403).json({ error: 'Account has been banned', reason: user.banReason });
     }
 
+    // Token version check (revokes all older tokens on password reset, logout all, etc.)
+    if (decoded.tokenVersion !== undefined && user.tokenVersion !== undefined && decoded.tokenVersion < user.tokenVersion) {
+      return res.status(401).json({ error: 'Session invalidated. Please sign in again.', code: 'SESSION_REVOKED' });
+    }
+
+    // Session-specific revocation check
+    if (decoded.sessionId) {
+      const session = await Session.findById(decoded.sessionId);
+      if (!session || session.isRevoked) {
+        return res.status(401).json({ error: 'Session has been revoked. Please sign in again.', code: 'SESSION_REVOKED' });
+      }
+    }
+
     req.user = user;
     req.userId = user._id;
     next();
@@ -68,11 +80,16 @@ export const authenticate = async (req, res, next) => {
 // Optional auth — doesn't fail if no token
 export const optionalAuth = async (req, res, next) => {
   try {
-    let token = req.headers.authorization?.split(' ')[1] || req.cookies?.accessToken;
+    let token = req.headers.authorization?.split(' ')[1] || req.cookies?.accessToken || req.query?.token;
     if (token) {
       const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
-      req.user = await User.findById(decoded.userId);
-      req.userId = req.user?._id;
+      const user = await User.findById(decoded.userId);
+      if (user && !user.isBanned) {
+        if (decoded.tokenVersion === undefined || user.tokenVersion === undefined || decoded.tokenVersion >= user.tokenVersion) {
+          req.user = user;
+          req.userId = user._id;
+        }
+      }
     }
   } catch (e) {
     // No-op: user stays undefined
@@ -88,7 +105,7 @@ export const requireAdmin = (req, res, next) => {
   next();
 };
 
-// Socket.IO auth middleware
+// Socket.IO auth middleware — STRICT: Access token only, no refresh token accepted
 export const authenticateSocket = async (socket, next) => {
   try {
     const token = socket.handshake.auth?.token || socket.handshake.query?.token;
@@ -96,16 +113,12 @@ export const authenticateSocket = async (socket, next) => {
       return next(new Error('Authentication required'));
     }
 
+    // Security: Only accept valid access tokens signed with JWT_ACCESS_SECRET. Never accept refresh tokens.
     let decoded = null;
     try {
       decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
     } catch (err) {
-      try {
-        decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET);
-      } catch (refErr) {
-        // Both tokens invalid — reject connection (security fix: no raw decode fallback)
-        return next(new Error('Authentication failed — invalid token'));
-      }
+      return next(new Error('Authentication failed — invalid or expired access token'));
     }
 
     if (!decoded || !decoded.userId) {
@@ -115,6 +128,19 @@ export const authenticateSocket = async (socket, next) => {
     const user = await User.findById(decoded.userId);
     if (!user || user.isBanned) {
       return next(new Error('Authentication failed'));
+    }
+
+    // Token version check
+    if (decoded.tokenVersion !== undefined && user.tokenVersion !== undefined && decoded.tokenVersion < user.tokenVersion) {
+      return next(new Error('Authentication failed — session revoked'));
+    }
+
+    // Session revocation check
+    if (decoded.sessionId) {
+      const session = await Session.findById(decoded.sessionId);
+      if (!session || session.isRevoked) {
+        return next(new Error('Authentication failed — session revoked'));
+      }
     }
 
     socket.userId = user._id.toString();

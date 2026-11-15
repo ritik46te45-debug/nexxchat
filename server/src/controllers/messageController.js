@@ -31,6 +31,15 @@ export const emitToConversationParticipants = (io, conversation, event, data) =>
   console.log(`[RT-EMIT] Broadcasted ${event} cleanly to conv:${convId}`);
 };
 
+// Helper: Verify user has active participant membership in conversation
+export const verifyConversationAccess = async (conversationId, userId) => {
+  if (!conversationId || !userId) return false;
+  return Conversation.exists({
+    _id: conversationId,
+    'participants.user': userId,
+  });
+};
+
 // SEND MESSAGE
 export const sendMessage = async (req, res) => {
   try {
@@ -320,6 +329,11 @@ export const editMessage = async (req, res) => {
       return res.status(404).json({ error: 'Message not found or not authorized' });
     }
 
+    const hasAccess = await verifyConversationAccess(message.conversation, req.userId);
+    if (!hasAccess) {
+      return res.status(403).json({ error: 'Not authorized to edit message in this conversation' });
+    }
+
     if (message.type !== 'text') {
       return res.status(400).json({ error: 'Only text messages can be edited' });
     }
@@ -360,6 +374,11 @@ export const deleteMessage = async (req, res) => {
     const message = await Message.findById(messageId);
     if (!message) {
       return res.status(404).json({ error: 'Message not found' });
+    }
+
+    const hasAccess = await verifyConversationAccess(message.conversation, req.userId);
+    if (!hasAccess) {
+      return res.status(403).json({ error: 'Not authorized to delete messages in this conversation' });
     }
 
     if (forEveryone) {
@@ -408,6 +427,11 @@ export const reactToMessage = async (req, res) => {
       return res.status(404).json({ error: 'Message not found' });
     }
 
+    const hasAccess = await verifyConversationAccess(message.conversation, req.userId);
+    if (!hasAccess) {
+      return res.status(403).json({ error: 'Not authorized to react to messages in this conversation' });
+    }
+
     // Remove existing reaction from this user
     message.reactions = message.reactions.filter(
       r => r.user.toString() !== req.userId.toString()
@@ -453,6 +477,11 @@ export const toggleStarMessage = async (req, res) => {
       return res.status(404).json({ error: 'Message not found' });
     }
 
+    const hasAccess = await verifyConversationAccess(message.conversation, req.userId);
+    if (!hasAccess) {
+      return res.status(403).json({ error: 'Not authorized to star messages in this conversation' });
+    }
+
     const isStarred = message.starredBy.includes(req.userId);
     if (isStarred) {
       message.starredBy.pull(req.userId);
@@ -490,14 +519,26 @@ export const forwardMessage = async (req, res) => {
     const { messageId } = req.params;
     const { conversationIds } = req.body;
 
+    if (!Array.isArray(conversationIds) || conversationIds.length === 0) {
+      return res.status(400).json({ error: 'Valid conversationIds array is required' });
+    }
+
     const originalMessage = await Message.findById(messageId);
     if (!originalMessage) {
       return res.status(404).json({ error: 'Message not found' });
     }
 
+    // Security check: Verify sender has access to original message's conversation
+    const hasSourceAccess = await verifyConversationAccess(originalMessage.conversation, req.userId);
+    if (!hasSourceAccess) {
+      return res.status(403).json({ error: 'Not authorized to access or forward this message' });
+    }
+
+    // Input bounds: Maximum 10 destinations per forward operation
+    const safeTargetIds = conversationIds.slice(0, 10);
     const forwarded = [];
 
-    for (const convId of conversationIds) {
+    for (const convId of safeTargetIds) {
       const conversation = await Conversation.findOne({
         _id: convId,
         'participants.user': req.userId,
@@ -558,6 +599,9 @@ export const searchMessages = async (req, res) => {
       return res.status(400).json({ error: 'Search query must be at least 2 characters' });
     }
 
+    const parsedLimit = Math.min(Math.max(1, parseInt(limit) || 20), 100);
+    const parsedPage = Math.max(1, parseInt(page) || 1);
+
     const query = {
       deletedFor: { $ne: req.userId },
       isDeletedForEveryone: false,
@@ -565,6 +609,10 @@ export const searchMessages = async (req, res) => {
     };
 
     if (conversationId) {
+      const hasAccess = await verifyConversationAccess(conversationId, req.userId);
+      if (!hasAccess) {
+        return res.status(403).json({ error: 'Not authorized to search messages in this conversation' });
+      }
       query.conversation = conversationId;
     } else {
       // Only search in user's conversations
@@ -581,8 +629,8 @@ export const searchMessages = async (req, res) => {
       .populate('sender', 'username displayName avatar')
       .populate('conversation', 'type groupName')
       .sort({ createdAt: -1 })
-      .limit(parseInt(limit))
-      .skip((parseInt(page) - 1) * parseInt(limit));
+      .limit(parsedLimit)
+      .skip((parsedPage - 1) * parsedLimit);
 
     res.json({ messages });
   } catch (error) {
@@ -672,6 +720,14 @@ export const getMediaGallery = async (req, res) => {
     const { conversationId } = req.params;
     const { type = 'all', page = 1, limit = 30 } = req.query;
 
+    const hasAccess = await verifyConversationAccess(conversationId, req.userId);
+    if (!hasAccess) {
+      return res.status(403).json({ error: 'Not authorized to view media gallery in this conversation' });
+    }
+
+    const parsedLimit = Math.min(Math.max(1, parseInt(limit) || 30), 100);
+    const parsedPage = Math.max(1, parseInt(page) || 1);
+
     const query = {
       conversation: conversationId,
       deletedFor: { $ne: req.userId },
@@ -693,8 +749,8 @@ export const getMediaGallery = async (req, res) => {
     const messages = await Message.find(query)
       .populate('sender', 'username displayName')
       .sort({ createdAt: -1 })
-      .limit(parseInt(limit))
-      .skip((parseInt(page) - 1) * parseInt(limit));
+      .limit(parsedLimit)
+      .skip((parsedPage - 1) * parsedLimit);
 
     res.json({ messages });
   } catch (error) {
@@ -774,6 +830,11 @@ export const votePoll = async (req, res) => {
       return res.status(404).json({ error: 'Poll not found' });
     }
 
+    const hasAccess = await verifyConversationAccess(message.conversation, req.userId);
+    if (!hasAccess) {
+      return res.status(403).json({ error: 'Not authorized to vote in this poll' });
+    }
+
     if (message.poll?.expiresAt && new Date(message.poll.expiresAt) < new Date()) {
       return res.status(400).json({ error: 'Poll has expired' });
     }
@@ -826,6 +887,11 @@ export const markViewOnceOpened = async (req, res) => {
 
     if (!message) {
       return res.status(404).json({ error: 'Message not found' });
+    }
+
+    const hasAccess = await verifyConversationAccess(message.conversation, req.userId);
+    if (!hasAccess) {
+      return res.status(403).json({ error: 'Not authorized to open view-once media in this conversation' });
     }
 
     if (!message.isViewOnce) {

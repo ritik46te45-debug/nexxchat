@@ -182,14 +182,22 @@ export default function SettingsTab({ onOpenProfile }) {
   };
 
   const handleDisable2FA = async () => {
-    if (!window.confirm('Are you sure you want to disable Two-Factor Authentication?')) return;
+    const codeOrPassword = window.prompt(
+      'To disable Two-Factor Authentication, please enter your account password or current 6-digit authenticator code:'
+    );
+    if (!codeOrPassword) return;
+
     try {
-      await api.post('/auth/2fa/disable');
+      const isDigits = /^\d{6}$/.test(codeOrPassword.trim());
+      await api.post('/auth/2fa/disable', {
+        token: isDigits ? codeOrPassword.trim() : undefined,
+        password: !isDigits ? codeOrPassword : undefined,
+      });
       setIs2FAEnabled(false);
       updateUser({ twoFactor: { enabled: false } });
-      toast.success('2FA disabled');
-    } catch {
-      toast.error('Failed to disable 2FA');
+      toast.success('2FA disabled successfully');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to disable 2FA. Please check your credentials.');
     }
   };
 
