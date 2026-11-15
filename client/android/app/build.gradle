@@ -29,16 +29,14 @@ android {
                 storePassword storePass
                 keyAlias keyAliasVal
                 keyPassword keyPassVal
+            } else {
+                initWith signingConfigs.debug
             }
         }
     }
     buildTypes {
         release {
-            if (signingConfigs.release.storeFile != null) {
-                signingConfig signingConfigs.release
-            } else {
-                signingConfig signingConfigs.debug
-            }
+            signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
