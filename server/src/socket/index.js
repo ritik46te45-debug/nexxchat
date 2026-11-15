@@ -696,8 +696,6 @@ export const setupSocket = (io) => {
         activeCalls.delete(call._id.toString());
         if (callId) activeCalls.delete(callId);
 
-        const callerId = (call.caller?._id || call.caller)?.toString();
-        const receiverId = (call.receiver?._id || call.receiver)?.toString();
         const convId = call.conversation;
 
         if (callerId) {
@@ -813,8 +811,6 @@ export const setupSocket = (io) => {
         activeCalls.delete(call._id.toString());
         if (callId) activeCalls.delete(callId);
 
-        const callerId = (call.caller?._id || call.caller)?.toString();
-        const receiverId = (call.receiver?._id || call.receiver)?.toString();
         const otherUserId = callerId === userId ? receiverId : callerId;
         const convId = call.conversation;
 
