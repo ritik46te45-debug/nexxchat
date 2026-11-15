@@ -20,23 +20,21 @@ android {
         release {
             def keystorePath = System.getenv("ANDROID_KEYSTORE_PATH") ?: (project.hasProperty('RELEASE_STORE_FILE') ? project.property('RELEASE_STORE_FILE') : 'nexchat-release.keystore')
             def keystoreFile = file(keystorePath)
-            def storePass = System.getenv("ANDROID_KEYSTORE_PASSWORD") ?: (project.hasProperty('RELEASE_STORE_PASSWORD') ? project.property('RELEASE_STORE_PASSWORD') : 'nexchat123')
-            def keyAliasVal = System.getenv("ANDROID_KEY_ALIAS") ?: (project.hasProperty('RELEASE_KEY_ALIAS') ? project.property('RELEASE_KEY_ALIAS') : 'nexchat')
-            def keyPassVal = System.getenv("ANDROID_KEY_PASSWORD") ?: (project.hasProperty('RELEASE_KEY_PASSWORD') ? project.property('RELEASE_KEY_PASSWORD') : 'nexchat123')
-
             if (keystoreFile.exists()) {
                 storeFile keystoreFile
-                storePassword storePass
-                keyAlias keyAliasVal
-                keyPassword keyPassVal
-            } else {
-                signingConfig = signingConfigs.debug
+                storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD") ?: (project.hasProperty('RELEASE_STORE_PASSWORD') ? project.property('RELEASE_STORE_PASSWORD') : 'nexchat123')
+                keyAlias System.getenv("ANDROID_KEY_ALIAS") ?: (project.hasProperty('RELEASE_KEY_ALIAS') ? project.property('RELEASE_KEY_ALIAS') : 'nexchat')
+                keyPassword System.getenv("ANDROID_KEY_PASSWORD") ?: (project.hasProperty('RELEASE_KEY_PASSWORD') ? project.property('RELEASE_KEY_PASSWORD') : 'nexchat123')
             }
         }
     }
     buildTypes {
         release {
-            signingConfig signingConfigs.release
+            if (signingConfigs.release.storeFile != null) {
+                signingConfig signingConfigs.release
+            } else {
+                signingConfig signingConfigs.debug
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
