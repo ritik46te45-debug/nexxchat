@@ -131,10 +131,6 @@ const userSchema = new mongoose.Schema({
     enum: ['user', 'admin', 'superadmin'],
     default: 'user',
   },
-  tokenVersion: {
-    type: Number,
-    default: 0,
-  },
   friends: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',

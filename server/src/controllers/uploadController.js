@@ -1,7 +1,6 @@
 import cloudinary from '../config/cloudinary.js';
 import path from 'path';
 import fs from 'fs';
-import dns from 'dns';
 import mime from 'mime-types';
 import fetch from 'node-fetch';
 import mongoose from 'mongoose';
@@ -16,9 +15,9 @@ const getGridFSBucket = () => {
   return gridFSBucket;
 };
 
-// Allowed MIME types (Strict allowlist — SVG prohibited to prevent Stored XSS)
+// Allowed MIME types
 const ALLOWED_TYPES = {
-  image: ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp'],
+  image: ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml', 'image/bmp'],
   video: ['video/mp4', 'video/webm', 'video/avi', 'video/mov', 'video/quicktime', 'video/x-msvideo'],
   audio: ['audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/webm', 'audio/mp3', 'audio/aac'],
   document: [
@@ -37,11 +36,7 @@ const ALLOWED_TYPES = {
 const ALL_ALLOWED = [...ALLOWED_TYPES.image, ...ALLOWED_TYPES.video, ...ALLOWED_TYPES.audio, ...ALLOWED_TYPES.document];
 
 // Dangerous executable & script extensions to block
-const BLOCKED_EXTENSIONS = [
-  '.exe', '.bat', '.cmd', '.scr', '.pif', '.com', '.vbs', '.js', '.mjs', '.cjs',
-  '.html', '.htm', '.xhtml', '.wsh', '.wsf', '.msi', '.ps1', '.sh', '.jar',
-  '.svg', '.svgz', '.hta', '.cpl', '.gadget', '.reg'
-];
+const BLOCKED_EXTENSIONS = ['.exe', '.bat', '.cmd', '.scr', '.pif', '.com', '.vbs', '.js', '.mjs', '.cjs', '.html', '.htm', '.xhtml', '.wsh', '.wsf', '.msi', '.ps1', '.sh', '.jar'];
 
 // Max file sizes (bytes) - 500MB for all file types
 const MAX_SIZES = {
@@ -58,7 +53,6 @@ const MAX_SIZES = {
 const CLOUDINARY_IMAGE_MAX_SIZE = 10 * 1024 * 1024;  // 10MB
 const CLOUDINARY_RAW_MAX_SIZE = 10 * 1024 * 1024;    // 10MB
 const CLOUDINARY_VIDEO_MAX_SIZE = 100 * 1024 * 1024; // 100MB
-const CLOUDINARY_MAX_SIZE = CLOUDINARY_VIDEO_MAX_SIZE; // 100MB
 
 const getFileCategory = (mimeType, ext = '') => {
   const m = (mimeType || '').toLowerCase();
@@ -183,20 +177,14 @@ export const uploadFile = async (req, res) => {
 
     const ext = path.extname(sanitizedName).toLowerCase();
 
-    // Block dangerous executable and active content extensions
-    if (BLOCKED_EXTENSIONS.includes(ext) || ext === '.svg' || (mimetype && mimetype.includes('svg'))) {
-      return res.status(400).json({ error: `File type (${ext || mimetype}) is blocked for security reasons.` });
+    // Block dangerous executable extensions
+    if (BLOCKED_EXTENSIONS.includes(ext)) {
+      return res.status(400).json({ error: `Executable files (${ext}) cannot be uploaded for security.` });
     }
 
     // Determine category
     const effectiveMime = mimetype && mimetype !== 'application/octet-stream' ? mimetype : (mime.lookup(sanitizedName) || 'application/octet-stream');
     const category = getFileCategory(effectiveMime, ext);
-
-    // Enforce strict MIME allowlist
-    const isMimeAllowed = ALL_ALLOWED.includes(effectiveMime.toLowerCase());
-    if (!isMimeAllowed) {
-      return res.status(400).json({ error: `File type '${effectiveMime}' is not permitted.` });
-    }
 
     // Validate overall file size
     const maxSize = MAX_SIZES[category] || MAX_SIZES.document;
@@ -273,14 +261,8 @@ export const uploadMultipleFiles = async (req, res) => {
         const effectiveMime = mimetype && mimetype !== 'application/octet-stream' ? mimetype : (mime.lookup(sanitizedName) || 'application/octet-stream');
         const category = getFileCategory(effectiveMime, ext);
 
-        if (BLOCKED_EXTENSIONS.includes(ext) || ext === '.svg' || (mimetype && mimetype.includes('svg'))) {
+        if (BLOCKED_EXTENSIONS.includes(ext)) {
           errors.push({ file: originalname, error: 'File type blocked for security' });
-          continue;
-        }
-
-        const isMimeAllowed = ALL_ALLOWED.includes(effectiveMime.toLowerCase());
-        if (!isMimeAllowed) {
-          errors.push({ file: originalname, error: `File type '${effectiveMime}' is not permitted` });
           continue;
         }
 
@@ -442,77 +424,22 @@ export const downloadFileProxy = async (req, res) => {
 
     let targetFetchUrl = url.startsWith('http') ? url : `${req.protocol}://${req.get('host')}${url}`;
 
-    // SSRF Protection: Strictly validate host, prohibit private/loopback/cloud metadata IP ranges
-    const ALLOWED_DOMAINS = [
-      'res.cloudinary.com',
-      'api.cloudinary.com',
-      'github.com',
-      'githubusercontent.com',
-      'objects.githubusercontent.com',
-    ].filter(Boolean);
-
-    const isPrivateIp = (ip) => {
-      if (!ip) return true;
-      if (ip === '127.0.0.1' || ip === '::1' || ip === '0.0.0.0') return true;
-      if (ip.startsWith('10.') || ip.startsWith('192.168.') || ip.startsWith('169.254.')) return true;
-      if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(ip)) return true;
-      if (ip.startsWith('fc') || ip.startsWith('fd') || ip.startsWith('fe80:')) return true;
-      return false;
-    };
-
-    const isPermittedTarget = async (urlString) => {
-      try {
-        const parsed = new URL(urlString);
-        if (!['http:', 'https:'].includes(parsed.protocol)) return false;
-        const h = parsed.hostname.toLowerCase();
-        // Block direct IP entry or loopback
-        if (h === 'localhost' || h.endsWith('.localhost') || isPrivateIp(h)) return false;
-
-        const isAllowedDomain = ALLOWED_DOMAINS.some(d => h === d || h.endsWith(`.${d}`));
-        if (!isAllowedDomain) return false;
-
-        // DNS resolution to block DNS rebinding to local/private network
-        try {
-          const { address } = await dns.promises.lookup(h);
-          if (isPrivateIp(address)) return false;
-        } catch {
-          return false;
-        }
-
-        return true;
-      } catch {
-        return false;
+    // SSRF Protection: Only allow fetching from whitelisted domains
+    const ALLOWED_DOMAINS = ['res.cloudinary.com', 'api.cloudinary.com', 'github.com', 'githubusercontent.com', 'objects.githubusercontent.com', req.get('host')].filter(Boolean);
+    try {
+      const parsed = new URL(targetFetchUrl);
+      if (!ALLOWED_DOMAINS.some(d => parsed.hostname === d || parsed.hostname.endsWith(`.${d}`))) {
+        return res.status(403).json({ error: 'Download from this domain is not allowed' });
       }
-    };
-
-    if (!(await isPermittedTarget(targetFetchUrl))) {
-      return res.status(403).json({ error: 'Download from this domain or address is blocked for security reasons.' });
+    } catch {
+      return res.status(400).json({ error: 'Invalid URL' });
     }
 
-    // Secure fetch with manual redirect loop handling (SSRF redirection bypass defense)
-    let currentFetchUrl = targetFetchUrl;
-    let redirectHops = 0;
-    let response = null;
-
-    while (redirectHops < 5) {
-      if (!(await isPermittedTarget(currentFetchUrl))) {
-        return res.status(403).json({ error: 'SSRF blocked: Redirect destination domain is not allowed.' });
-      }
-
-      response = await fetch(currentFetchUrl, { redirect: 'manual' });
-
-      if ([301, 302, 303, 307, 308].includes(response.status)) {
-        const redirectLocation = response.headers.get('location');
-        if (!redirectLocation) break;
-        currentFetchUrl = new URL(redirectLocation, currentFetchUrl).toString();
-        redirectHops++;
-        continue;
-      }
-      break;
-    }
+    // 2. Direct fetch first (with redirect: 'follow' for GitHub & CDN redirects)
+    let response = await fetch(targetFetchUrl, { redirect: 'follow' });
 
     // 3. If direct fetch returned 401 or not ok and it's a Cloudinary URL, use private_download_url
-    if (!response || (!response.ok && targetFetchUrl.includes('cloudinary.com') && hasValidCloudinaryConfig())) {
+    if (!response.ok && targetFetchUrl.includes('cloudinary.com') && hasValidCloudinaryConfig()) {
       try {
         const urlMatch = targetFetchUrl.match(/\/upload\/(?:v\d+\/)?(.+?)(?:\?|$)/);
         if (urlMatch && urlMatch[1]) {
@@ -552,19 +479,11 @@ export const downloadFileProxy = async (req, res) => {
     }
 
     const contentType = response.headers.get('content-type') || (safeFilename.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream');
-    const isSvg = contentType.includes('svg') || safeFilename.endsWith('.svg');
-    const dispositionType = (req.query.inline === 'true' && !isSvg) ? 'inline' : 'attachment';
-
+    const dispositionType = req.query.inline === 'true' ? 'inline' : 'attachment';
     res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Disposition', `${dispositionType}; filename="${encodeURIComponent(safeFilename)}"`);
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, Content-Type');
-
-    // SVG Active Script Mitigation: Prevent stored XSS in browser context
-    if (isSvg) {
-      res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
-      res.setHeader('X-Content-Type-Options', 'nosniff');
-    }
 
     response.body.pipe(res);
   } catch (error) {
@@ -592,19 +511,12 @@ export const getGridFSFile = async (req, res) => {
 
     const gridFile = files[0];
     const contentType = gridFile.contentType || (filename.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream');
-    const isSvg = contentType.includes('svg') || filename.endsWith('.svg');
-    const dispositionType = isSvg ? 'attachment' : 'inline';
 
     res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Length', gridFile.length);
-    res.setHeader('Content-Disposition', `${dispositionType}; filename="${encodeURIComponent(filename)}"`);
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(filename)}"`);
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, Content-Type, Content-Length');
-
-    if (isSvg) {
-      res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
-      res.setHeader('X-Content-Type-Options', 'nosniff');
-    }
 
     bucket.openDownloadStreamByName(filename).pipe(res);
   } catch (error) {

@@ -141,18 +141,6 @@ const authLimiter = rateLimit({
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
 
-// Strict rate limiter for sensitive auth endpoints (2FA verification, password reset requests)
-const strictAuthLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  skip: (req) => req.method === 'OPTIONS',
-  handler: rateLimitHandler,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-app.use('/api/auth/2fa/verify-login', strictAuthLimiter);
-app.use('/api/auth/forgot-password', strictAuthLimiter);
-
 // Parsing
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));

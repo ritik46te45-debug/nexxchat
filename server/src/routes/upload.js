@@ -1,30 +1,20 @@
 import { Router } from 'express';
-import path from 'path';
 import multer from 'multer';
 import { authenticate } from '../middleware/auth.js';
 import { uploadFile, uploadMultipleFiles, deleteFile, downloadFileProxy, getGridFSFile, migrateGridFSToCloudinary, getStorageStats } from '../controllers/uploadController.js';
 
-const BLOCKED_EXTENSIONS = ['.exe', '.bat', '.cmd', '.scr', '.pif', '.com', '.vbs', '.js', '.mjs', '.cjs', '.html', '.htm', '.xhtml', '.wsh', '.wsf', '.msi', '.ps1', '.sh', '.jar'];
-
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB max upload per file
-  fileFilter: (req, file, cb) => {
-    const ext = path.extname(file.originalname || '').toLowerCase();
-    if (BLOCKED_EXTENSIONS.includes(ext)) {
-      return cb(new Error('Executable and script file types are blocked for security reasons.'));
-    }
-    cb(null, true);
-  },
+  limits: { fileSize: 25 * 1024 * 1024 }, // 25MB max in-memory buffer to prevent container OOM on Render 512MB RAM
 });
 
 const router = Router();
 
-// Protect all upload routes with authentication (supports Bearer header, cookies, and ?token= query parameter)
-router.use(authenticate);
-
+// Public download proxy for forced attachment downloading across all browsers (NO auth middleware)
 router.get('/download', downloadFileProxy);
 router.get('/gridfs/:filename', getGridFSFile);
+
+router.use(authenticate);
 
 router.post('/single', upload.single('file'), uploadFile);
 router.post('/multiple', upload.array('files', 5), uploadMultipleFiles);

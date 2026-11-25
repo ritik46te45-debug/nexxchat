@@ -125,17 +125,14 @@ export const cryptoE2EE = {
 
   /**
    * Encrypts plaintext string using AES-GCM-256 with 12-byte random IV.
-   * Returns base64 payload { content: ciphertext, iv, isEncrypted: true }.
-   * Fails closed: Never silently sends plaintext if secret/encrypted chat is requested.
+   * Returns base64 payload { ciphertext, iv, isEncrypted: true }
    */
-  async encryptPayload(conversationId, plaintext, peerPublicKeyJwk, isSecretChat = false) {
+  async encryptPayload(conversationId, plaintext, peerPublicKeyJwk) {
     try {
       if (!plaintext) return { content: '' };
       const sharedKey = await this.deriveSharedSecretKey(conversationId, peerPublicKeyJwk);
       if (!sharedKey) {
-        if (isSecretChat || peerPublicKeyJwk) {
-          throw new Error('End-to-End Encryption failed: Recipient key unavailable. Plaintext was blocked to preserve secrecy.');
-        }
+        // If peer has no key yet, fallback to plaintext with warning
         console.warn('[E2EE] Peer public key not available; sending unencrypted fallback.');
         return { content: plaintext, isEncrypted: false };
       }
@@ -160,9 +157,6 @@ export const cryptoE2EE = {
       };
     } catch (err) {
       console.error('[E2EE] Encryption failed:', err);
-      if (isSecretChat || peerPublicKeyJwk) {
-        throw err;
-      }
       return { content: plaintext, isEncrypted: false };
     }
   },

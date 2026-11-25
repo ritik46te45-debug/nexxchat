@@ -16,10 +16,11 @@ const createSession = async (user, req, res) => {
   const deviceName = `${browser.name || 'Unknown'} on ${os.name || 'Unknown'}`;
   const ip = req.ip || req.connection?.remoteAddress || '';
 
+  const accessToken = generateAccessToken(user._id);
   const refreshToken = generateRefreshToken(user._id);
 
   // Store refresh token in DB (90 days)
-  const session = await Session.create({
+  await Session.create({
     user: user._id,
     refreshToken,
     deviceName,
@@ -27,11 +28,6 @@ const createSession = async (user, req, res) => {
     os: os.name || 'Unknown',
     ip,
     expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
-  });
-
-  const accessToken = generateAccessToken(user._id, {
-    sessionId: session._id,
-    tokenVersion: user.tokenVersion || 0,
   });
 
   const isProd = process.env.NODE_ENV === 'production';
@@ -202,19 +198,9 @@ export const googleAuth = async (req, res) => {
             const payload = await response.json();
 
             // Strict audience verification: Ensure token was issued for our Google OAuth Client ID
-            if (!process.env.GOOGLE_CLIENT_ID && process.env.NODE_ENV === 'production') {
-              console.error('[AUTH-ERROR] GOOGLE_CLIENT_ID is not configured in production');
-              return res.status(500).json({ error: 'Google sign-in is not configured on this server.' });
-            }
             if (process.env.GOOGLE_CLIENT_ID && payload.aud !== process.env.GOOGLE_CLIENT_ID) {
               console.warn('[AUTH-WARN] Google token audience mismatch:', payload.aud);
               return res.status(401).json({ error: 'Google authentication failed: audience mismatch' });
-            }
-
-            // Require verified email before account linking or login
-            if (payload.email_verified !== true && payload.email_verified !== 'true') {
-              console.warn('[AUTH-WARN] Google token email is not verified');
-              return res.status(401).json({ error: 'Google account email is not verified.' });
             }
 
             googleId = payload.sub;
@@ -237,13 +223,6 @@ export const googleAuth = async (req, res) => {
           });
           if (userinfoRes.ok) {
             const userinfo = await userinfoRes.json();
-
-            // Require verified email before account linking or login
-            if (userinfo.email_verified !== true && userinfo.email_verified !== 'true') {
-              console.warn('[AUTH-WARN] Google userinfo email is not verified');
-              return res.status(401).json({ error: 'Google account email is not verified.' });
-            }
-
             googleId = userinfo.sub;
             email = userinfo.email;
             name = userinfo.name;
@@ -341,10 +320,7 @@ export const refreshTokenHandler = async (req, res) => {
       ) {
         const user = await User.findById(graceSession.user);
         if (user && !user.isBanned) {
-          const freshAccessToken = generateAccessToken(user._id, {
-            sessionId: graceSession._id,
-            tokenVersion: user.tokenVersion || 0,
-          });
+          const freshAccessToken = generateAccessToken(user._id);
           return res.json({
             accessToken: freshAccessToken,
             refreshToken: graceSession.refreshToken,
@@ -372,10 +348,7 @@ export const refreshTokenHandler = async (req, res) => {
     }
 
     // Rotate refresh token with grace window tracking
-    const newAccessToken = generateAccessToken(user._id, {
-      sessionId: session._id,
-      tokenVersion: user.tokenVersion || 0,
-    });
+    const newAccessToken = generateAccessToken(user._id);
     const newRefreshToken = generateRefreshToken(user._id);
 
     // Update session with grace tracking
@@ -471,12 +444,9 @@ export const forgotPassword = async (req, res) => {
 
     const user = await User.findOne({ email: email.toLowerCase() });
 
-    // Prevent account enumeration: return identical success response whether user exists or not
     if (!user) {
-      return res.json({
-        success: true,
-        message: 'If an account exists with this email address, password reset instructions have been dispatched.',
-        emailSent: true,
+      return res.status(404).json({
+        error: 'No NexChat account found with this email address. Please check the spelling or sign up first.',
       });
     }
 
@@ -563,7 +533,6 @@ export const resetPassword = async (req, res) => {
     user.passwordResetExpires = undefined;
     user.loginAttempts = 0;
     user.lockUntil = undefined;
-    user.tokenVersion = (user.tokenVersion || 0) + 1;
     await user.save();
 
     // Revoke previous sessions
@@ -647,7 +616,6 @@ export const revokeAllSessions = async (req, res) => {
       { user: req.userId, refreshToken: { $ne: currentRefreshToken } },
       { isRevoked: true }
     );
-    await User.findByIdAndUpdate(req.userId, { $inc: { tokenVersion: 1 } });
     res.json({ message: 'All other sessions revoked' });
   } catch (error) {
     console.error('Revoke all sessions error:', error);
@@ -736,50 +704,13 @@ export const verifyAndEnable2FA = async (req, res) => {
 // 2FA: DISABLE
 export const disable2FA = async (req, res) => {
   try {
-    const { password, token, code } = req.body;
-    const user = await User.findById(req.userId).select('+password');
+    const user = await User.findById(req.userId);
     if (!user) return res.status(404).json({ error: 'User not found' });
-
-    if (!user.twoFactor?.enabled) {
-      return res.json({ message: '2FA is already disabled', enabled: false });
-    }
-
-    let authenticated = false;
-
-    // Check if password matches (for users with passwords)
-    if (password && user.password) {
-      authenticated = await user.comparePassword(password);
-    }
-
-    // Check if current TOTP token or backup code is provided
-    const verificationCode = token || code;
-    if (!authenticated && verificationCode && user.twoFactor?.secret) {
-      const totp = new OTPAuth.TOTP({
-        issuer: 'NexChat',
-        label: user.email,
-        algorithm: 'SHA1',
-        digits: 6,
-        period: 30,
-        secret: OTPAuth.Secret.fromBase32(user.twoFactor.secret),
-      });
-      const delta = totp.validate({ token: String(verificationCode).trim(), window: 1 });
-      if (delta !== null) {
-        authenticated = true;
-      } else if (user.twoFactor.backupCodes?.includes(String(verificationCode).trim())) {
-        authenticated = true;
-      }
-    }
-
-    if (!authenticated) {
-      return res.status(401).json({
-        error: 'Confirmation required: Please provide your current password or 2FA verification code to disable 2FA.',
-      });
-    }
 
     user.twoFactor = { enabled: false, secret: null, backupCodes: [] };
     await user.save();
 
-    res.json({ message: '2FA disabled successfully', enabled: false });
+    res.json({ message: '2FA disabled', enabled: false });
   } catch (error) {
     console.error('Disable 2FA error:', error);
     res.status(500).json({ error: 'Failed to disable 2FA' });

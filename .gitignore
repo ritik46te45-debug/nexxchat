@@ -15,5 +15,3 @@ release/
 dist-electron/
 firebase-service-account.json
 .kotlin/
-*.keystore
-*.jks

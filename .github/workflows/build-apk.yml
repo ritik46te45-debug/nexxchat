@@ -51,50 +51,18 @@ jobs:
           cp -r dist/* android/app/src/main/assets/public/
           cp capacitor.config.json android/app/src/main/assets/capacitor.config.json
 
-      - name: Setup Android Release Keystore
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-        run: |
-          mkdir -p client/android/app
-          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
-            echo "Decoding release keystore from repository secrets..."
-            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > client/android/app/nexchat-release.keystore
-          elif [ ! -f "client/android/app/nexchat-release.keystore" ]; then
-            echo "No keystore found. Generating dedicated CI release keystore..."
-            keytool -genkeypair -v -keystore client/android/app/nexchat-release.keystore \
-              -alias nexchat -keyalg RSA -keysize 2048 -validity 10000 \
-              -storepass nexchat123 -keypass nexchat123 \
-              -dname "CN=NexChat, OU=Mobile, O=NexChat, L=City, ST=State, C=US"
-          fi
-          cp client/android/app/nexchat-release.keystore client/android/nexchat-release.keystore 2>/dev/null || true
-
       - name: Build Android APKs with Gradle
-        env:
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           cd client/android
-          ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tee gradle-debug.log
-          ./gradlew assembleRelease --no-daemon --stacktrace 2>&1 | tee gradle-release.log
-
-      - name: Upload Build Logs on Failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: gradle-build-logs
-          path: client/android/gradle-*.log
-
-      - name: List Generated APK Files
-        run: |
-          find client/android/app/build/outputs -name "*.apk" || ls -R client/android/app/build/outputs
+          ./gradlew assembleDebug --no-daemon --stacktrace
+          ./gradlew assembleRelease --no-daemon --stacktrace || true
 
       - name: Upload APKs Artifact
         uses: actions/upload-artifact@v4
         with:
           name: nexchat-apks
           path: client/android/app/build/outputs/apk/**/*.apk
-          if-no-files-found: warn
+          if-no-files-found: error
 
       - name: Publish APK to GitHub Release
         uses: softprops/action-gh-release@v2
@@ -103,4 +71,5 @@ jobs:
           tag_name: v-latest
           name: NexChat Latest App Builds
           files: |
-            client/android/app/build/outputs/apk/**/*.apk
+            client/android/app/build/outputs/apk/debug/app-debug.apk
+            client/android/app/build/outputs/apk/release/app-release.apk

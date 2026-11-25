@@ -98,8 +98,6 @@ export const getOrCreateConversation = async (req, res) => {
 export const getConversations = async (req, res) => {
   try {
     const { page = 1, limit = 50 } = req.query;
-    const parsedLimit = Math.min(Math.max(1, parseInt(limit) || 50), 100);
-    const parsedPage = Math.max(1, parseInt(page) || 1);
 
     const conversations = await Conversation.find({
       participants: {
@@ -117,8 +115,8 @@ export const getConversations = async (req, res) => {
         populate: { path: 'sender', select: 'username displayName' },
       })
       .sort({ lastMessageAt: -1 })
-      .limit(parsedLimit)
-      .skip((parsedPage - 1) * parsedLimit)
+      .limit(parseInt(limit))
+      .skip((parseInt(page) - 1) * parseInt(limit))
       .lean();
 
     // Track orphaned conversations where user was deleted from DB to clean up

@@ -50,29 +50,19 @@ export const setupSocket = (io) => {
       console.warn('Socket auto room join note:', e.message);
     }
 
-    // Join/Leave active conversation rooms (membership strictly enforced)
+    // Join/Leave active conversation rooms
     socket.on('conversation:join', async ({ conversationId }) => {
-      if (!conversationId) return;
-      try {
-        const isMember = await Conversation.exists({
-          _id: conversationId,
-          'participants.user': userId,
-        });
-        if (!isMember) {
-          console.warn(`[SECURITY] User ${userId} unauthorized attempt to join room conv:${conversationId}`);
-          socket.emit('error', { message: 'Unauthorized: You are not a participant of this conversation' });
-          return;
-        }
+      if (conversationId) {
+        socket.join(conversationId.toString());
         socket.join(`conv:${conversationId.toString()}`);
         const roomSockets = io.sockets.adapter.rooms.get(`conv:${conversationId.toString()}`)?.size || 0;
         console.log(`[REALTIME] JOIN CONVERSATION -> User: ${userId} | Room: conv:${conversationId} (active sockets: ${roomSockets})`);
-      } catch (err) {
-        console.error('Socket room join error:', err);
       }
     });
 
     socket.on('conversation:leave', ({ conversationId }) => {
       if (conversationId) {
+        socket.leave(conversationId.toString());
         socket.leave(`conv:${conversationId.toString()}`);
       }
     });
@@ -645,13 +635,6 @@ export const setupSocket = (io) => {
         }
         if (!call) return;
 
-        // Security check: Only the designated receiver can accept the call
-        const receiverId = (call.receiver?._id || call.receiver)?.toString();
-        if (receiverId !== userId) {
-          console.warn(`[SECURITY] User ${userId} unauthorized attempt to accept call ${call._id}`);
-          return;
-        }
-
         call.status = 'ongoing';
         call.startedAt = new Date();
         await call.save();
@@ -680,14 +663,6 @@ export const setupSocket = (io) => {
         }
         if (!call) return;
 
-        // Security check: Caller or receiver only can reject/cancel
-        const callerId = (call.caller?._id || call.caller)?.toString();
-        const receiverId = (call.receiver?._id || call.receiver)?.toString();
-        if (callerId !== userId && receiverId !== userId) {
-          console.warn(`[SECURITY] User ${userId} unauthorized attempt to reject call ${call._id}`);
-          return;
-        }
-
         call.status = 'rejected';
         call.endedAt = new Date();
         call.endReason = reason;
@@ -696,6 +671,8 @@ export const setupSocket = (io) => {
         activeCalls.delete(call._id.toString());
         if (callId) activeCalls.delete(callId);
 
+        const callerId = (call.caller?._id || call.caller)?.toString();
+        const receiverId = (call.receiver?._id || call.receiver)?.toString();
         const convId = call.conversation;
 
         if (callerId) {
@@ -787,14 +764,6 @@ export const setupSocket = (io) => {
         }
         if (!call) return;
 
-        // Security check: Only participants of this call can end it
-        const callerId = (call.caller?._id || call.caller)?.toString();
-        const receiverId = (call.receiver?._id || call.receiver)?.toString();
-        if (callerId !== userId && receiverId !== userId) {
-          console.warn(`[SECURITY] User ${userId} unauthorized attempt to end call ${call._id}`);
-          return;
-        }
-
         call.status = 'ended';
         call.endedAt = new Date();
 
@@ -811,6 +780,8 @@ export const setupSocket = (io) => {
         activeCalls.delete(call._id.toString());
         if (callId) activeCalls.delete(callId);
 
+        const callerId = (call.caller?._id || call.caller)?.toString();
+        const receiverId = (call.receiver?._id || call.receiver)?.toString();
         const otherUserId = callerId === userId ? receiverId : callerId;
         const convId = call.conversation;
 
@@ -888,65 +859,32 @@ export const setupSocket = (io) => {
       }
     });
 
-    // Helper to verify signaling sender & recipient are authorized participants
-    const verifySignalingAccess = async (callId, targetUserId) => {
-      if (!callId || !targetUserId) return false;
-      const memCall = activeCalls.get(callId.toString());
-      if (memCall) {
-        const c1 = (memCall.caller?._id || memCall.caller)?.toString();
-        const c2 = (memCall.receiver?._id || memCall.receiver)?.toString();
-        return (c1 === userId && c2 === targetUserId) || (c2 === userId && c1 === targetUserId);
-      }
-      if (mongoose.Types.ObjectId.isValid(callId)) {
-        const dbCall = await Call.findById(callId).select('caller receiver status');
-        if (dbCall) {
-          const c1 = dbCall.caller?.toString();
-          const c2 = dbCall.receiver?.toString();
-          return (c1 === userId && c2 === targetUserId) || (c2 === userId && c1 === targetUserId);
-        }
-      }
-      return false;
-    };
-
-    // WebRTC signaling — verified strictly against call session
-    socket.on('call:offer', async ({ to, offer, callId }) => {
-      if (!callId || !to || !(await verifySignalingAccess(callId, to))) {
-        console.warn(`[SECURITY] Blocked call:offer relay from ${userId} to ${to} (invalid/missing callId: ${callId})`);
-        return;
-      }
+    // WebRTC signaling
+    socket.on('call:offer', ({ to, offer, callId }) => {
       emitToUser(to, 'call:offer', { from: userId, offer, callId });
     });
 
-    socket.on('call:answer', async ({ to, answer, callId }) => {
-      if (!callId || !to || !(await verifySignalingAccess(callId, to))) {
-        console.warn(`[SECURITY] Blocked call:answer relay from ${userId} to ${to} (invalid/missing callId: ${callId})`);
-        return;
-      }
+    socket.on('call:answer', ({ to, answer, callId }) => {
       emitToUser(to, 'call:answer', { from: userId, answer, callId });
     });
 
-    socket.on('call:connected', async ({ to, callId }) => {
-      if (!callId || !to || !(await verifySignalingAccess(callId, to))) return;
+    socket.on('call:connected', ({ to, callId }) => {
       emitToUser(to, 'call:connected', { from: userId, callId });
     });
 
-    socket.on('call:ice-candidate', async ({ to, candidate, callId }) => {
-      if (!callId || !to || !(await verifySignalingAccess(callId, to))) return;
+    socket.on('call:ice-candidate', ({ to, candidate, callId }) => {
       emitToUser(to, 'call:ice-candidate', { from: userId, candidate, callId });
     });
 
-    socket.on('call:ice-restart', async ({ to, callId }) => {
-      if (!callId || !to || !(await verifySignalingAccess(callId, to))) return;
+    socket.on('call:ice-restart', ({ to, callId }) => {
       emitToUser(to, 'call:ice-restart', { from: userId, callId });
     });
 
-    socket.on('call:renegotiate', async ({ to, offer, callId }) => {
-      if (!callId || !to || !(await verifySignalingAccess(callId, to))) return;
+    socket.on('call:renegotiate', ({ to, offer, callId }) => {
       emitToUser(to, 'call:renegotiate', { from: userId, offer, callId });
     });
 
-    socket.on('call:screen-share', async ({ to, enabled, callId }) => {
-      if (!callId || !to || !(await verifySignalingAccess(callId, to))) return;
+    socket.on('call:screen-share', ({ to, enabled, callId }) => {
       emitToUser(to, 'call:screen-share', { from: userId, enabled, callId });
     });
 

@@ -458,23 +458,13 @@ export default function MessageComposer() {
             p => (p.user?._id || p.user)?.toString() !== myId
           );
           const peerKey = otherParticipant?.user?.publicKeyJwk || activeConversation?.peerPublicKeyJwk;
-          if (!peerKey) {
-            toast.error('Recipient has not published an encryption key yet. Secret message blocked.', { icon: '🔒' });
-            return;
-          }
-          try {
-            const enc = await cryptoE2EE.encryptPayload(conversationId, msgContent, peerKey, true);
-            if (!enc?.isEncrypted) {
-              toast.error('Encryption failed. Message was blocked to prevent unencrypted sending.', { icon: '🛡️' });
-              return;
+          if (peerKey) {
+            const enc = await cryptoE2EE.encryptPayload(conversationId, msgContent, peerKey);
+            if (enc?.isEncrypted) {
+              payload.content = enc.content;
+              payload.iv = enc.iv;
+              payload.isEncrypted = true;
             }
-            payload.content = enc.content;
-            payload.iv = enc.iv;
-            payload.isEncrypted = true;
-          } catch (encErr) {
-            console.error('[E2EE] Secret chat message blocked:', encErr);
-            toast.error(encErr.message || 'Encryption failed', { icon: '🛡️' });
-            return;
           }
         }
 
