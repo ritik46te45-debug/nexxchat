@@ -10,10 +10,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setDesktopSettings: (settings) => ipcRenderer.invoke('set-desktop-settings', settings),
   loginWithGoogle: () => ipcRenderer.invoke('electron-google-oauth'),
   onNavigateConversation: (callback) => {
-    ipcRenderer.on('navigate-conversation', (event, conversationId) => {
+    const handler = (event, conversationId) => {
       if (typeof callback === 'function') {
         callback(conversationId);
       }
-    });
+    };
+    ipcRenderer.on('navigate-conversation', handler);
+    return () => ipcRenderer.removeListener('navigate-conversation', handler);
   },
 });

@@ -34,9 +34,13 @@ export const getPlatformName = () => {
  * @param {object} callbacks
  * @param {function} callbacks.onNavigateToConversation - Function to open conversation on push click
  */
-export async function initPushNotifications({ onNavigateToConversation } = {}) {
+export async function initPushNotifications({ onNavigateToConversation, onIncomingCall } = {}) {
+  if (typeof window !== 'undefined' && window.electronAPI?.isElectron) {
+    // Electron desktop delivers native Windows Toast notifications via Socket.IO
+    return true;
+  }
   if (!isNativePlatform()) {
-    // Browser or Electron fallback — use Web Push
+    // Browser fallback — use Web Push
     return await registerWebPush();
   }
 

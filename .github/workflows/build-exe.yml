@@ -33,7 +33,7 @@ jobs:
         run: |
           cd client
           npm install --legacy-peer-deps
-          npm run build
+          ELECTRON_BUILD=true npm run build
 
       - name: Install Root Dependencies
         shell: bash

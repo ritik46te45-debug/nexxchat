@@ -197,7 +197,13 @@ export default function SettingsTab({ onOpenProfile }) {
   const handleEnableWebPush = async () => {
     setIsPushRegistering(true);
     try {
-      if (isNativePlatform()) {
+      if (typeof window !== 'undefined' && window.electronAPI?.isElectron) {
+        window.electronAPI.showNotification?.({
+          title: 'NexChat Desktop Notifications Active',
+          body: 'You will receive Windows notifications for new messages and calls even when minimized to tray.',
+        });
+        toast.success('Windows Desktop Notifications are active!');
+      } else if (isNativePlatform()) {
         const success = await initPushNotifications();
         if (success) {
           toast.success('Android FCM push registered successfully!');

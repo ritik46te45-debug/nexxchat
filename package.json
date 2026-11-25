@@ -8,7 +8,7 @@
   "scripts": {
     "build": "npm --prefix client install && npm --prefix client run build",
     "electron:dev": "electron electron/main.cjs",
-    "electron:build": "cd client && npm run build && cd .. && electron-builder --win"
+    "electron:build": "node -e \"const {execSync}=require('child_process'); execSync('npm --prefix client run build',{stdio:'inherit',env:{...process.env,ELECTRON_BUILD:'true'}}); execSync('npx electron-builder --win',{stdio:'inherit'});\""
   },
   "build": {
     "appId": "app.nexchat.desktop",

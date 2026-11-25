@@ -246,7 +246,7 @@ export const showSystemNotification = (titleOrObj, maybeBody, maybeOptions = {})
               id: notifId,
               title: title || 'NexChat',
               body: body || 'New message received',
-              channelId: 'nexchat_messages_v2',
+              channelId: 'nexchat_messages_v3',
               smallIcon: 'ic_stat_notification',
               iconColor: '#6366f1',
               extra: data || {},
@@ -268,7 +268,7 @@ export const showSystemNotification = (titleOrObj, maybeBody, maybeOptions = {})
   }
 
   // 4. Web Browser Notification (Desktop & Browser)
-  if (!('Notification' in window) || Notification.permission !== 'granted') {
+  if (typeof window === 'undefined' || window.location.protocol === 'file:' || !('Notification' in window) || Notification.permission !== 'granted') {
     return null;
   }
 

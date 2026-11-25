@@ -139,10 +139,17 @@ function App() {
   useEffect(() => {
     initialize();
 
+    let unsubscribeNav = null;
     if (typeof window !== 'undefined' && window.electronAPI?.onNavigateConversation) {
-      window.electronAPI.onNavigateConversation((conversationId) => {
-        const convs = useChatStore.getState().conversations;
-        const targetConv = convs.find((c) => c._id?.toString() === conversationId?.toString());
+      unsubscribeNav = window.electronAPI.onNavigateConversation(async (conversationId) => {
+        if (!conversationId) return;
+        let convs = useChatStore.getState().conversations;
+        let targetConv = convs.find((c) => c._id?.toString() === conversationId?.toString());
+        if (!targetConv) {
+          await useChatStore.getState().fetchConversations?.();
+          convs = useChatStore.getState().conversations;
+          targetConv = convs.find((c) => c._id?.toString() === conversationId?.toString());
+        }
         if (targetConv) {
           useChatStore.getState().setActiveConversation(targetConv);
           useUIStore.getState().setSidebarView('chats');
@@ -150,6 +157,10 @@ function App() {
         }
       });
     }
+
+    return () => {
+      if (typeof unsubscribeNav === 'function') unsubscribeNav();
+    };
   }, [initialize]);
 
   // Handle native Android deep-links (e.g. app.nexchat.messenger://auth?token=...&refreshToken=...)
@@ -328,9 +339,10 @@ function App() {
       if (senderId && currentUserId && senderId !== currentUserId) {
         const userState = useAuthStore.getState().user;
         const notifSettings = userState?.notificationSettings || {};
+        const isDnd = notifSettings.doNotDisturb === true;
 
         // Cross-platform Web Audio chime (Windows & Mobile)
-        if (notifSettings.sound !== false) {
+        if (!isDnd && notifSettings.sound !== false) {
           playIncomingMessageSound();
         }
 
@@ -342,8 +354,10 @@ function App() {
           useChatStore.getState().markAsRead(conversationId);
         }
 
-        if (!isCurrentActiveChat || (typeof document !== 'undefined' && document.hidden)) {
-          const senderName = message.sender?.displayName || message.sender?.username || 'NexChat User';
+        if (!isDnd && (!isCurrentActiveChat || (typeof document !== 'undefined' && document.hidden))) {
+          const senderName = notifSettings.showSender === false
+            ? 'NexChat'
+            : (message.sender?.displayName || message.sender?.username || 'NexChat User');
           const previewText = notifSettings.showPreview !== false
             ? (message.content || (message.type === 'video_note' ? 'Sent a video note 🎥' : message.type === 'voice' ? 'Sent a voice message 🎤' : message.type ? `Sent a ${message.type}` : 'Sent an attachment'))
             : 'New message';
@@ -483,6 +497,9 @@ function App() {
           return;
         }
 
+        const notifSettings = useAuthStore.getState().user?.notificationSettings || {};
+        if (notifSettings.doNotDisturb === true) return;
+
         // Single-Theme WhatsApp-Style In-App Banner for system alerts, friend requests, missed calls
         useUIStore.getState().showInAppBanner({
           conversationId: notif.data?.conversationId,
@@ -491,6 +508,12 @@ function App() {
           preview: notif.body || notif.message || 'New notification',
           type: notif.type || 'alert',
         });
+
+        if (typeof document !== 'undefined' && document.hidden && notifSettings.desktopNotifications !== false) {
+          showSystemNotification(notif.title || 'NexChat', notif.body || notif.message || 'New notification', {
+            data: { conversationId: notif.data?.conversationId },
+          });
+        }
       }
     };
 

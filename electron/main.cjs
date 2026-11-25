@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, Notification, dialog } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, Notification, dialog, session, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -46,6 +46,10 @@ function createWindow() {
 
   const chromeUserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
 
+  const appIconPath = path.join(__dirname, 'app-icon.png');
+  const fallbackIconPath = path.join(__dirname, 'icon.png');
+  const windowIcon = fs.existsSync(appIconPath) ? appIconPath : (fs.existsSync(fallbackIconPath) ? fallbackIconPath : undefined);
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -53,6 +57,7 @@ function createWindow() {
     minHeight: 550,
     backgroundColor: '#0b0e14',
     title: 'NexChat',
+    icon: windowIcon,
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
@@ -79,7 +84,9 @@ function createWindow() {
         },
       };
     }
-    require('electron').shell.openExternal(url);
+    if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+      shell.openExternal(url);
+    }
     return { action: 'deny' };
   });
 
@@ -338,6 +345,23 @@ if (!gotTheLock) {
 
   // App Lifecycle
   app.whenReady().then(() => {
+    // Allow camera, microphone, notifications & clipboard permissions for WebRTC calls, voice/video notes & toasts
+    const allowedPermissions = new Set([
+      'media',
+      'mediaKeySystem',
+      'notifications',
+      'clipboard-read',
+      'clipboard-sanitized-write',
+      'fullscreen',
+      'display-capture',
+    ]);
+    session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+      callback(allowedPermissions.has(permission));
+    });
+    session.defaultSession.setPermissionCheckHandler((webContents, permission) => {
+      return allowedPermissions.has(permission);
+    });
+
     createWindow();
     createTray();
 

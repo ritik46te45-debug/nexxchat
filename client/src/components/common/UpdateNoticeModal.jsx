@@ -21,15 +21,16 @@ function isNewerVersion(latest, current) {
 }
 
 export default function UpdateNoticeModal() {
-  const isNative = typeof window !== 'undefined' && (Boolean(Capacitor.isNativePlatform()) || Boolean(window.electronAPI?.isElectron));
-
-  // Never show update popup on web browser — web apps update automatically
-  if (!isNative) return null;
+  const isElectron = typeof window !== 'undefined' && Boolean(window.electronAPI?.isElectron);
+  const isCapacitor = typeof window !== 'undefined' && Boolean(Capacitor.isNativePlatform());
+  const isNative = isCapacitor || isElectron;
 
   const [updateInfo, setUpdateInfo] = useState(null);
   const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
+    // Never show update popup on web browser — web apps update automatically
+    if (!isNative) return;
     let isMounted = true;
 
     const checkVersion = async () => {
@@ -57,12 +58,16 @@ export default function UpdateNoticeModal() {
       isMounted = false;
       clearTimeout(timer);
     };
-  }, []);
+  }, [isNative]);
 
-  if (!isOpen || !updateInfo) return null;
+  if (!isNative || !isOpen || !updateInfo) return null;
 
   const handleUpdate = () => {
-    if (isNative) {
+    if (isElectron) {
+      const exeUrl = updateInfo.exeUrl || 'https://github.com/ritik46te45-debug/nexxchat/releases/download/v-latest/NexChat-Setup.exe';
+      window.open(exeUrl, '_blank');
+      toast.success('Downloading Windows installer...', { icon: '📥' });
+    } else if (isCapacitor) {
       const targetUrl = updateInfo.apkUrl || updateInfo.downloadUrl || 'https://github.com/ritik46te45-debug/nexxchat/releases/download/v-latest/NexChat.apk';
       const link = document.createElement('a');
       link.href = targetUrl;
