@@ -24,7 +24,6 @@ import statusRoutes from './routes/status.js';
 import callRoutes from './routes/calls.js';
 import notificationRoutes from './routes/notifications.js';
 import deviceRoutes from './routes/devices.js';
-import aiRoutes from './routes/ai.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -142,17 +141,6 @@ const authLimiter = rateLimit({
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
 
-// AI Assistant rate limiter
-const aiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 80,
-  skip: (req) => req.method === 'OPTIONS',
-  handler: rateLimitHandler,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-app.use('/api/ai', aiLimiter);
-
 // Parsing
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -174,7 +162,6 @@ app.use('/api/status', statusRoutes);
 app.use('/api/calls', callRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/devices', deviceRoutes);
-app.use('/api/ai', aiRoutes);
 
 // Health check & Root
 app.get('/', (req, res) => {

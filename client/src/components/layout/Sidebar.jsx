@@ -1,7 +1,7 @@
 import {
   Home, MessageSquare, Users, Phone, Sparkles, Bell,
   Settings, LogOut, PanelLeftClose, PanelLeftOpen, User,
-  Command, Search, Bot
+  Command, Search
 } from 'lucide-react';
 import useUIStore from '../../stores/uiStore';
 import useAuthStore from '../../stores/authStore';
@@ -25,7 +25,6 @@ export default function Sidebar({ onOpenProfile }) {
   const navItems = [
     { id: 'home', icon: Home, label: 'Home' },
     { id: 'chats', icon: MessageSquare, label: 'Chats', badge: unreadTotal },
-    { id: 'ai', icon: Bot, label: 'NexChat AI' },
     { id: 'status', icon: Sparkles, label: 'Status' },
     { id: 'calls', icon: Phone, label: 'Calls' },
     { id: 'notifications', icon: Bell, label: 'Alerts', badge: unreadNotifCount },
@@ -39,7 +38,6 @@ export default function Sidebar({ onOpenProfile }) {
 
     const mobileNavItems = [
       { id: 'chats', icon: MessageSquare, label: 'Chats', badge: unreadTotal },
-      { id: 'ai', icon: Bot, label: 'AI' },
       { id: 'status', icon: Sparkles, label: 'Status' },
       { id: 'calls', icon: Phone, label: 'Calls' },
       { id: 'contacts', icon: Users, label: 'Friends' },

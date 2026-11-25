@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import {
   Search, MessageSquare, Users, Phone, Video, Settings,
   Palette, User, Bell, Sparkles, Moon, Sun, ArrowRight,
-  Shield, Check, Command, Bot
+  Shield, Check, Command
 } from 'lucide-react';
 import useUIStore from '../../stores/uiStore';
 import useAuthStore from '../../stores/authStore';
@@ -75,17 +75,6 @@ export default function CommandPalette({
       category: 'Navigation',
       action: () => {
         setSidebarView('notifications');
-        onClose();
-      },
-    },
-    {
-      id: 'nexchat_ai',
-      title: 'Open NexChat AI Assistant',
-      subtitle: 'ChatGPT-style AI chat, image generation & chat summarizer',
-      icon: Bot,
-      category: 'Navigation',
-      action: () => {
-        setSidebarView('ai');
         onClose();
       },
     },
