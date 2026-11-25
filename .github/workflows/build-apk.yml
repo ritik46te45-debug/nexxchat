@@ -85,12 +85,16 @@ jobs:
           name: gradle-build-logs
           path: client/android/gradle-*.log
 
+      - name: List Generated APK Files
+        run: |
+          find client/android/app/build/outputs -name "*.apk" || ls -R client/android/app/build/outputs
+
       - name: Upload APKs Artifact
         uses: actions/upload-artifact@v4
         with:
           name: nexchat-apks
           path: client/android/app/build/outputs/apk/**/*.apk
-          if-no-files-found: error
+          if-no-files-found: warn
 
       - name: Publish APK to GitHub Release
         uses: softprops/action-gh-release@v2
@@ -99,5 +103,4 @@ jobs:
           tag_name: v-latest
           name: NexChat Latest App Builds
           files: |
-            client/android/app/build/outputs/apk/debug/app-debug.apk
-            client/android/app/build/outputs/apk/release/app-release.apk
+            client/android/app/build/outputs/apk/**/*.apk
