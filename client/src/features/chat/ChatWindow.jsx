@@ -4,7 +4,7 @@ import {
   ArrowLeft, Phone, Video, MoreVertical, Search, Loader2,
   ChevronDown, Info, Clock, Timer, Check, Star, Pin,
   MessageSquare, UploadCloud, Shield, PanelRightOpen,
-  PanelRightClose, FileUp, Ban, ShieldCheck, Eraser, UserX, Trash2
+  PanelRightClose, FileUp, Ban, ShieldCheck, Eraser, UserX, Trash2, Sparkles
 } from 'lucide-react';
 import { isToday, isYesterday, format } from 'date-fns';
 import useChatStore from '../../stores/chatStore';
@@ -21,6 +21,7 @@ import ChatDetailsPanel from './ChatDetailsPanel';
 import ImageViewerModal from './ImageViewerModal';
 import MessageReminderModal from './MessageReminderModal';
 import MultiSelectToolbar from './MultiSelectToolbar';
+import ChatSummaryModal from '../ai/ChatSummaryModal';
 import { getSocket } from '../../lib/socket';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
@@ -71,6 +72,7 @@ export default function ChatWindow({ onStartCall }) {
   const [showDetailsPanel, setShowDetailsPanel] = useState(false); // Gallery / Media Panel
   const [showBioModal, setShowBioModal] = useState(false); // User Full Bio Profile Modal
   const [showSearchModal, setShowSearchModal] = useState(false);
+  const [showSummaryModal, setShowSummaryModal] = useState(false);
   const [showStarredModal, setShowStarredModal] = useState(false);
   const [forwardingMessage, setForwardingMessage] = useState(null);
   const [reminderMessage, setReminderMessage] = useState(null);
@@ -731,6 +733,17 @@ export default function ChatWindow({ onStartCall }) {
 
           {/* Header Action Buttons */}
           <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0">
+            {/* AI Summarize Chat */}
+            {!activeConversation?.isSecret && (
+              <button
+                onClick={() => setShowSummaryModal(true)}
+                className="p-2 rounded-2xl hover:bg-dark-hover text-primary-400 hover:text-primary-300 transition-colors cursor-pointer"
+                title="AI Summarize Chat"
+              >
+                <Sparkles className="w-4 h-4 sm:w-5 sm:h-5" />
+              </button>
+            )}
+
             {/* Search in Chat */}
             <button
               onClick={() => setShowSearchModal(true)}
@@ -775,6 +788,19 @@ export default function ChatWindow({ onStartCall }) {
 
               {showMoreMenu && (
                 <div className="absolute right-0 top-full mt-2 w-52 py-1.5 rounded-2xl bg-dark-card/95 backdrop-blur-xl border border-dark-border shadow-2xl z-50 animate-scale-in select-none">
+                  {/* AI Summarize Chat */}
+                  {!activeConversation?.isSecret && (
+                    <button
+                      onClick={() => {
+                        setShowMoreMenu(false);
+                        setShowSummaryModal(true);
+                      }}
+                      className="w-full px-3.5 py-2.5 text-left text-xs font-semibold flex items-center gap-2.5 text-surface-200 hover:text-white hover:bg-dark-hover transition-colors"
+                    >
+                      <Sparkles className="w-4 h-4 text-primary-400 flex-shrink-0" />
+                      <span>AI Summarize Chat</span>
+                    </button>
+                  )}
                   {/* Chat Media, Links & Docs */}
                   <button
                     onClick={() => {
@@ -1272,6 +1298,14 @@ export default function ChatWindow({ onStartCall }) {
         </div>,
         document.body
       )}
+
+      {/* AI Chat Summary Modal */}
+      <ChatSummaryModal
+        isOpen={showSummaryModal}
+        onClose={() => setShowSummaryModal(false)}
+        conversationId={activeConversation?._id}
+        conversationName={name}
+      />
     </div>
   );
 }

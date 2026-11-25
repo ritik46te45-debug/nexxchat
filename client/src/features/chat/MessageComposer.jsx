@@ -83,6 +83,27 @@ export default function MessageComposer() {
   // Popover & modal triggers
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [showUnifiedPicker, setShowUnifiedPicker] = useState(false);
+  const [showAIAssist, setShowAIAssist] = useState(false);
+  const [isAIAssisting, setIsAIAssisting] = useState(false);
+
+  const handleAIAssist = async (action) => {
+    const draft = text.trim();
+    if (!draft || isAIAssisting) return;
+    setIsAIAssisting(true);
+    setShowAIAssist(false);
+    try {
+      const { data } = await api.post('/ai/assist', { text: draft, action });
+      if (data?.text) {
+        setText(data.text);
+        if (conversationId) saveDraft(conversationId, data.text);
+        toast.success('Updated with NexChat AI');
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'AI assist failed');
+    } finally {
+      setIsAIAssisting(false);
+    }
+  };
   const [showVideoNoteRecorder, setShowVideoNoteRecorder] = useState(false);
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [showPollModal, setShowPollModal] = useState(false);
@@ -1055,6 +1076,41 @@ export default function MessageComposer() {
               rows={1}
               className="flex-1 bg-transparent text-white text-xs sm:text-sm resize-none focus:outline-none placeholder:text-surface-500 py-2 px-1 max-h-36 hide-scrollbar leading-relaxed"
             />
+
+            {/* AI Message Rewrite / Polish Trigger */}
+            {text.trim().length > 2 && !activeConversation?.isSecret && (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowAIAssist((prev) => !prev)}
+                  disabled={isAIAssisting}
+                  className="p-2 rounded-2xl text-primary-400 hover:text-primary-300 hover:bg-primary-500/15 transition-all cursor-pointer disabled:opacity-50"
+                  title="AI Rewrite & Polish"
+                >
+                  {isAIAssisting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                </button>
+                {showAIAssist && (
+                  <div className="absolute right-0 bottom-12 w-44 py-1.5 rounded-2xl bg-dark-card/95 backdrop-blur-xl border border-dark-border shadow-2xl z-50 animate-scale-in">
+                    {[
+                      { id: 'polish', label: 'Fix Grammar' },
+                      { id: 'professional', label: 'Professional Tone' },
+                      { id: 'casual', label: 'Friendly / Casual' },
+                      { id: 'shorter', label: 'Make Shorter' },
+                      { id: 'translate_hi', label: 'Translate to Hindi' },
+                    ].map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => handleAIAssist(opt.id)}
+                        className="w-full px-3 py-2 text-left text-xs font-semibold text-surface-200 hover:text-white hover:bg-dark-hover transition-colors cursor-pointer"
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Dynamic Action Button: Voice Recorder vs Send Button */}

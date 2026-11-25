@@ -6,6 +6,7 @@ import { getSocket } from '../../lib/socket';
 import toast from 'react-hot-toast';
 import Sidebar from './Sidebar';
 import HomeTab from '../../features/home/HomeTab';
+import NexChatAIPage from '../../features/ai/NexChatAIPage';
 import ChatList from '../../features/chat/ChatList';
 import ChatWindow from '../../features/chat/ChatWindow';
 import EmptyChat from '../../features/chat/EmptyChat';
@@ -414,6 +415,12 @@ export default function MainLayout() {
             onOpenNewChat={() => setShowNewChat(true)}
             onOpenNewGroup={() => setShowNewGroup(true)}
           />
+        </div>
+      ) : sidebarView === 'ai' ? (
+        <div className="flex-1 flex h-full min-h-0 overflow-hidden">
+          <ErrorBoundary>
+            <NexChatAIPage />
+          </ErrorBoundary>
         </div>
       ) : (
         <>
