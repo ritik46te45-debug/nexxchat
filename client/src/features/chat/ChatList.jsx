@@ -349,7 +349,7 @@ const ConversationItem = memo(function ConversationItem({ conversation, userId, 
   const preview = getPreview();
   const timeStr = lastMessage?.createdAt || conversation.lastMessageAt || conversation.updatedAt || conversation.createdAt;
   const lastSenderId = (lastMessage?.sender?._id || lastMessage?.sender)?.toString();
-  const isLastMsgMine = Boolean(lastMessage && currentUserId && lastSenderId === currentUserId.toString() && !lastMessage.isDeletedForEveryone && !preview.isDraft && !preview.isTyping);
+  const isLastMsgMine = Boolean(lastMessage && myId && lastSenderId === myId && !lastMessage.isDeletedForEveryone && !preview.isDraft && !preview.isTyping);
   const renderTickStatus = () => {
     if (!isLastMsgMine) return null;
     switch (lastMessage.status) {

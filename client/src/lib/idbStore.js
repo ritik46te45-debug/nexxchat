@@ -5,10 +5,10 @@
  */
 import { get, set, del, clear, createStore } from 'idb-keyval';
 
-// Custom stores
-const chatStore = createStore('nexchat-db', 'chats');
-const messagesStore = createStore('nexchat-db', 'messages');
-const cryptoStore = createStore('nexchat-db', 'crypto-keys');
+// Separate IndexedDB databases per object store so idb-keyval initializes every store cleanly
+const chatStore = createStore('nexchat-chats-v1', 'chats');
+const messagesStore = createStore('nexchat-messages-v1', 'messages');
+const cryptoStore = createStore('nexchat-crypto-v1', 'crypto-keys');
 
 const CONVERSATIONS_KEY = 'cached_conversations';
 const DRAFTS_KEY = 'cached_drafts';
