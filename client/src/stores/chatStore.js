@@ -48,6 +48,7 @@ const getCachedConversations = () => {
 };
 
 const initialCachedConvs = getCachedConversations();
+const typingTimers = {};
 
 const useChatStore = create((set, get) => ({
   conversations: initialCachedConvs,
@@ -69,6 +70,29 @@ const useChatStore = create((set, get) => ({
   })(),
   unreadTotal: initialCachedConvs.reduce((sum, c) => sum + (c.unreadCount || 0), 0),
   lastSyncTime: null,
+
+  resetStore: () => {
+    Object.keys(typingTimers).forEach((k) => {
+      clearTimeout(typingTimers[k]);
+      delete typingTimers[k];
+    });
+    set({
+      conversations: [],
+      activeConversation: null,
+      messages: [],
+      messagesCache: {},
+      isLoadingConversations: false,
+      isLoadingMessages: false,
+      hasMoreMessages: true,
+      typingUsers: {},
+      recordingUsers: {},
+      onlineUsers: new Set(),
+      drafts: {},
+      unreadTotal: 0,
+      lastSyncTime: null,
+      _lastMarkReadTimes: {},
+    });
+  },
 
   // ====== CONVERSATIONS ======
   fetchConversations: async () => {
@@ -633,11 +657,16 @@ const useChatStore = create((set, get) => ({
   toggleStarMessage: async (messageId) => {
     try {
       await api.post(`/messages/${messageId}/star`);
+      const myId = (useAuthStore.getState().user?._id || useAuthStore.getState().user)?.toString();
       set((state) => ({
         messages: state.messages.map(m => {
           if (m._id !== messageId) return m;
-          const starredBy = Array.isArray(m.starredBy) ? [...m.starredBy] : [];
-          // toggle optimistic
+          const prev = Array.isArray(m.starredBy) ? [...m.starredBy] : [];
+          if (!myId) return { ...m, starredBy: prev };
+          const hasStarred = prev.some(id => (id?._id || id)?.toString() === myId);
+          const starredBy = hasStarred
+            ? prev.filter(id => (id?._id || id)?.toString() !== myId)
+            : [...prev, myId];
           return { ...m, starredBy };
         })
       }));
@@ -689,11 +718,9 @@ const useChatStore = create((set, get) => ({
   clearSelectedMessages: () => set({ selectedMessageIds: [] }),
 
   batchDeleteMessages: async (messageIds, forEveryone = false) => {
-    for (const id of messageIds) {
-      try {
-        await api.delete(`/messages/${id}`, { data: { forEveryone } });
-      } catch (e) {}
-    }
+    await Promise.allSettled(
+      messageIds.map(id => api.delete(`/messages/${id}`, { data: { forEveryone } }))
+    );
     if (forEveryone) {
       set((state) => ({
         messages: state.messages.map(m =>
@@ -710,20 +737,16 @@ const useChatStore = create((set, get) => ({
   },
 
   batchStarMessages: async (messageIds) => {
-    for (const id of messageIds) {
-      try {
-        await api.post(`/messages/${id}/star`);
-      } catch (e) {}
-    }
+    await Promise.allSettled(
+      messageIds.map(id => api.post(`/messages/${id}/star`))
+    );
     set({ selectedMessageIds: [] });
   },
 
   batchForwardMessages: async (messageIds, conversationIds) => {
-    for (const id of messageIds) {
-      try {
-        await api.post(`/messages/${id}/forward`, { conversationIds });
-      } catch (e) {}
-    }
+    await Promise.allSettled(
+      messageIds.map(id => api.post(`/messages/${id}/forward`, { conversationIds }))
+    );
     set({ selectedMessageIds: [] });
   },
 
@@ -861,11 +884,54 @@ const useChatStore = create((set, get) => ({
   },
 
   updateMessageInList: (messageId, updates) => {
-    set((state) => ({
-      messages: state.messages.map(m =>
-        m._id?.toString() === messageId?.toString() ? { ...m, ...updates } : m
-      ),
-    }));
+    const idSet = new Set(
+      (Array.isArray(messageId) ? messageId : [messageId])
+        .filter(Boolean)
+        .map(id => id.toString())
+    );
+    if (idSet.size === 0) return;
+
+    const applyUpdates = (m) => {
+      const mId = (m._id || m.id)?.toString();
+      if (!mId || !idSet.has(mId)) return m;
+      // Never downgrade a read receipt back to delivered/sent
+      const nextUpdates = (updates?.status === 'delivered' && m.status === 'read')
+        ? { ...updates, status: 'read' }
+        : updates;
+      return { ...m, ...nextUpdates };
+    };
+
+    set((state) => {
+      const messages = state.messages.map(applyUpdates);
+
+      const messagesCache = { ...state.messagesCache };
+      Object.keys(messagesCache).forEach((cid) => {
+        const entry = messagesCache[cid];
+        if (entry && Array.isArray(entry.messages)) {
+          let changed = false;
+          const updatedMsgs = entry.messages.map((m) => {
+            const next = applyUpdates(m);
+            if (next !== m) changed = true;
+            return next;
+          });
+          if (changed) {
+            messagesCache[cid] = { ...entry, messages: updatedMsgs };
+            idb.setMessages(cid, updatedMsgs).catch(() => {});
+          }
+        }
+      });
+
+      const conversations = state.conversations.map((c) => {
+        if (!c.lastMessage) return c;
+        const lastId = (c.lastMessage._id || c.lastMessage.id)?.toString();
+        if (lastId && idSet.has(lastId)) {
+          return { ...c, lastMessage: applyUpdates(c.lastMessage) };
+        }
+        return c;
+      });
+
+      return { messages, messagesCache, conversations };
+    });
   },
 
   updateConversationInList: (conversationId, lastMessage) => {
@@ -963,6 +1029,11 @@ const useChatStore = create((set, get) => ({
   },
 
   setTypingUser: (conversationId, userId, displayName) => {
+    const key = `${conversationId}:${userId}`;
+    if (typingTimers[key]) {
+      clearTimeout(typingTimers[key]);
+    }
+
     set((state) => ({
       typingUsers: {
         ...state.typingUsers,
@@ -973,13 +1044,19 @@ const useChatStore = create((set, get) => ({
       },
     }));
 
-    // Auto-clear after 3 seconds
-    setTimeout(() => {
+    // Auto-clear after 3 seconds (deduplicated per user per conversation)
+    typingTimers[key] = setTimeout(() => {
+      delete typingTimers[key];
       get().clearTypingUser(conversationId, userId);
     }, 3000);
   },
 
   clearTypingUser: (conversationId, userId) => {
+    const key = `${conversationId}:${userId}`;
+    if (typingTimers[key]) {
+      clearTimeout(typingTimers[key]);
+      delete typingTimers[key];
+    }
     set((state) => {
       const convTyping = { ...state.typingUsers[conversationId] };
       delete convTyping[userId];
@@ -1064,10 +1141,11 @@ const useChatStore = create((set, get) => ({
   },
 }));
 
-// Instant 0.0s offline hydration from IndexedDB on startup
+// Instant 0.0s offline hydration from IndexedDB on startup (only if fresh fetch hasn't populated yet)
 if (typeof window !== 'undefined') {
   idb.getConversations().then((stored) => {
-    if (Array.isArray(stored) && stored.length > 0) {
+    const cur = useChatStore.getState();
+    if (Array.isArray(stored) && stored.length > 0 && cur.conversations.length === 0 && !cur.lastSyncTime) {
       useChatStore.setState({
         conversations: sortConversations(stored),
         unreadTotal: stored.reduce((sum, c) => sum + (c.unreadCount || 0), 0),

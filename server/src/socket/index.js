@@ -7,6 +7,7 @@ import Call from '../models/Call.js';
 import Notification from '../models/Notification.js';
 import connectionManager from './connectionManager.js';
 import { dispatchPush } from '../services/pushService.js';
+import { markPendingDeliveredForUser } from '../controllers/messageController.js';
 
 // In-memory registry of active ongoing calls (callId -> metadata)
 const activeCalls = new Map();
@@ -46,18 +47,26 @@ export const setupSocket = (io) => {
         socket.join(`conv:${conv._id.toString()}`);
       });
       console.log(`[REALTIME] Auto-joined ${userConversations.length} conversation room(s) for user ${userId}`);
+
+      // Mark any offline 'sent' messages (1 tick) as 'delivered' (2 grey ticks) now that user data/socket is ON
+      markPendingDeliveredForUser(io, userId, userConversations.map(c => c._id)).catch(() => {});
     } catch (e) {
       console.warn('Socket auto room join note:', e.message);
     }
 
     // Join/Leave active conversation rooms
     socket.on('conversation:join', async ({ conversationId }) => {
-      if (conversationId) {
-        socket.join(conversationId.toString());
-        socket.join(`conv:${conversationId.toString()}`);
-        const roomSockets = io.sockets.adapter.rooms.get(`conv:${conversationId.toString()}`)?.size || 0;
-        console.log(`[REALTIME] JOIN CONVERSATION -> User: ${userId} | Room: conv:${conversationId} (active sockets: ${roomSockets})`);
-      }
+      if (!conversationId || !mongoose.Types.ObjectId.isValid(conversationId)) return;
+      const isParticipant = await Conversation.exists({
+        _id: conversationId,
+        'participants.user': userId,
+      });
+      if (!isParticipant) return;
+      const cid = conversationId.toString();
+      socket.join(cid);
+      socket.join(`conv:${cid}`);
+      const roomSockets = io.sockets.adapter.rooms.get(`conv:${cid}`)?.size || 0;
+      console.log(`[REALTIME] JOIN CONVERSATION -> User: ${userId} | Room: conv:${cid} (active sockets: ${roomSockets})`);
     });
 
     socket.on('conversation:leave', ({ conversationId }) => {
@@ -147,11 +156,6 @@ export const setupSocket = (io) => {
     socket.on('typing:start', ({ conversationId }) => {
       if (!conversationId) return;
       const cid = conversationId.toString();
-      socket.to(`conv:${cid}`).to(cid).emit('typing:start', {
-        userId,
-        conversationId: cid,
-        displayName: socket.user?.displayName,
-      });
       broadcastToConversation(io, cid, userId, 'typing:start', {
         userId,
         conversationId: cid,
@@ -162,10 +166,6 @@ export const setupSocket = (io) => {
     socket.on('typing:stop', ({ conversationId }) => {
       if (!conversationId) return;
       const cid = conversationId.toString();
-      socket.to(`conv:${cid}`).to(cid).emit('typing:stop', {
-        userId,
-        conversationId: cid,
-      });
       broadcastToConversation(io, cid, userId, 'typing:stop', {
         userId,
         conversationId: cid,
@@ -176,11 +176,6 @@ export const setupSocket = (io) => {
     socket.on('recording:start', ({ conversationId }) => {
       if (!conversationId) return;
       const cid = conversationId.toString();
-      socket.to(`conv:${cid}`).to(cid).emit('recording:start', {
-        userId,
-        conversationId: cid,
-        displayName: socket.user?.displayName,
-      });
       broadcastToConversation(io, cid, userId, 'recording:start', {
         userId,
         conversationId: cid,
@@ -191,10 +186,6 @@ export const setupSocket = (io) => {
     socket.on('recording:stop', ({ conversationId }) => {
       if (!conversationId) return;
       const cid = conversationId.toString();
-      socket.to(`conv:${cid}`).to(cid).emit('recording:stop', {
-        userId,
-        conversationId: cid,
-      });
       broadcastToConversation(io, cid, userId, 'recording:stop', {
         userId,
         conversationId: cid,
@@ -244,6 +235,7 @@ export const setupSocket = (io) => {
         }
 
         if (!message) {
+          const onlineRecipientIds = recipientIds.filter(rId => connectionManager.isUserOnline(rId));
           message = await Message.create({
             conversation: conversationId,
             sender: userId,
@@ -257,6 +249,8 @@ export const setupSocket = (io) => {
             contact,
             poll,
             linkPreview,
+            status: onlineRecipientIds.length > 0 ? 'delivered' : 'sent',
+            deliveredTo: onlineRecipientIds.map(id => ({ user: id, deliveredAt: new Date() })),
           });
 
           conversation.lastMessage = message._id;
@@ -368,42 +362,44 @@ export const setupSocket = (io) => {
     // ====== MESSAGE DELIVERY ======
     socket.on('message:delivered', async ({ messageId, conversationId }) => {
       try {
+        if (!messageId || !mongoose.Types.ObjectId.isValid(messageId)) return;
         const message = await Message.findById(messageId);
         if (!message) return;
 
+        const senderIdStr = message.sender.toString();
+        // Sender cannot mark their own message as delivered
+        if (senderIdStr === userId.toString()) return;
+
+        // Verify recipient belongs to the conversation
+        const isParticipant = await Conversation.exists({
+          _id: message.conversation,
+          'participants.user': userId,
+        });
+        if (!isParticipant) return;
+
         const alreadyDelivered = message.deliveredTo.some(
-          d => d.user.toString() === userId
+          d => d.user.toString() === userId.toString()
         );
 
         if (!alreadyDelivered) {
-          message.deliveredTo.push({ user: userId, deliveredAt: new Date() });
+          const now = new Date();
+          message.deliveredTo.push({ user: userId, deliveredAt: now });
           if (message.status === 'sent') {
             message.status = 'delivered';
           }
           await message.save();
 
-          const senderIdStr = message.sender.toString();
-          const senderSockets = connectionManager.getUserSockets(senderIdStr);
-          senderSockets.forEach(sid => {
-            io.to(sid).emit('message:delivered', {
-              messageId,
-              conversationId,
+          const cid = (conversationId || message.conversation).toString();
+          io.to(senderIdStr)
+            .to(`user:${senderIdStr}`)
+            .to(`conv:${cid}`)
+            .emit('message:delivered', {
+              messageId: message._id.toString(),
+              conversationId: cid,
+              status: 'delivered',
               deliveredBy: userId,
+              deliveredAt: now,
             });
-          });
-          io.to(`user:${senderIdStr}`).emit('message:delivered', {
-            messageId,
-            conversationId,
-            deliveredBy: userId,
-          });
-
-          if (conversationId) {
-            io.to(`conv:${conversationId.toString()}`).emit('message:delivered', {
-              messageId,
-              conversationId,
-              deliveredBy: userId,
-            });
-          }
         }
       } catch (error) {
         console.error('Message delivered error:', error);
@@ -859,34 +855,43 @@ export const setupSocket = (io) => {
       }
     });
 
-    // WebRTC signaling
-    socket.on('call:offer', ({ to, offer, callId }) => {
-      emitToUser(to, 'call:offer', { from: userId, offer, callId });
-    });
+    // WebRTC signaling (authorized per active call & distinct caller/receiver participants)
+    const verifySignalingAccess = async (callId, to) => {
+      if (!callId || !to) return false;
+      const toStr = to.toString();
+      const fromStr = userId.toString();
+      if (toStr === fromStr) return false;
 
-    socket.on('call:answer', ({ to, answer, callId }) => {
-      emitToUser(to, 'call:answer', { from: userId, answer, callId });
-    });
+      let callMeta = activeCalls.get(callId.toString());
+      if (!callMeta && mongoose.Types.ObjectId.isValid(callId)) {
+        const dbCall = await Call.findById(callId).select('caller receiver status').lean();
+        if (dbCall && ['ringing', 'ongoing'].includes(dbCall.status)) {
+          callMeta = {
+            caller: dbCall.caller?.toString(),
+            receiver: dbCall.receiver?.toString(),
+          };
+          activeCalls.set(callId.toString(), callMeta);
+        }
+      }
+      if (!callMeta) return false;
 
-    socket.on('call:connected', ({ to, callId }) => {
-      emitToUser(to, 'call:connected', { from: userId, callId });
-    });
+      const participants = [callMeta.caller?.toString(), callMeta.receiver?.toString()].filter(Boolean);
+      return participants.includes(fromStr) && (participants.includes(toStr) || callMeta.isGroup);
+    };
 
-    socket.on('call:ice-candidate', ({ to, candidate, callId }) => {
-      emitToUser(to, 'call:ice-candidate', { from: userId, candidate, callId });
-    });
+    const relaySignaling = (event) => async (payload = {}) => {
+      const { to, callId } = payload;
+      if (!(await verifySignalingAccess(callId, to))) return;
+      emitToUser(to, event, { ...payload, from: userId });
+    };
 
-    socket.on('call:ice-restart', ({ to, callId }) => {
-      emitToUser(to, 'call:ice-restart', { from: userId, callId });
-    });
-
-    socket.on('call:renegotiate', ({ to, offer, callId }) => {
-      emitToUser(to, 'call:renegotiate', { from: userId, offer, callId });
-    });
-
-    socket.on('call:screen-share', ({ to, enabled, callId }) => {
-      emitToUser(to, 'call:screen-share', { from: userId, enabled, callId });
-    });
+    socket.on('call:offer', relaySignaling('call:offer'));
+    socket.on('call:answer', relaySignaling('call:answer'));
+    socket.on('call:connected', relaySignaling('call:connected'));
+    socket.on('call:ice-candidate', relaySignaling('call:ice-candidate'));
+    socket.on('call:ice-restart', relaySignaling('call:ice-restart'));
+    socket.on('call:renegotiate', relaySignaling('call:renegotiate'));
+    socket.on('call:screen-share', relaySignaling('call:screen-share'));
 
     // ====== DISCONNECT ======
     socket.on('disconnect', async () => {
@@ -940,15 +945,19 @@ export async function broadcastToConversation(io, conversationId, senderId, even
       }
     }
 
+    let broadcaster = null;
     cached.participants.forEach(pUserId => {
       if (pUserId !== senderId.toString()) {
         const sockets = connectionManager.getUserSockets(pUserId);
         sockets.forEach(sid => {
-          io.to(sid).emit(event, data);
+          broadcaster = broadcaster ? broadcaster.to(sid) : io.to(sid);
         });
-        io.to(`user:${pUserId}`).emit(event, data);
+        broadcaster = broadcaster ? broadcaster.to(`user:${pUserId}`) : io.to(`user:${pUserId}`);
       }
     });
+    if (broadcaster) {
+      broadcaster.emit(event, data);
+    }
   } catch (error) {
     console.error(`Broadcast error (${event}):`, error);
   }

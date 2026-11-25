@@ -1,4 +1,7 @@
 import mongoose from 'mongoose';
+import dns from 'dns/promises';
+import net from 'net';
+import { getLinkPreview as fetchLinkPreview } from 'link-preview-js';
 import Message from '../models/Message.js';
 import Conversation from '../models/Conversation.js';
 import User from '../models/User.js';
@@ -7,6 +10,105 @@ import cloudinary from '../config/cloudinary.js';
 import { sendPushNotification } from '../config/webPush.js';
 import connectionManager from '../socket/connectionManager.js';
 import { dispatchPush } from '../services/pushService.js';
+import { verifyDeliveryAck } from '../utils/deliveryToken.js';
+
+const verifyConversationAccess = async (conversationId, userId) => {
+  if (!conversationId || !mongoose.Types.ObjectId.isValid(conversationId)) return null;
+  return Conversation.findOne({ _id: conversationId, 'participants.user': userId });
+};
+
+const isPrivateOrReservedIp = (ip) => {
+  if (!ip || !net.isIP(ip)) return true;
+  if (net.isIPv4(ip)) {
+    const parts = ip.split('.').map(Number);
+    if (parts[0] === 0 || parts[0] === 10 || parts[0] === 127) return true;
+    if (parts[0] === 169 && parts[1] === 254) return true;
+    if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
+    if (parts[0] === 192 && parts[1] === 168) return true;
+    if (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127) return true;
+    return false;
+  }
+  const lower = ip.toLowerCase();
+  return (
+    lower === '::1' ||
+    lower === '::' ||
+    lower.startsWith('fe80:') ||
+    lower.startsWith('fc') ||
+    lower.startsWith('fd') ||
+    lower.startsWith('::ffff:127.') ||
+    lower.startsWith('::ffff:10.') ||
+    lower.startsWith('::ffff:192.168.') ||
+    lower.startsWith('::ffff:169.254.')
+  );
+};
+
+// Mark all pending 'sent' messages addressed to userId as 'delivered' and notify senders (WhatsApp double grey tick)
+export const markPendingDeliveredForUser = async (io, userId, convIds = null) => {
+  try {
+    if (!userId || !mongoose.Types.ObjectId.isValid(userId)) return 0;
+    const userObjectId = new mongoose.Types.ObjectId(userId);
+    let targetConvIds = convIds;
+    if (!Array.isArray(targetConvIds)) {
+      const userConvs = await Conversation.find({ 'participants.user': userObjectId }).select('_id').lean();
+      targetConvIds = userConvs.map(c => c._id);
+    }
+    if (targetConvIds.length === 0) return 0;
+
+    const pendingMessages = await Message.find({
+      conversation: { $in: targetConvIds },
+      sender: { $ne: userObjectId },
+      status: 'sent',
+      'deliveredTo.user': { $ne: userObjectId },
+    })
+      .select('_id conversation sender')
+      .limit(200)
+      .lean();
+
+    if (pendingMessages.length === 0) return 0;
+
+    const now = new Date();
+    const pendingIds = pendingMessages.map(m => m._id);
+    await Message.updateMany(
+      { _id: { $in: pendingIds } },
+      {
+        $push: { deliveredTo: { user: userObjectId, deliveredAt: now } },
+        $set: { status: 'delivered' },
+      }
+    );
+
+    if (io) {
+      const grouped = new Map();
+      for (const m of pendingMessages) {
+        const convIdStr = m.conversation.toString();
+        const senderIdStr = m.sender.toString();
+        const key = `${convIdStr}:${senderIdStr}`;
+        if (!grouped.has(key)) {
+          grouped.set(key, { convIdStr, senderIdStr, messageIds: [] });
+        }
+        grouped.get(key).messageIds.push(m._id.toString());
+      }
+
+      grouped.forEach(({ convIdStr, senderIdStr, messageIds }) => {
+        io.to(senderIdStr)
+          .to(`user:${senderIdStr}`)
+          .to(`conv:${convIdStr}`)
+          .emit('message:delivered', {
+            conversationId: convIdStr,
+            messageIds,
+            messageId: messageIds[0],
+            status: 'delivered',
+            deliveredBy: userId.toString(),
+            deliveredAt: now,
+          });
+      });
+    }
+
+    return pendingMessages.length;
+  } catch (err) {
+    console.warn('[DELIVERY] markPendingDeliveredForUser error:', err.message);
+    return 0;
+  }
+};
 
 // Helper: Broadcast event to a conversation and all its participants reliably without duplicate emissions
 export const emitToConversationParticipants = (io, conversation, event, data) => {
@@ -91,6 +193,11 @@ export const sendMessage = async (req, res) => {
       }
     }
 
+    // Determine initial delivery status: 2 grey ticks ('delivered') if any recipient is online now, else 1 grey tick ('sent')
+    const onlineRecipientIds = conversation.participants
+      .map(p => (p.user?._id || p.user)?.toString())
+      .filter(pId => pId && pId !== req.userId.toString() && connectionManager.isUserOnline(pId));
+
     // Build message
     const messageData = {
       conversation: conversationId,
@@ -102,6 +209,8 @@ export const sendMessage = async (req, res) => {
       isViewOnce: Boolean(req.body.isViewOnce),
       isEncrypted: Boolean(isEncrypted),
       iv: iv || null,
+      status: onlineRecipientIds.length > 0 ? 'delivered' : 'sent',
+      deliveredTo: onlineRecipientIds.map(id => ({ user: id, deliveredAt: new Date() })),
     };
 
     if (attachments && Array.isArray(attachments)) messageData.attachments = attachments;
@@ -362,6 +471,11 @@ export const deleteMessage = async (req, res) => {
       return res.status(404).json({ error: 'Message not found' });
     }
 
+    const accessConv = await verifyConversationAccess(message.conversation, req.userId);
+    if (!accessConv) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+
     if (forEveryone) {
       // Only sender can delete for everyone
       if (message.sender.toString() !== req.userId.toString()) {
@@ -408,6 +522,11 @@ export const reactToMessage = async (req, res) => {
       return res.status(404).json({ error: 'Message not found' });
     }
 
+    const accessConv = await verifyConversationAccess(message.conversation, req.userId);
+    if (!accessConv) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+
     // Remove existing reaction from this user
     message.reactions = message.reactions.filter(
       r => r.user.toString() !== req.userId.toString()
@@ -451,6 +570,11 @@ export const toggleStarMessage = async (req, res) => {
     const message = await Message.findById(messageId);
     if (!message) {
       return res.status(404).json({ error: 'Message not found' });
+    }
+
+    const accessConv = await verifyConversationAccess(message.conversation, req.userId);
+    if (!accessConv) {
+      return res.status(403).json({ error: 'Not authorized' });
     }
 
     const isStarred = message.starredBy.includes(req.userId);
@@ -554,17 +678,23 @@ export const searchMessages = async (req, res) => {
   try {
     const { q, conversationId, type, from, page = 1, limit = 20 } = req.query;
 
-    if (!q || q.length < 2) {
+    if (!q || q.trim().length < 2) {
       return res.status(400).json({ error: 'Search query must be at least 2 characters' });
     }
 
+    const escapedQ = q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const query = {
       deletedFor: { $ne: req.userId },
       isDeletedForEveryone: false,
-      $text: { $search: q },
+      isEncrypted: { $ne: true },
+      content: { $regex: escapedQ, $options: 'i' },
     };
 
     if (conversationId) {
+      const accessConv = await verifyConversationAccess(conversationId, req.userId);
+      if (!accessConv) {
+        return res.status(403).json({ error: 'Not authorized' });
+      }
       query.conversation = conversationId;
     } else {
       // Only search in user's conversations
@@ -672,6 +802,11 @@ export const getMediaGallery = async (req, res) => {
     const { conversationId } = req.params;
     const { type = 'all', page = 1, limit = 30 } = req.query;
 
+    const accessConv = await verifyConversationAccess(conversationId, req.userId);
+    if (!accessConv) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
     const query = {
       conversation: conversationId,
       deletedFor: { $ne: req.userId },
@@ -774,6 +909,11 @@ export const votePoll = async (req, res) => {
       return res.status(404).json({ error: 'Poll not found' });
     }
 
+    const accessConv = await verifyConversationAccess(message.conversation, req.userId);
+    if (!accessConv) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+
     if (message.poll?.expiresAt && new Date(message.poll.expiresAt) < new Date()) {
       return res.status(400).json({ error: 'Poll has expired' });
     }
@@ -828,6 +968,11 @@ export const markViewOnceOpened = async (req, res) => {
       return res.status(404).json({ error: 'Message not found' });
     }
 
+    const accessConv = await verifyConversationAccess(message.conversation, req.userId);
+    if (!accessConv) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+
     if (!message.isViewOnce) {
       return res.status(400).json({ error: 'Not a view-once message' });
     }
@@ -872,6 +1017,9 @@ export const syncMessages = async (req, res) => {
 
     const convIds = userConvs.map(c => c._id);
 
+    // Mark offline 'sent' messages as 'delivered' when user syncs (device data is ON)
+    await markPendingDeliveredForUser(req.app.get('io'), req.userId, convIds);
+
     // Find messages in these conversations created or updated since timestamp
     const missedMessages = await Message.find({
       conversation: { $in: convIds },
@@ -897,5 +1045,121 @@ export const syncMessages = async (req, res) => {
   } catch (error) {
     console.error('Sync messages error:', error);
     res.status(500).json({ error: 'Failed to sync messages' });
+  }
+};
+
+// HMAC-AUTHENTICATED DELIVERY ACK (Fired from Web Push / Service Worker / Background Push)
+export const ackMessageDelivery = async (req, res) => {
+  try {
+    const { messageId, conversationId, userId, token } = req.body || {};
+    if (!messageId || !userId || !token || !mongoose.Types.ObjectId.isValid(messageId) || !mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ error: 'Invalid payload' });
+    }
+
+    if (!verifyDeliveryAck(messageId, userId, token)) {
+      return res.status(403).json({ error: 'Invalid delivery receipt token' });
+    }
+
+    const message = await Message.findById(messageId).select('_id conversation sender status deliveredTo');
+    if (!message) return res.status(404).json({ error: 'Message not found' });
+    if (message.sender.toString() === userId.toString()) return res.json({ ok: true });
+
+    const alreadyDelivered = message.deliveredTo?.some(d => d.user?.toString() === userId.toString());
+    if (!alreadyDelivered) {
+      const now = new Date();
+      await Message.updateOne(
+        { _id: message._id, 'deliveredTo.user': { $ne: userId } },
+        {
+          $push: { deliveredTo: { user: userId, deliveredAt: now } },
+          ...(message.status === 'sent' ? { $set: { status: 'delivered' } } : {}),
+        }
+      );
+
+      const io = req.app.get('io');
+      if (io) {
+        const senderIdStr = message.sender.toString();
+        const cid = (conversationId || message.conversation).toString();
+        io.to(senderIdStr)
+          .to(`user:${senderIdStr}`)
+          .to(`conv:${cid}`)
+          .emit('message:delivered', {
+            messageId: message._id.toString(),
+            conversationId: cid,
+            status: 'delivered',
+            deliveredBy: userId.toString(),
+            deliveredAt: now,
+          });
+      }
+    }
+
+    res.json({ ok: true });
+  } catch (error) {
+    console.warn('ackMessageDelivery note:', error.message);
+    res.status(500).json({ error: 'Failed to acknowledge delivery' });
+  }
+};
+
+// LINK PREVIEW METADATA (SSRF-safe)
+export const getLinkPreview = async (req, res) => {
+  try {
+    const { url } = req.body || {};
+    if (!url || typeof url !== 'string') {
+      return res.status(400).json({ error: 'URL is required' });
+    }
+
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(url.trim());
+    } catch {
+      return res.status(400).json({ error: 'Invalid URL' });
+    }
+
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+      return res.status(400).json({ error: 'Only HTTP/HTTPS URLs are supported' });
+    }
+
+    const hostname = parsedUrl.hostname.toLowerCase();
+    if (hostname === 'localhost' || hostname.endsWith('.local') || hostname.endsWith('.internal')) {
+      return res.status(400).json({ error: 'Blocked hostname' });
+    }
+
+    if (net.isIP(hostname) && isPrivateOrReservedIp(hostname)) {
+      return res.status(400).json({ error: 'Blocked IP address' });
+    }
+
+    try {
+      const resolved = await dns.lookup(hostname, { all: true });
+      if (!resolved.length || resolved.some(r => isPrivateOrReservedIp(r.address))) {
+        return res.status(400).json({ error: 'Blocked destination IP' });
+      }
+    } catch {
+      return res.status(400).json({ error: 'Hostname could not be resolved' });
+    }
+
+    const preview = await fetchLinkPreview(parsedUrl.toString(), {
+      timeout: 3500,
+      followRedirects: 'manual',
+      headers: { 'user-agent': 'NexChatBot/1.0 (+https://nexxchat-zeta.vercel.app)' },
+    });
+
+    const title = preview?.title || '';
+    const description = preview?.description || '';
+    const image = Array.isArray(preview?.images) ? (preview.images[0] || '') : '';
+
+    if (!title && !description && !image) {
+      return res.json({ linkPreview: null });
+    }
+
+    res.json({
+      linkPreview: {
+        url: preview?.url || parsedUrl.toString(),
+        title: String(title).slice(0, 140),
+        description: String(description).slice(0, 260),
+        image: typeof image === 'string' && /^https?:\/\//i.test(image) ? image : '',
+        domain: hostname.replace(/^www\./, ''),
+      },
+    });
+  } catch (error) {
+    res.json({ linkPreview: null });
   }
 };

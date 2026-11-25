@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, memo } from 'react';
-import { Search, Plus, Edit3, Users, Archive, Pin, Volume2, VolumeX, Bell, Settings, Lock } from 'lucide-react';
+import { Search, Plus, Edit3, Users, Archive, Pin, Volume2, VolumeX, Bell, Settings, Lock, Check, CheckCheck, Clock } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import useChatStore, { getConvTime } from '../../stores/chatStore';
 import useAuthStore from '../../stores/authStore';
@@ -61,7 +61,9 @@ export default function ChatList({ onOpenProfile }) {
     if (searchQuery) {
       convs = convs.filter(conv => {
         const otherUser = getOtherUser(conv, user?._id);
-        const name = conv.type === 'group' ? conv.groupName : (otherUser?.displayName || otherUser?.username || '');
+        const name = (conv.type === 'group' || conv.type === 'channel')
+          ? conv.groupName
+          : (otherUser?.displayName || otherUser?.username || '');
         return (name || '').toLowerCase().includes(searchQuery.toLowerCase());
       });
     }
@@ -278,9 +280,13 @@ const ConversationItem = memo(function ConversationItem({ conversation, userId, 
   const canSeeProfilePhoto = !otherUser?.privacy?.profilePhoto || otherUser.privacy.profilePhoto === 'everyone' || (otherUser.privacy.profilePhoto === 'friends' && isFriend);
   const canSeeOnline = !otherUser?.privacy?.online || otherUser.privacy.online === 'everyone' || (otherUser.privacy.online === 'friends' && isFriend);
 
-  const name = conversation.type === 'group' ? (conversation.groupName || 'Group') : (otherUser?.displayName || otherUser?.username || 'User');
+  const name = conversation.type === 'group'
+    ? (conversation.groupName || 'Group')
+    : conversation.type === 'channel'
+    ? (conversation.groupName || 'Channel')
+    : (otherUser?.displayName || otherUser?.username || 'User');
   const rawAvatar = otherUser?.avatar?.url || (typeof otherUser?.avatar === 'string' ? otherUser.avatar : null);
-  const avatar = conversation.type === 'group'
+  const avatar = (conversation.type === 'group' || conversation.type === 'channel')
     ? (conversation.groupAvatar?.url || (typeof conversation.groupAvatar === 'string' ? conversation.groupAvatar : null))
     : (canSeeProfilePhoto ? rawAvatar : null);
   const showOnline = isOnline && canSeeOnline;
@@ -342,6 +348,23 @@ const ConversationItem = memo(function ConversationItem({ conversation, userId, 
 
   const preview = getPreview();
   const timeStr = lastMessage?.createdAt || conversation.lastMessageAt || conversation.updatedAt || conversation.createdAt;
+  const lastSenderId = (lastMessage?.sender?._id || lastMessage?.sender)?.toString();
+  const isLastMsgMine = Boolean(lastMessage && currentUserId && lastSenderId === currentUserId.toString() && !lastMessage.isDeletedForEveryone && !preview.isDraft && !preview.isTyping);
+  const renderTickStatus = () => {
+    if (!isLastMsgMine) return null;
+    switch (lastMessage.status) {
+      case 'uploading':
+      case 'sending':
+        return <Clock className="w-3 h-3 text-surface-400 flex-shrink-0" />;
+      case 'delivered':
+        return <CheckCheck className="w-3.5 h-3.5 text-surface-300 flex-shrink-0" />;
+      case 'read':
+        return <CheckCheck className="w-3.5 h-3.5 text-[#38bdf8] flex-shrink-0" />;
+      case 'sent':
+      default:
+        return <Check className="w-3.5 h-3.5 text-surface-400 flex-shrink-0" />;
+    }
+  };
 
   return (
     <button
@@ -381,13 +404,16 @@ const ConversationItem = memo(function ConversationItem({ conversation, userId, 
           </span>
         </div>
         <div className="flex items-center justify-between mt-0.5">
-          <span className={`text-xs truncate ${
-            preview.isDraft ? 'text-accent-red' :
-            preview.isTyping ? 'text-primary-400' :
-            unread > 0 ? 'text-white font-semibold' : 'text-surface-500'
-          }`}>
-            {preview.text}
-          </span>
+          <div className="flex items-center gap-1 min-w-0 flex-1">
+            {renderTickStatus()}
+            <span className={`text-xs truncate ${
+              preview.isDraft ? 'text-accent-red' :
+              preview.isTyping ? 'text-primary-400' :
+              unread > 0 ? 'text-white font-semibold' : 'text-surface-500'
+            }`}>
+              {preview.text}
+            </span>
+          </div>
           <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
             {isPinned && <Pin className="w-3 h-3 text-surface-500 rotate-45" />}
             {isMuted && <VolumeX className="w-3 h-3 text-surface-500" />}
@@ -405,7 +431,7 @@ const ConversationItem = memo(function ConversationItem({ conversation, userId, 
 
 // Helpers
 function getOtherUser(conversation, userId) {
-  if (!conversation || conversation.type === 'group') return null;
+  if (!conversation || conversation.type === 'group' || conversation.type === 'channel') return null;
   const myId = userId?.toString();
   const other = conversation.participants?.find(
     p => {

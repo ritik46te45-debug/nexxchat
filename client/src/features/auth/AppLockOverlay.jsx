@@ -14,15 +14,18 @@ export default function AppLockOverlay({ children }) {
   const [newPin, setNewPin] = useState('');
 
   const timerRef = useRef(null);
+  const lastActivityRef = useRef(0);
 
   const resetTimer = () => {
     if (isLocked) return;
-    if (timerRef.current) clearTimeout(timerRef.current);
-    
-    // Only lock automatically if user has PIN lock enabled
-    const enabled = localStorage.getItem('nexchat_pin_lock_enabled') === 'true';
+    const enabled = localStorage.getItem('nexchat_pin_lock_enabled') === 'true' && !!localStorage.getItem('nexchat_app_pin');
     if (!enabled) return;
 
+    const now = Date.now();
+    if (now - lastActivityRef.current < 1000 && timerRef.current) return;
+    lastActivityRef.current = now;
+
+    if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
       setIsLocked(true);
     }, INACTIVITY_TIMEOUT_MS);
@@ -32,16 +35,16 @@ export default function AppLockOverlay({ children }) {
     const handleActivity = () => resetTimer();
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        const enabled = localStorage.getItem('nexchat_pin_lock_enabled') === 'true';
+        const enabled = localStorage.getItem('nexchat_pin_lock_enabled') === 'true' && !!localStorage.getItem('nexchat_app_pin');
         if (enabled) {
           setIsLocked(true);
         }
       }
     };
 
-    window.addEventListener('mousemove', handleActivity);
+    window.addEventListener('mousemove', handleActivity, { passive: true });
     window.addEventListener('keydown', handleActivity);
-    window.addEventListener('touchstart', handleActivity);
+    window.addEventListener('touchstart', handleActivity, { passive: true });
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     resetTimer();
@@ -56,15 +59,59 @@ export default function AppLockOverlay({ children }) {
   }, [isLocked]);
 
   const handleUnlock = (enteredPin) => {
-    const savedPin = localStorage.getItem('nexchat_app_pin') || '0000';
+    const savedPin = localStorage.getItem('nexchat_app_pin');
+    if (!savedPin) {
+      setIsLocked(false);
+      setPin('');
+      return;
+    }
     if (enteredPin === savedPin) {
       setIsLocked(false);
       setPin('');
+      lastActivityRef.current = 0;
       resetTimer();
       toast.success('App Unlocked', { id: 'app-unlocked', icon: '🔓' });
     } else {
       toast.error('Incorrect Security PIN', { id: 'wrong-pin' });
       setPin('');
+    }
+  };
+
+  const handleBiometricUnlock = async () => {
+    try {
+      if (!window.PublicKeyCredential) {
+        toast.error('Biometrics not supported on this device — enter your PIN');
+        return;
+      }
+      const available = await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+      if (!available) {
+        toast.error('No platform biometric sensor available — enter your PIN');
+        return;
+      }
+      const savedCredId = localStorage.getItem('nexchat_webauthn_cred_id');
+      if (!savedCredId) {
+        toast('Use your 4-digit PIN (biometric key not enrolled)', { icon: '🔐' });
+        return;
+      }
+      const rawId = Uint8Array.from(atob(savedCredId), c => c.charCodeAt(0));
+      const challenge = crypto.getRandomValues(new Uint8Array(32));
+      const assertion = await navigator.credentials.get({
+        publicKey: {
+          challenge,
+          allowCredentials: [{ id: rawId, type: 'public-key' }],
+          userVerification: 'required',
+          timeout: 30000,
+        },
+      });
+      if (assertion) {
+        setIsLocked(false);
+        setPin('');
+        lastActivityRef.current = 0;
+        resetTimer();
+        toast.success('Unlocked with Biometrics', { id: 'app-unlocked', icon: '🔓' });
+      }
+    } catch {
+      toast.error('Biometric check cancelled or failed — use PIN');
     }
   };
 
@@ -125,10 +172,8 @@ export default function AppLockOverlay({ children }) {
 
               {/* Biometrics / Quick unlock button */}
               <button
-                onClick={() => {
-                  toast('Biometric check ready', { icon: '👆' });
-                }}
-                className="h-14 rounded-2xl bg-dark-card/40 hover:bg-dark-hover border border-dark-border/50 text-surface-400 flex items-center justify-center transition-all active:scale-95"
+                onClick={handleBiometricUnlock}
+                className="h-14 rounded-2xl bg-dark-card/40 hover:bg-dark-hover border border-dark-border/50 text-surface-400 flex items-center justify-center transition-all active:scale-95 cursor-pointer"
                 title="Biometric Fingerprint"
               >
                 <Fingerprint className="w-5 h-5 text-primary-400" />

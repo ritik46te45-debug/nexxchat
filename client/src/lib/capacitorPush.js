@@ -163,6 +163,19 @@ export async function initPushNotifications({ onNavigateToConversation, onIncomi
     PushNotifications.addListener('pushNotificationReceived', (notification) => {
       console.log('[CAPACITOR PUSH] Notification received:', notification);
       const data = notification.data || {};
+      // Confirm delivery to backend so sender gets WhatsApp double grey ticks when APK has data ON
+      if (data.messageId && data.deliveryAckToken && data.recipientId) {
+        fetch(data.deliveryAckUrl || 'https://nexxchat-5d29.onrender.com/api/messages/delivery-ack', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messageId: data.messageId,
+            conversationId: data.conversationId || '',
+            userId: data.recipientId,
+            token: data.deliveryAckToken,
+          }),
+        }).catch(() => {});
+      }
       if (data.type === 'call' && data.callId && LocalNotifications) {
         LocalNotifications.schedule({
           notifications: [

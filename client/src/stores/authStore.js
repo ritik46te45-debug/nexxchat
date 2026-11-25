@@ -37,11 +37,20 @@ const persistAuth = (data) => {
   }
 };
 
+import { idb } from '../lib/idbStore';
+import useChatStore from './chatStore';
+
 const clearAuth = () => {
   localStorage.removeItem('accessToken');
   localStorage.removeItem('refreshToken');
   localStorage.removeItem('nexchat_user');
+  localStorage.removeItem('nexchat_cached_conversations');
+  localStorage.removeItem('nexchat_drafts');
   sessionStorage.removeItem('nexchat_unlocked_session');
+  idb.clearAll().catch(() => {});
+  try {
+    useChatStore.getState().resetStore?.();
+  } catch (e) {}
 };
 
 const initial = getInitialAuthState();

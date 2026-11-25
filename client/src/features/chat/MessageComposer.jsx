@@ -87,6 +87,8 @@ export default function MessageComposer() {
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [showPollModal, setShowPollModal] = useState(false);
   const [isVoiceRecording, setIsVoiceRecording] = useState(false);
+  const [linkPreview, setLinkPreview] = useState(null);
+  const fetchedLinkUrlRef = useRef('');
 
   const textareaRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -180,8 +182,55 @@ export default function MessageComposer() {
     handleTyping();
   };
 
-  // Keyboard shortcut: Enter to send, Shift+Enter for new line
+  // Auto-detect URL in non-secret chat to fetch Rich Link Preview
+  useEffect(() => {
+    if (activeConversation?.isSecret || !text || editingMessage) {
+      if (linkPreview) setLinkPreview(null);
+      return;
+    }
+    const urlMatch = text.match(/https?:\/\/[^\s<>"{}|\\^`[\]]+/i);
+    if (!urlMatch) {
+      if (linkPreview) setLinkPreview(null);
+      fetchedLinkUrlRef.current = '';
+      return;
+    }
+    const detectedUrl = urlMatch[0];
+    if (fetchedLinkUrlRef.current === detectedUrl) return;
+
+    const timer = setTimeout(async () => {
+      try {
+        fetchedLinkUrlRef.current = detectedUrl;
+        const { data } = await api.post('/messages/link-preview', { url: detectedUrl });
+        if (data?.linkPreview) {
+          setLinkPreview(data.linkPreview);
+        } else {
+          setLinkPreview(null);
+        }
+      } catch {
+        setLinkPreview(null);
+      }
+    }, 450);
+
+    return () => clearTimeout(timer);
+  }, [text, activeConversation?.isSecret, editingMessage]);
+
+  // Keyboard shortcut: Enter to send, Shift+Enter for new line, ArrowUp on empty input to edit last sent message
   const handleKeyDown = (e) => {
+    if (e.key === 'ArrowUp' && !text.trim() && !editingMessage && conversationId) {
+      const myId = (user?._id || user)?.toString();
+      const msgs = useChatStore.getState().messages || [];
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        const m = msgs[i];
+        const mSender = (m?.sender?._id || m?.sender)?.toString();
+        if (m && mSender === myId && m.type === 'text' && !m.isDeletedForEveryone && !m.isEncrypted) {
+          e.preventDefault();
+          setEditingMessage(m);
+          break;
+        }
+      }
+      return;
+    }
+
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       if (editingMessage) {
@@ -428,10 +477,13 @@ export default function MessageComposer() {
       const msgContent = trimmedText;
       const replyId = replyingMessage?._id;
       const silent = isSilent;
+      const previewToSend = !activeConversation?.isSecret ? linkPreview : null;
 
       // Clear input, retain focus, and render bubble at 0ms (WhatsApp parity)
       setText('');
       setReplyingMessage(null);
+      setLinkPreview(null);
+      fetchedLinkUrlRef.current = '';
       if (conversationId) saveDraft(conversationId, '');
       textareaRef.current?.focus();
 
@@ -450,6 +502,7 @@ export default function MessageComposer() {
           content: msgContent,
           replyTo: replyId,
           isSilent: silent,
+          ...(previewToSend ? { linkPreview: previewToSend } : {}),
         };
 
         if (activeConversation?.isSecret) {
@@ -905,6 +958,39 @@ export default function MessageComposer() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Live Rich Link Preview Strip */}
+      {linkPreview && !editingMessage && !activeConversation?.isSecret && (
+        <div className="mb-2 p-2.5 rounded-2xl bg-dark-input/90 border border-primary-500/30 flex items-center justify-between gap-3 animate-fade-in">
+          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+            {linkPreview.image && (
+              <img
+                src={linkPreview.image}
+                alt=""
+                className="w-10 h-10 rounded-xl object-cover flex-shrink-0 bg-black/30"
+                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+              />
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-primary-400 truncate">
+                {linkPreview.domain || 'Link Preview'}
+              </p>
+              <p className="text-xs font-semibold text-white truncate">{linkPreview.title || linkPreview.url}</p>
+              {linkPreview.description && (
+                <p className="text-[10px] text-surface-400 truncate">{linkPreview.description}</p>
+              )}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setLinkPreview(null)}
+            className="p-1.5 rounded-xl text-surface-400 hover:text-white hover:bg-dark-hover transition-colors flex-shrink-0 cursor-pointer"
+            title="Dismiss Link Preview"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 

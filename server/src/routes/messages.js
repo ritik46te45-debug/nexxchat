@@ -5,14 +5,21 @@ import {
   reactToMessage, toggleStarMessage, getStarredMessages,
   forwardMessage, searchMessages, markAsRead,
   getMediaGallery, pinMessage, unpinMessage, votePoll,
-  markViewOnceOpened, syncMessages,
+  markViewOnceOpened, syncMessages, ackMessageDelivery, getLinkPreview,
 } from '../controllers/messageController.js';
 
 const router = Router();
+
+// HMAC-authenticated delivery receipt from Service Worker / background push arrival
+router.post('/delivery-ack', ackMessageDelivery);
+
 router.use(authenticate);
 
 // Sync missed messages on reconnect
 router.get('/sync', syncMessages);
+
+// Link preview metadata
+router.post('/link-preview', getLinkPreview);
 
 // Starred messages
 router.get('/starred', getStarredMessages);

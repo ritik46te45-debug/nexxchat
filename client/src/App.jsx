@@ -337,6 +337,11 @@ function App() {
       const senderId = (message.sender?._id || message.sender)?.toString();
 
       if (senderId && currentUserId && senderId !== currentUserId) {
+        // Immediately acknowledge WhatsApp-style delivery (2 grey ticks) since recipient's app/data is online
+        if (message?._id && conversationId) {
+          socket.emit('message:delivered', { messageId: message._id, conversationId });
+        }
+
         const userState = useAuthStore.getState().user;
         const notifSettings = userState?.notificationSettings || {};
         const isDnd = notifSettings.doNotDisturb === true;
@@ -405,24 +410,40 @@ function App() {
       updateMessageInList(messageId, { reactions });
     };
 
-    const handleMessageDelivered = ({ messageId }) => {
-      updateMessageInList(messageId, { status: 'delivered' });
+    const handleMessageDelivered = ({ messageId, messageIds }) => {
+      const ids = Array.isArray(messageIds) && messageIds.length > 0
+        ? messageIds
+        : (messageId ? [messageId] : []);
+      if (ids.length > 0) {
+        updateMessageInList(ids, { status: 'delivered' });
+      }
     };
 
     const handleMessageRead = ({ conversationId, readBy }) => {
       const state = useChatStore.getState();
       const currentUserId = (useAuthStore.getState().user?._id || useAuthStore.getState().user)?.toString();
       const isReadByMe = readBy && currentUserId && readBy.toString() === currentUserId;
+      const cid = conversationId?.toString();
 
-      if (state.activeConversation?._id?.toString() === conversationId?.toString()) {
-        const messages = state.messages.map(m => {
-          const mSender = (m.sender?._id || m.sender)?.toString();
-          if (!isReadByMe && mSender === currentUserId) {
-            return { ...m, status: 'read' };
-          }
-          return m;
-        });
-        useChatStore.setState({ messages });
+      const markReadMsgs = (list) => list.map(m => {
+        const mSender = (m.sender?._id || m.sender)?.toString();
+        if (!isReadByMe && mSender === currentUserId) {
+          return { ...m, status: 'read' };
+        }
+        return m;
+      });
+
+      if (state.activeConversation?._id?.toString() === cid) {
+        useChatStore.setState({ messages: markReadMsgs(state.messages) });
+      }
+      if (cid && state.messagesCache?.[cid]?.messages) {
+        const updatedCached = markReadMsgs(state.messagesCache[cid].messages);
+        useChatStore.setState((s) => ({
+          messagesCache: {
+            ...s.messagesCache,
+            [cid]: { ...s.messagesCache[cid], messages: updatedCached },
+          },
+        }));
       }
 
       const convs = state.conversations.map(c => {

@@ -570,9 +570,11 @@ export const migrateGridFSToCloudinary = async (req, res) => {
     for (const gridFile of allFiles) {
       try {
         // Skip files too large for Cloudinary
-        if (gridFile.length > CLOUDINARY_MAX_SIZE) {
+        const categoryForLimit = gridFile.metadata?.category || getFileCategory(gridFile.contentType || '', path.extname(gridFile.metadata?.originalName || gridFile.filename));
+        const maxCloudinarySize = categoryForLimit === 'video' ? CLOUDINARY_VIDEO_MAX_SIZE : CLOUDINARY_RAW_MAX_SIZE;
+        if (gridFile.length > maxCloudinarySize) {
           results.skipped++;
-          results.errors.push({ file: gridFile.filename, reason: 'Too large for Cloudinary (>100MB)' });
+          results.errors.push({ file: gridFile.filename, reason: `Too large for Cloudinary (>${Math.round(maxCloudinarySize / (1024 * 1024))}MB)` });
           continue;
         }
 

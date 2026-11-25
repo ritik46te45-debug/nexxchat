@@ -38,7 +38,29 @@ self.addEventListener('push', (event) => {
           ]
     };
 
-    event.waitUntil(self.registration.showNotification(title, options));
+    // Confirm push arrival to backend so sender gets WhatsApp-style double grey tick (data is ON)
+    let deliveryAckPromise = Promise.resolve();
+    const msgId = payload.data?.messageId;
+    const ackToken = payload.data?.deliveryAckToken;
+    const recipientId = payload.data?.recipientId;
+    if (msgId && ackToken && recipientId) {
+      const isLocal = self.location.hostname === 'localhost' || self.location.hostname === '127.0.0.1';
+      const ackUrl = isLocal
+        ? 'http://localhost:5000/api/messages/delivery-ack'
+        : (payload.data?.deliveryAckUrl || 'https://nexxchat-5d29.onrender.com/api/messages/delivery-ack');
+      deliveryAckPromise = fetch(ackUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messageId: msgId,
+          conversationId: payload.data?.conversationId || '',
+          userId: recipientId,
+          token: ackToken,
+        }),
+      }).catch(() => {});
+    }
+
+    event.waitUntil(Promise.all([self.registration.showNotification(title, options), deliveryAckPromise]));
   } catch (err) {
     const title = 'NexChat Notification';
     const options = {

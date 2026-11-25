@@ -59,6 +59,7 @@ export default function ChatWindow({ onStartCall }) {
   const prevLastMessageIdRef = useRef(null);
   const isFetchingOlderRef = useRef(false);
   const initialScrollTimersRef = useRef([]);
+  const initialUnreadCountRef = useRef(0);
 
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [isChatReady, setIsChatReady] = useState(false);
@@ -300,7 +301,6 @@ export default function ChatWindow({ onStartCall }) {
         el.scrollTop = el.scrollHeight;
       }
     }
-    messagesEndRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'end' });
     setIsAtBottom(true);
     setShowScrollDown(false);
     setUnreadNewCount(0);
@@ -319,6 +319,14 @@ export default function ChatWindow({ onStartCall }) {
   useEffect(() => {
     const convId = activeConversation?._id?.toString();
     if (!convId) return;
+
+    const myP = activeConversation._participant || activeConversation.participants?.find(
+      (p) => (p.user?._id || p.user)?.toString() === myId
+    );
+    const startingUnread = typeof activeConversation.unreadCount === 'number'
+      ? activeConversation.unreadCount
+      : (myP?.unreadCount || 0);
+    initialUnreadCountRef.current = Math.max(0, startingUnread);
 
     clearInitialTimers();
     setIsChatReady(false);
@@ -368,14 +376,12 @@ export default function ChatWindow({ onStartCall }) {
     // 2. Initial load for this conversation: position directly to bottom synchronously
     if (isInitialLoadRef.current) {
       el.scrollTop = el.scrollHeight;
-      messagesEndRef.current?.scrollIntoView({ behavior: 'instant', block: 'end' });
 
       clearInitialTimers();
 
       const frameId = requestAnimationFrame(() => {
         if (el && !userScrolledUpRef.current) {
           el.scrollTop = el.scrollHeight;
-          messagesEndRef.current?.scrollIntoView({ behavior: 'instant', block: 'end' });
         }
         setIsChatReady(true);
         isInitialLoadRef.current = false;
@@ -868,10 +874,27 @@ export default function ChatWindow({ onStartCall }) {
 
         {/* Messages Scroll Container */}
         <div className="flex-1 min-h-0 relative overflow-hidden flex flex-col">
-          {/* Centered smooth loader only when fetching empty chat */}
+          {/* Smooth WhatsApp-style animated shimmer skeletons when cold-loading empty chat */}
           {isLoadingMessages && messages.length === 0 && (
-            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-dark-bg">
-              <Loader2 className="w-8 h-8 animate-spin text-primary-400" />
+            <div className="absolute inset-0 z-10 flex flex-col justify-end gap-3 p-4 sm:p-5 bg-dark-bg overflow-hidden select-none pointer-events-none">
+              {[
+                { own: false, w: 'w-52', h: 'h-11' },
+                { own: true, w: 'w-64', h: 'h-14' },
+                { own: false, w: 'w-44', h: 'h-10' },
+                { own: false, w: 'w-72', h: 'h-16' },
+                { own: true, w: 'w-48', h: 'h-11' },
+                { own: true, w: 'w-60', h: 'h-12' },
+              ].map((sk, idx) => (
+                <div key={idx} className={`flex ${sk.own ? 'justify-end' : 'justify-start'}`}>
+                  <div
+                    className={`${sk.w} ${sk.h} rounded-2xl relative overflow-hidden ${
+                      sk.own ? 'bg-primary-500/15 rounded-br-sm' : 'bg-dark-card/80 border border-dark-border/50 rounded-bl-sm'
+                    }`}
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/[0.06] to-transparent animate-shimmer" />
+                  </div>
+                </div>
+              ))}
             </div>
           )}
 
@@ -891,8 +914,25 @@ export default function ChatWindow({ onStartCall }) {
               </div>
             )}
 
-            {/* Render Messages with Smart Grouping and Date Separators */}
-            {(messages || []).map((msg, index) => {
+            {/* Render Messages with Smart Grouping, Date Separators, and Unread Divider */}
+            {(() => {
+              const unreadTarget = initialUnreadCountRef.current;
+              let unreadDividerIndex = -1;
+              if (unreadTarget > 0 && Array.isArray(messages) && messages.length > 0) {
+                let incomingSeen = 0;
+                for (let i = messages.length - 1; i >= 0; i--) {
+                  const m = messages[i];
+                  if (!m) continue;
+                  const sId = (m.sender?._id || m.sender)?.toString();
+                  if (sId && sId !== myId) {
+                    incomingSeen++;
+                    unreadDividerIndex = i;
+                    if (incomingSeen >= unreadTarget) break;
+                  }
+                }
+              }
+
+              return (messages || []).map((msg, index) => {
               if (!msg) return null;
               const prevMsg = messages[index - 1];
               const nextMsg = messages[index + 1];
@@ -901,6 +941,7 @@ export default function ChatWindow({ onStartCall }) {
               const currentDate = safeFormat(msg.createdAt, 'yyyy-MM-dd');
               const prevDate = safeFormat(prevMsg?.createdAt, 'yyyy-MM-dd');
               const showDateHeader = Boolean(currentDate && currentDate !== prevDate);
+              const showUnreadDivider = index === unreadDividerIndex && unreadTarget > 0;
 
               // 5-minute consecutive sender grouping
               const isOwn = (msg.sender?._id || msg.sender)?.toString() === myId;
@@ -929,6 +970,17 @@ export default function ChatWindow({ onStartCall }) {
                     </div>
                   )}
 
+                  {/* WhatsApp-Style Unread Messages Divider Bar */}
+                  {showUnreadDivider && (
+                    <div className="flex items-center gap-3 my-3 px-2 select-none">
+                      <div className="flex-1 h-px bg-primary-500/40" />
+                      <span className="px-3 py-1 rounded-full bg-primary-500/15 border border-primary-500/40 text-[11px] font-bold text-primary-300 shadow-sm">
+                        {unreadTarget} {unreadTarget === 1 ? 'Unread Message' : 'Unread Messages'}
+                      </span>
+                      <div className="flex-1 h-px bg-primary-500/40" />
+                    </div>
+                  )}
+
                   {/* Message Bubble */}
                   <MessageBubble
                     message={msg}
@@ -948,7 +1000,8 @@ export default function ChatWindow({ onStartCall }) {
                   />
                 </div>
               );
-            })}
+            });
+            })()}
 
             <div ref={messagesEndRef} />
           </div>

@@ -16,6 +16,7 @@ import Device from '../models/Device.js';
 import User from '../models/User.js';
 import Conversation from '../models/Conversation.js';
 import { sendPushNotification as sendVapidPush } from '../config/webPush.js';
+import { signDeliveryAck } from '../utils/deliveryToken.js';
 
 // ============================================================
 // Firebase Cloud Messaging (FCM) Driver for Android & iOS
@@ -124,6 +125,9 @@ const sendFcmPush = async (fcmToken, payload) => {
         conversationId: String(payload.data?.conversationId || ''),
         messageId: String(payload.data?.messageId || ''),
         type: String(payload.data?.type || ''),
+        recipientId: String(payload.data?.recipientId || ''),
+        deliveryAckToken: String(payload.data?.deliveryAckToken || ''),
+        deliveryAckUrl: String(payload.data?.deliveryAckUrl || ''),
         callId: String(payload.data?.callId || ''),
         callerName: String(payload.data?.callerName || payload.title || ''),
         callType: String(payload.data?.callType || 'voice'),
@@ -211,6 +215,7 @@ const buildPayload = (event, data, settings) => {
   let notifData = {};
 
   switch (event) {
+    case 'group_message':
     case 'message': {
       const senderName = data.senderName || 'Someone';
       title = showSender ? senderName : 'New Message';
@@ -237,10 +242,13 @@ const buildPayload = (event, data, settings) => {
       icon = data.senderAvatar || icon;
       tag = `msg-${data.conversationId || 'unknown'}`;
       notifData = {
-        type: 'message',
+        type: event,
         conversationId: data.conversationId,
         messageId: data.messageId,
         senderId: data.senderId,
+        recipientId: data.recipientId,
+        deliveryAckToken: data.deliveryAckToken,
+        deliveryAckUrl: data.deliveryAckUrl,
       };
       break;
     }
@@ -382,8 +390,17 @@ export const dispatchPush = async (recipientUserId, event, data, options = {}) =
       User.findById(userId).select('pushSubscriptions'),
     ]);
 
-    // Build payload
-    const payload = buildPayload(event, data, settings);
+    // Build payload (include signed delivery receipt token so SW/FCM arrival confirms data is ON)
+    const ackBaseUrl = (process.env.SERVER_URL || process.env.RENDER_EXTERNAL_URL || 'https://nexxchat-5d29.onrender.com').replace(/\/+$/, '');
+    const enrichedData = data?.messageId
+      ? {
+          ...data,
+          recipientId: userId,
+          deliveryAckToken: signDeliveryAck(data.messageId, userId),
+          deliveryAckUrl: `${ackBaseUrl}/api/messages/delivery-ack`,
+        }
+      : data;
+    const payload = buildPayload(event, enrichedData, settings);
 
     // Collect and deduplicate all VAPID subscriptions across Device and User models
     const endpointMap = new Map(); // endpoint -> subscription

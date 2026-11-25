@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Search, X, User, Users, MessageSquare, Image, FileText,
   Phone, Video, ArrowRight, Loader2, Link
@@ -7,6 +7,7 @@ import { format } from 'date-fns';
 import useChatStore from '../../stores/chatStore';
 import useAuthStore from '../../stores/authStore';
 import useUIStore from '../../stores/uiStore';
+import api from '../../lib/api';
 
 const CATEGORIES = [
   { id: 'all', label: 'All Results' },
@@ -20,6 +21,8 @@ const CATEGORIES = [
 export default function GlobalSearchModal({ onClose, onStartCall }) {
   const [query, setQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('all');
+  const [serverMessages, setServerMessages] = useState([]);
+  const [isSearchingServer, setIsSearchingServer] = useState(false);
 
   const { conversations, messages, setActiveConversation } = useChatStore();
   const { user } = useAuthStore();
@@ -27,14 +30,46 @@ export default function GlobalSearchModal({ onClose, onStartCall }) {
 
   const myId = (user?._id || user)?.toString();
 
-  // Search logic across conversations, users, messages
+  // Debounced server-side full message search across all chats
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (trimmed.length < 2) {
+      setServerMessages([]);
+      setIsSearchingServer(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsSearchingServer(true);
+    const timer = setTimeout(async () => {
+      try {
+        const { data } = await api.get('/messages/search', {
+          params: { q: trimmed, limit: 30 },
+        });
+        if (!cancelled) {
+          setServerMessages(Array.isArray(data?.messages) ? data.messages : []);
+        }
+      } catch {
+        if (!cancelled) setServerMessages([]);
+      } finally {
+        if (!cancelled) setIsSearchingServer(false);
+      }
+    }, 280);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [query]);
+
+  // Search logic across conversations, users, messages (merged local + server)
   const searchResults = useMemo(() => {
     if (!query.trim() || query.length < 2) return { people: [], messages: [], media: [], files: [], groups: [] };
     const q = query.toLowerCase();
 
     const people = [];
     const groups = [];
-    const matchedMessages = [];
+    const matchedMessagesMap = new Map();
     const media = [];
     const files = [];
 
@@ -58,7 +93,7 @@ export default function GlobalSearchModal({ onClose, onStartCall }) {
     (messages || []).forEach((m) => {
       if (m.isDeletedForEveryone) return;
       if (m.content?.toLowerCase().includes(q)) {
-        matchedMessages.push(m);
+        matchedMessagesMap.set(m._id?.toString(), m);
       }
       if (m.attachments && Array.isArray(m.attachments)) {
         m.attachments.forEach((att) => {
@@ -70,8 +105,21 @@ export default function GlobalSearchModal({ onClose, onStartCall }) {
       }
     });
 
-    return { people, groups, messages: matchedMessages, media, files };
-  }, [conversations, messages, myId, query]);
+    (serverMessages || []).forEach((m) => {
+      const id = m._id?.toString();
+      if (id && !matchedMessagesMap.has(id) && !m.isDeletedForEveryone) {
+        matchedMessagesMap.set(id, m);
+      }
+    });
+
+    return {
+      people,
+      groups,
+      messages: Array.from(matchedMessagesMap.values()),
+      media,
+      files,
+    };
+  }, [conversations, messages, serverMessages, myId, query]);
 
   const { setSidebarView } = useUIStore();
 
@@ -140,6 +188,11 @@ export default function GlobalSearchModal({ onClose, onStartCall }) {
               <p className="text-[11px] text-surface-500 mt-1">
                 Type names, hashtags, keywords, or filenames to search globally.
               </p>
+            </div>
+          ) : isSearchingServer && totalResultsCount === 0 ? (
+            <div className="py-12 text-center text-surface-400 flex flex-col items-center gap-2">
+              <Loader2 className="w-6 h-6 animate-spin text-primary-400" />
+              <span>Searching messages across your chats...</span>
             </div>
           ) : totalResultsCount === 0 ? (
             <div className="py-12 text-center text-surface-500">
@@ -235,8 +288,22 @@ export default function GlobalSearchModal({ onClose, onStartCall }) {
                       <div
                         key={m._id}
                         onClick={() => {
-                          const conv = conversations.find((c) => c._id === (m.conversation?._id || m.conversation));
-                          if (conv) handleOpenConversation(conv);
+                          const targetConvId = (m.conversation?._id || m.conversation)?.toString();
+                          const conv = conversations.find((c) => c._id?.toString() === targetConvId);
+                          if (conv) {
+                            handleOpenConversation(conv);
+                          } else if (targetConvId) {
+                            handleOpenConversation({
+                              _id: targetConvId,
+                              type: m.conversation?.type || 'private',
+                              groupName: m.conversation?.groupName || '',
+                              participants: [],
+                            });
+                          }
+                          setTimeout(() => {
+                            const el = document.getElementById(`msg-${m._id}`);
+                            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                          }, 450);
                         }}
                         className="p-2.5 rounded-2xl bg-dark-input/50 hover:bg-dark-hover border border-dark-border cursor-pointer group transition-all text-left"
                       >

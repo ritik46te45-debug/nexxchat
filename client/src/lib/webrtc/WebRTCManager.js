@@ -93,14 +93,21 @@ export class WebRTCManager {
     if (WebRTCManager.cachedIceConfig) {
       return WebRTCManager.cachedIceConfig;
     }
-    // Asynchronously cache for next calls without blocking current call setup
-    api.get('/calls/ice-servers').then(({ data }) => {
+
+    const fetchConfig = api.get('/calls/ice-servers').then(({ data }) => {
       if (data?.config?.iceServers?.length > 0) {
         WebRTCManager.cachedIceConfig = data.config;
+        return data.config;
       }
-    }).catch(() => {});
+      return DEFAULT_ICE_CONFIG;
+    }).catch(() => DEFAULT_ICE_CONFIG);
 
-    return DEFAULT_ICE_CONFIG;
+    // Wait up to 600ms for TURN servers so NAT/carrier traversal gets them on the very first call
+    const timeoutFallback = new Promise((resolve) => {
+      setTimeout(() => resolve(DEFAULT_ICE_CONFIG), 600);
+    });
+
+    return Promise.race([fetchConfig, timeoutFallback]);
   }
 
   /**

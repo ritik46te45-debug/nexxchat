@@ -60,6 +60,7 @@ function MessageBubbleComponent({
   const [isTranslating, setIsTranslating] = useState(false);
   const [showPdfViewer, setShowPdfViewer] = useState(false);
   const [decryptedText, setDecryptedText] = useState(null);
+  const [swipeX, setSwipeX] = useState(0);
 
   useEffect(() => {
     if (message?.isEncrypted && message?.iv) {
@@ -75,6 +76,7 @@ function MessageBubbleComponent({
 
   const longPressTimer = useRef(null);
   const contextMenuRef = useRef(null);
+  const swipeStartRef = useRef({ x: 0, y: 0, locked: null, triggered: false });
 
   // Auto-dismiss reaction/context menu on outside tap or click anywhere on screen
   useEffect(() => {
@@ -241,9 +243,9 @@ function MessageBubbleComponent({
     setShowContextMenu(false);
   };
 
-  // Translate message inline
+  // Translate message inline (disabled for E2EE messages so plaintext never leaves client)
   const handleTranslate = async () => {
-    if (!message.content) return;
+    if (!message.content || message.isEncrypted) return;
     setIsTranslating(true);
     try {
       const res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&q=${encodeURIComponent(message.content)}`);
@@ -265,16 +267,50 @@ function MessageBubbleComponent({
     setShowContextMenu(false);
   };
 
-  // Long press for mobile
-  const handleTouchStart = () => {
+  // Long press + Swipe-to-Reply for mobile
+  const handleTouchStart = (e) => {
+    const touch = e.touches?.[0];
+    if (touch) {
+      swipeStartRef.current = { x: touch.clientX, y: touch.clientY, locked: null, triggered: false };
+    }
     longPressTimer.current = setTimeout(() => {
-      setShowContextMenu(true);
-      triggerHaptic('medium');
+      if (swipeStartRef.current.locked !== 'horizontal') {
+        setShowContextMenu(true);
+        triggerHaptic('medium');
+      }
     }, 500);
+  };
+
+  const handleTouchMove = (e) => {
+    const touch = e.touches?.[0];
+    if (!touch) return;
+    const dx = touch.clientX - swipeStartRef.current.x;
+    const dy = touch.clientY - swipeStartRef.current.y;
+
+    if (!swipeStartRef.current.locked) {
+      if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+        swipeStartRef.current.locked = Math.abs(dx) > Math.abs(dy) && dx > 0 ? 'horizontal' : 'vertical';
+        if (longPressTimer.current) clearTimeout(longPressTimer.current);
+      }
+    }
+
+    if (swipeStartRef.current.locked === 'horizontal') {
+      const clamped = Math.min(72, Math.max(0, dx));
+      setSwipeX(clamped);
+      if (clamped >= 48 && !swipeStartRef.current.triggered) {
+        swipeStartRef.current.triggered = true;
+        triggerHaptic('light');
+      }
+    }
   };
 
   const handleTouchEnd = () => {
     if (longPressTimer.current) clearTimeout(longPressTimer.current);
+    if (swipeStartRef.current.triggered && !isSelectionMode) {
+      setReplyingMessage(message);
+    }
+    swipeStartRef.current = { x: 0, y: 0, locked: null, triggered: false };
+    setSwipeX(0);
   };
 
   // Check if content is purely 1-3 emojis
@@ -397,15 +433,27 @@ function MessageBubbleComponent({
     <div
       id={`msg-${message._id}`}
       onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchEnd}
       onContextMenu={(e) => {
         e.preventDefault();
         setShowContextMenu(true);
       }}
-      className={`flex items-end gap-2 mb-1 px-2 group relative transition-colors ${
+      style={swipeX > 0 ? { transform: `translateX(${swipeX}px)`, transition: 'none' } : undefined}
+      className={`flex items-end gap-2 mb-1 px-2 group relative transition-all duration-150 ${
         isSelected ? 'bg-primary-500/10 rounded-2xl' : ''
       } ${isOwn ? 'justify-end' : 'justify-start'}`}
     >
+      {/* Swipe-to-Reply indicator icon */}
+      {swipeX > 8 && (
+        <div
+          className="absolute -left-8 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-primary-500/20 border border-primary-500/40 flex items-center justify-center text-primary-300 pointer-events-none"
+          style={{ opacity: Math.min(1, swipeX / 48) }}
+        >
+          <Reply className="w-3.5 h-3.5" />
+        </div>
+      )}
       {/* Selection Mode Checkbox */}
       {isSelectionMode && (
         <button
@@ -809,6 +857,43 @@ function MessageBubbleComponent({
             </p>
           )}
 
+          {/* Rich Link Preview Card */}
+          {!message.isEncrypted && message.linkPreview && (message.linkPreview.title || message.linkPreview.image) && (
+            <a
+              href={message.linkPreview.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className={`mt-2 block rounded-xl overflow-hidden border transition-all hover:opacity-95 ${
+                isOwn ? 'bg-black/25 border-white/15' : 'bg-dark-card/70 border-dark-border/80'
+              }`}
+            >
+              {message.linkPreview.image && (
+                <img
+                  src={message.linkPreview.image}
+                  alt=""
+                  loading="lazy"
+                  className="w-full max-h-36 object-cover bg-black/30"
+                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                />
+              )}
+              <div className="p-2.5 text-left">
+                {message.linkPreview.domain && (
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-primary-400 truncate flex items-center gap-1">
+                    <ExternalLink className="w-2.5 h-2.5 flex-shrink-0" />
+                    {message.linkPreview.domain}
+                  </p>
+                )}
+                {message.linkPreview.title && (
+                  <p className="text-xs font-bold text-white line-clamp-2 mt-0.5">{message.linkPreview.title}</p>
+                )}
+                {message.linkPreview.description && (
+                  <p className="text-[11px] text-surface-300 line-clamp-2 mt-0.5">{message.linkPreview.description}</p>
+                )}
+              </div>
+            </a>
+          )}
+
           {/* Inline Translation Display */}
           {translatedText && (
             <div className="mt-1.5 pt-1.5 border-t border-white/20 text-xs text-primary-200">
@@ -992,7 +1077,7 @@ function MessageBubbleComponent({
                 <Pin className="w-3.5 h-3.5 text-accent-purple" /> {isPinned ? 'Unpin' : 'Pin to top'}
               </button>
 
-              {message.content && (
+              {message.content && !message.isEncrypted && (
                 <button
                   onClick={handleTranslate}
                   className="w-full px-3 py-1.5 rounded-xl hover:bg-dark-hover text-surface-200 hover:text-white flex items-center gap-2.5 transition-colors"
@@ -1089,7 +1174,8 @@ function arePropsEqual(prev, next) {
   if (pMsg.content !== nMsg.content) return false;
   if (pMsg.isEdited !== nMsg.isEdited) return false;
   if (pMsg.isDeletedForEveryone !== nMsg.isDeletedForEveryone) return false;
-  if (pMsg.isStarred !== nMsg.isStarred) return false;
+  if (pMsg.starredBy?.length !== nMsg.starredBy?.length) return false;
+  if (pMsg.linkPreview?.url !== nMsg.linkPreview?.url) return false;
   if (pMsg.updatedAt !== nMsg.updatedAt) return false;
   if (pMsg.viewOnceOpenedBy?.length !== nMsg.viewOnceOpenedBy?.length) return false;
 
@@ -1097,7 +1183,7 @@ function arePropsEqual(prev, next) {
   if (pMsg.reactions && nMsg.reactions) {
     for (let i = 0; i < pMsg.reactions.length; i++) {
       if (pMsg.reactions[i]?.emoji !== nMsg.reactions[i]?.emoji) return false;
-      if (pMsg.reactions[i]?.users?.length !== nMsg.reactions[i]?.users?.length) return false;
+      if ((pMsg.reactions[i]?.user?._id || pMsg.reactions[i]?.user) !== (nMsg.reactions[i]?.user?._id || nMsg.reactions[i]?.user)) return false;
     }
   }
 

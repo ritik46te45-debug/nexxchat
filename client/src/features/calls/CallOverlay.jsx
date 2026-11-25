@@ -222,6 +222,13 @@ export default function CallOverlay({
     };
   }, [loadDevices]);
 
+  // Notify parent of call duration changes cleanly outside state updaters
+  useEffect(() => {
+    if (callDuration > 0) {
+      onDurationUpdate?.(callDuration);
+    }
+  }, [callDuration, onDurationUpdate]);
+
   // Timer logic
   const startTimer = () => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -229,7 +236,6 @@ export default function CallOverlay({
       setCallDuration((prev) => {
         const next = prev + 1;
         callDurationRef.current = next;
-        onDurationUpdate?.(next);
         return next;
       });
     }, 1000);
